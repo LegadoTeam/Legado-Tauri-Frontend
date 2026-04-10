@@ -1,0 +1,252 @@
+/* ============================================================
+   CSS 设计令牌
+   ============================================================ */
+:root {
+  /* 尺寸 */
+  --titlebar-h: 40px;
+  --taskbar-h: 28px;
+  --sidebar-w: 200px;
+  --sidebar-collapsed-w: 48px;
+  --bottomnav-h: 56px;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  /* 语义色 */
+  --color-danger: #ef4444;
+  --color-danger-subtle: rgba(239, 68, 68, 0.10);
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-surface-sunken: #e4e4e7;
+
+  /* 过渡 */
+  --transition-fast: 120ms ease;
+  --transition-base: 220ms ease;
+
+  /* 颜色——亮色主题 */
+  --color-surface: #f4f4f5;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #e4e4e7;
+  --color-border: #e4e4e7;
+
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #a1a1aa;
+
+  --color-accent: #6366f1;
+  --color-accent-subtle: #eef2ff;
+
+  /* 侧边栏 — 亮色主题 */
+  --color-sidebar-bg: #fbfbfc;
+  --color-sidebar-border: #e4e4e7;
+  --color-sidebar-text: #27272a;
+  --color-sidebar-text-muted: #71717a;
+  --color-sidebar-hover: #eef2ff;
+  --color-sidebar-active-bg: #e0e7ff;
+  --color-sidebar-active-text: #4338ca;
+
+  font-family: Inter, 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 暗色主题变量集 ────────────────────────────────────────────────────── */
+/* 1. 强制暗色：data-theme="dark" */
+:root[data-theme="dark"] {
+  --color-surface: #18181b;
+  --color-surface-raised: #27272a;
+  --color-surface-hover: #3f3f46;
+  --color-border: #3f3f46;
+
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+
+  --color-accent: #818cf8;
+  --color-accent-subtle: #1e1b4b;
+
+  --color-danger: #f87171;
+  --color-danger-subtle: rgba(248, 113, 113, 0.12);
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-surface-sunken: #09090b;
+
+  --color-sidebar-bg: #141418;
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+  --color-sidebar-text: #e4e4e7;
+  --color-sidebar-text-muted: #8b8b95;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --color-sidebar-active-bg: rgba(129, 140, 248, 0.2);
+  --color-sidebar-active-text: #c7d2fe;
+}
+
+/* 2. 自动模式（data-theme="auto"）：跟随系统偏好 */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"],
+  :root:not([data-theme]) {
+    --color-surface: #18181b;
+    --color-surface-raised: #27272a;
+    --color-surface-hover: #3f3f46;
+    --color-border: #3f3f46;
+
+    --color-text-primary: #fafafa;
+    --color-text-secondary: #a1a1aa;
+    --color-text-muted: #71717a;
+
+    --color-accent: #818cf8;
+    --color-accent-subtle: #1e1b4b;
+
+    --color-danger: #f87171;
+    --color-danger-subtle: rgba(248, 113, 113, 0.12);
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+    --color-surface-sunken: #09090b;
+
+    --color-sidebar-bg: #141418;
+    --color-sidebar-border: rgba(255, 255, 255, 0.08);
+    --color-sidebar-text: #e4e4e7;
+    --color-sidebar-text-muted: #8b8b95;
+    --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+    --color-sidebar-active-bg: rgba(129, 140, 248, 0.2);
+    --color-sidebar-active-text: #c7d2fe;
+  }
+}
+
+/* 3. 强制亮色：data-theme="light" 时显式重置（覆盖系统暗色偏好） */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="light"] {
+    --color-surface: #f4f4f5;
+    --color-surface-raised: #ffffff;
+    --color-surface-hover: #e4e4e7;
+    --color-border: #e4e4e7;
+
+    --color-text-primary: #18181b;
+    --color-text-secondary: #52525b;
+    --color-text-muted: #a1a1aa;
+
+    --color-accent: #6366f1;
+    --color-accent-subtle: #eef2ff;
+
+    --color-danger: #ef4444;
+    --color-danger-subtle: rgba(239, 68, 68, 0.10);
+    --color-success: #22c55e;
+    --color-warning: #f59e0b;
+    --color-surface-sunken: #e4e4e7;
+
+    --color-sidebar-bg: #fbfbfc;
+    --color-sidebar-border: #e4e4e7;
+    --color-sidebar-text: #27272a;
+    --color-sidebar-text-muted: #71717a;
+    --color-sidebar-hover: #eef2ff;
+    --color-sidebar-active-bg: #e0e7ff;
+    --color-sidebar-active-text: #4338ca;
+  }
+}
+
+/* ============================================================
+   Reset
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+ul, ol {
+  list-style: none;
+}
+
+/* ============================================================
+   阅读器共用样式（非漫画模式共用）
+   ============================================================ */
+
+/**
+ * 章节名标题 — 所有非漫画翻页/滚动模式共用。
+ * 分页模式通过 v-html 注入 <p class="reader-chapter-title">，需全局生效。
+ * 关键属性加 !important 以覆盖各模式 :deep(p) 设置的排版变量。
+ */
+.reader-chapter-title {
+  font-family: var(--reader-font-family);
+  font-size: calc(var(--reader-font-size) + 4px) !important;
+  font-weight: 700 !important;
+  line-height: 1.5;
+  letter-spacing: var(--reader-letter-spacing);
+  color: var(--reader-text-color);
+  text-indent: 0 !important;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  font-synthesis: weight style;
+  -webkit-font-smoothing: antialiased;
+  margin-bottom: 1.5em;
+  padding-top: 0.5em;
+}
+
+/**
+ * 边界提示 Toast — 所有阅读模式共用（翻页模式 / 滚动模式 / 漫画模式）。
+ * 居中半透明黑底白字，1.5s 后自动消失。
+ */
+.boundary-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10000;
+}
+.boundary-toast-enter-active { transition: opacity 0.2s ease; }
+.boundary-toast-leave-active { transition: opacity 0.4s ease; }
+.boundary-toast-enter-from,
+.boundary-toast-leave-to { opacity: 0; }
+
+button {
+  font: inherit;
+}
+
+/* ============================================================
+   移动端适配
+   ============================================================ */
+@media (pointer: coarse), (max-width: 640px) {
+  :root {
+    --titlebar-h: 44px;
+    --space-md: 12px;
+    --space-lg: 16px;
+  }
+
+  /* 禁用双击缩放，确保安卓上单击稳定触发 */
+  html {
+    touch-action: manipulation;
+  }
+
+  /* Naive UI 弹窗在移动端限制宽度不超屏 */
+  .n-modal {
+    max-width: 100vw !important;
+  }
+
+  /* 去除 Android 点击高亮 */
+  button, a, [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

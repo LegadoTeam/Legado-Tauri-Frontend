@@ -1,0 +1,34 @@
+{
+  "name": "legado_tauri",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:tauri": "tauri dev",
+    "dev:android": "cross-env JAVA_HOME=\"C:\\Program Files\\Java\\jdk-17\" tauri android dev",
+    "build": "vue-tsc --noEmit && vite build",
+    "build:tauri": "tauri build",
+    "build:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "build:android:release": "cross-env JAVA_HOME=\"C:\\Program Files\\Java\\jdk-17\" tauri android build --apk --target aarch64",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@guolao/vue-monaco-editor": "^1.6.0",
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-opener": "^2.5.3",
+    "@vicons/ionicons5": "^0.13.0",
+    "monaco-editor": "^0.55.1",
+    "naive-ui": "^2.44.1",
+    "vue": "^3.5.32"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "cross-env": "^10.1.0",
+    "typescript": "~5.6.3",
+    "vite": "^6.4.2",
+    "vue-tsc": "^2.2.12"
+  }
+}
