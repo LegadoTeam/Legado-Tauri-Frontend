@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="src-tauri/icons/icon.png" width="120" alt="Legado Tauri Logo" />
+
 
   # Legado Tauri
 
