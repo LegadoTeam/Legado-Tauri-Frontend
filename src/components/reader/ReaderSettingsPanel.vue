@@ -270,42 +270,48 @@ defineExpose({ isNight, toggleDayNight })
       <!-- 点击区域 -->
       <div v-if="!isComic" class="reader-settings__row reader-settings__row--top">
         <span class="reader-settings__label">点击区</span>
-        <div class="reader-settings__tap-zone-bar" ref="tapZoneBarRef" @pointermove="onTapZoneBarPointerMove"
-          @pointerup="onTapZoneBarPointerUp" @pointercancel="onTapZoneBarPointerUp">
+        <div
+          class="reader-settings__tap-zone-bar"
+          ref="tapZoneBarRef"
+          @pointermove="onTapZoneBarPointerMove"
+          @pointerup="onTapZoneBarPointerUp"
+          @pointercancel="onTapZoneBarPointerUp"
+        >
           <!-- 左区（上一页） -->
-          <div class="reader-settings__tap-region reader-settings__tap-region--left"
-            :style="{ width: (settings.tapZoneLeft * 100) + '%' }">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+          <div
+            class="reader-settings__tap-region reader-settings__tap-region--left"
+            :style="{ width: (settings.tapZoneLeft * 100) + '%' }"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             <span>{{ Math.round(settings.tapZoneLeft * 100) }}%</span>
           </div>
           <!-- 左分界拖柄 -->
-          <div class="reader-settings__tap-divider" @pointerdown="onDividerPointerDown($event, 'left')" title="拖动调整">
+          <div
+            class="reader-settings__tap-divider"
+            @pointerdown="onDividerPointerDown($event, 'left')"
+            title="拖动调整"
+          >
             <span class="reader-settings__tap-divider-grip">⋮</span>
           </div>
           <!-- 中区（菜单） -->
           <div class="reader-settings__tap-region reader-settings__tap-region--center" style="flex:1">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             <span>{{ Math.round((settings.tapZoneRight - settings.tapZoneLeft) * 100) }}%</span>
           </div>
           <!-- 右分界拖柄 -->
-          <div class="reader-settings__tap-divider" @pointerdown="onDividerPointerDown($event, 'right')" title="拖动调整">
+          <div
+            class="reader-settings__tap-divider"
+            @pointerdown="onDividerPointerDown($event, 'right')"
+            title="拖动调整"
+          >
             <span class="reader-settings__tap-divider-grip">⋮</span>
           </div>
           <!-- 右区（下一页） -->
-          <div class="reader-settings__tap-region reader-settings__tap-region--right"
-            :style="{ width: ((1 - settings.tapZoneRight) * 100) + '%' }">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+          <div
+            class="reader-settings__tap-region reader-settings__tap-region--right"
+            :style="{ width: ((1 - settings.tapZoneRight) * 100) + '%' }"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             <span>{{ Math.round((1 - settings.tapZoneRight) * 100) }}%</span>
           </div>
         </div>
@@ -315,8 +321,6 @@ defineExpose({ isNight, toggleDayNight })
       <div class="reader-settings__more-list">
         <button class="reader-settings__more-item" @click="navigateTo('spacing')">
           <span>间距设置</span>
-          <!-- 缺少页间距 -->
-          <!-- 并且缺少页面最大宽度设置 否则电脑端超宽屏没法看 -->
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6" />

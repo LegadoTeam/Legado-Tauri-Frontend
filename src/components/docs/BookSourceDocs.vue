@@ -6,9 +6,7 @@
  * 通过 Vite import.meta.glob ?raw 在构建时将 JS 文件内容内联为字符串。
  */
 
-import { ref, shallowRef, computed } from 'vue'
-import { VueMonacoEditor, type MonacoEditor } from '@guolao/vue-monaco-editor'
-import type * as monaco from 'monaco-editor'
+import { ref, computed } from 'vue'
 import { sections } from './sections'
 
 // ── 加载所有示例文件（Vite ?raw glob）────────────────────────────
@@ -31,52 +29,6 @@ const activeSection = computed(
 )
 
 const activeCode = computed(() => getCode(activeSection.value.codeFile))
-
-const editorRef  = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null)
-const monacoTheme = 'legado-dark'
-
-// ── Monaco 配置（复用与书源编辑器一致的 legado-dark 主题）────────
-
-function handleBeforeMount(monacoInstance: MonacoEditor) {
-  monacoInstance.editor.defineTheme('legado-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'comment',              foreground: '6b7280', fontStyle: 'italic' },
-      { token: 'comment.line',         foreground: '6b7280', fontStyle: 'italic' },
-      { token: 'comment.block',        foreground: '6b7280', fontStyle: 'italic' },
-      { token: 'keyword',              foreground: 'c084fc', fontStyle: 'bold' },
-      { token: 'string',               foreground: '86efac' },
-      { token: 'number',               foreground: 'fb923c' },
-      { token: 'entity.name.function', foreground: '60a5fa' },
-      { token: 'variable',             foreground: 'e4e4e7' },
-      { token: 'variable.parameter',   foreground: 'fbbf24' },
-      { token: 'delimiter',            foreground: '94a3b8' },
-      { token: 'operator',             foreground: '818cf8' },
-    ],
-    colors: {
-      'editor.background':                '#18181b',
-      'editor.foreground':                '#d4d4d8',
-      'editor.lineHighlightBackground':   '#27272a',
-      'editor.lineHighlightBorder':       '#3f3f46',
-      'editor.selectionBackground':       '#4f46e580',
-      'editorCursor.foreground':          '#818cf8',
-      'editorLineNumber.foreground':      '#52525b',
-      'editorLineNumber.activeForeground':'#a1a1aa',
-      'editorIndentGuide.background':     '#3f3f46',
-      'editorIndentGuide.activeBackground':'#6366f1',
-      'minimap.background':               '#18181b',
-      'scrollbarSlider.background':       '#3f3f4660',
-      'scrollbarSlider.hoverBackground':  '#52525b80',
-      'editorWidget.background':          '#1e1e21',
-      'editorWidget.border':              '#3f3f46',
-    },
-  })
-}
-
-function handleEditorMount(editor: monaco.editor.IStandaloneCodeEditor) {
-  editorRef.value = editor
-}
 
 // ── 复制代码 ──────────────────────────────────────────────────────
 
@@ -140,31 +92,7 @@ async function copyCode() {
           @click="copyCode"
         >{{ copied ? '已复制！' : '复制代码' }}</n-button>
 
-        <VueMonacoEditor
-          :value="activeCode"
-          language="javascript"
-          :theme="monacoTheme"
-          :options="{
-            readOnly: true,
-            fontSize: 13,
-            lineHeight: 20,
-            fontFamily: '\'Cascadia Code\', \'JetBrains Mono\', Consolas, monospace',
-            fontLigatures: true,
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            renderLineHighlight: 'none',
-            lineNumbers: 'on',
-            folding: true,
-            wordWrap: 'off',
-            scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
-            contextmenu: false,
-            overviewRulerLanes: 0,
-            padding: { top: 12, bottom: 12 },
-          }"
-          class="bsd-editor"
-          @before-mount="handleBeforeMount"
-          @mount="handleEditorMount"
-        />
+        <pre class="bsd-code"><code>{{ activeCode }}</code></pre>
       </div>
     </div>
   </div>
@@ -257,13 +185,30 @@ async function copyCode() {
   min-height: 1em;
 }
 
-/* ── 代码编辑器区 ── */
+/* ── 代码展示区 ── */
 .bsd-editor-wrap {
   flex: 1;
   min-height: 0;
   position: relative;
+  overflow: auto;
 }
-.bsd-editor { width: 100%; height: 100%; }
+.bsd-code {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  color: #d4d4d8;
+  background: #18181b;
+  white-space: pre;
+  word-wrap: normal;
+  min-height: 100%;
+}
+.bsd-code code {
+  font-family: inherit;
+  font-size: inherit;
+}
 
 .bsd-copy-btn {
   position: absolute;

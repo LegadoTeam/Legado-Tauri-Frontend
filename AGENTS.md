@@ -97,7 +97,8 @@ src-tauri/
       engine.rs                    # Boa JS 引擎、inject_legado_api、标准书源调用命令
       builtins.rs                  # 编解码、哈希、加解密等工具函数注入
       dom.rs                       # HTML DOM 解析 & CSS 选择器（scraper，legado.dom.*）
-      comic.rs                     # 漫画图片并发下载 & 本地缓存
+      image_api.rs                 # 图片处理 API（legado.image.*：解码/裁剪/拼接/编码）
+      comic.rs                     # 漫画图片下载 & 本地缓存 & processImage 回调
     bookshelf/
       mod.rs                       # 书架持久化（ShelfBook CRUD + 隐私标记 + 章节目录 + 正文缓存）
     extension/
@@ -202,6 +203,32 @@ let timeout = get_engine_timeout_secs();
 > **按需读取**：仅在开发书源相关功能时阅读，日常开发无需加载。
 >
 > 详见 [docs/booksource.md](docs/booksource.md)
+
+## 图片处理 API（legado.image.*）
+
+向 Boa 引擎注入的图片处理能力，让书源具备基本的图片解码、裁剪、拼接、编码功能。句柄格式 `"I123"`，`thread_local!` 存储，引擎调用结束后自动清理。
+
+| 函数 | 说明 |
+|------|------|
+| `legado.image.decode(base64)` | 解码 base64 图片数据 → 句柄 |
+| `legado.image.create(w, h)` | 创建空白 RGBA 图片 → 句柄 |
+| `legado.image.width(handle)` | 获取图片宽度 |
+| `legado.image.height(handle)` | 获取图片高度 |
+| `legado.image.crop(handle, x, y, w, h)` | 裁剪区域 → 新句柄 |
+| `legado.image.paste(dest, src, x, y)` | 将 src 粘贴到 dest 的 (x,y) |
+| `legado.image.encode(handle, format?)` | 编码为 base64（默认 jpg，支持 png/gif/webp） |
+| `legado.image.free(handle)` | 释放单个句柄 |
+
+### processImage 回调
+
+漫画书源可定义 `function processImage(base64Data, pageIndex, imageUrl)` 函数。  
+当图片缓存模式开启时，`comic.rs` 下载每张图片后自动检测并调用此回调：
+
+- 书源定义了 `processImage` → 使用独立 OS 线程 + Boa 引擎逐页处理
+- 未定义 → 保持原有轻量异步下载路径
+- 返回 base64 字符串 → 保存处理后的图片；返回 null → 保持原始图片
+
+典型用途：图片解密还原（如 JM 分割打乱还原）、水印移除等。
 
 ## 异步执行架构
 

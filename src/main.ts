@@ -1,24 +1,14 @@
+// [BOOT] 前端入口打点：记录 JS 开始执行的时间，用于切割 Android 52s 启动空档
+const _bootT0 = Date.now()
+console.log(`[BOOT][Frontend] main.ts 开始执行 t=${_bootT0}`)
+
 import { createApp } from 'vue'
 import naive from 'naive-ui'
 import './style.css'
 import App from './App.vue'
 
-// ── Monaco Editor Worker 配置（Vite 原生 ?worker 方案，离线可用）──────────────
-import { loader } from '@guolao/vue-monaco-editor'
-import * as monaco from 'monaco-editor'
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-
-self.MonacoEnvironment = {
-  getWorker(_: string, label: string): Worker {
-    if (label === 'json') return new jsonWorker()
-    if (label === 'typescript' || label === 'javascript') return new tsWorker()
-    return new editorWorker()
-  },
-}
-// 使用本地 monaco 实例，不走 CDN
-loader.config({ monaco })
-// ──────────────────────────────────────────────────────────────────────────────
-
-createApp(App).use(naive).mount('#app')
+const app = createApp(App)
+app.use(naive)
+// 挂载后记录首屏到达时间
+app.mount('#app')
+console.log(`[BOOT][Frontend] App 挂载完成 cost=${Date.now() - _bootT0}ms`)

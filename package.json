@@ -6,20 +6,19 @@
   "scripts": {
     "dev": "vite",
     "dev:tauri": "tauri dev",
-    "dev:android": "cross-env JAVA_HOME=\"C:\\Program Files\\Java\\jdk-17\" tauri android dev",
+    "dev:android": "dotenv -e .env -o -- tauri android dev",
     "build": "vue-tsc --noEmit && vite build",
     "build:tauri": "tauri build",
     "build:windows": "tauri build --target x86_64-pc-windows-msvc",
-    "build:android:release": "cross-env JAVA_HOME=\"C:\\Program Files\\Java\\jdk-17\" tauri android build --apk --target aarch64",
+    "build:android": "dotenv -e .env -o -- tauri android build --apk --target aarch64",
+    "build:android:release": "dotenv -e .env -o -- tauri android build --apk --target aarch64",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
-    "@guolao/vue-monaco-editor": "^1.6.0",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "@vicons/ionicons5": "^0.13.0",
-    "monaco-editor": "^0.55.1",
     "naive-ui": "^2.44.1",
     "vue": "^3.5.32"
   },
@@ -27,8 +26,10 @@
     "@tauri-apps/cli": "^2.10.1",
     "@vitejs/plugin-vue": "^5.2.4",
     "cross-env": "^10.1.0",
+    "dotenv-cli": "^11.0.0",
     "typescript": "~5.6.3",
     "vite": "^6.4.2",
     "vue-tsc": "^2.2.12"
-  }
+  },
+  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
 }

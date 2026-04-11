@@ -5,36 +5,24 @@ import type { ShelfBook } from '../composables/useBookshelf'
 import { useBookshelf } from '../composables/useBookshelf'
 import type { ChapterItem } from '../composables/useScriptBridge'
 import { useScriptBridge } from '../composables/useScriptBridge'
-import { usePrivacyMode } from '../composables/usePrivacyMode'
 import ShelfBookCard from '../components/bookshelf/ShelfBookCard.vue'
 import ChapterReaderModal from '../components/explore/ChapterReaderModal.vue'
-import MobileToolbarMenu from '../components/layout/MobileToolbarMenu.vue'
 import type { ReaderBookInfo } from '../components/reader/types'
 
 const message = useMessage()
 const {
   books, loadBooks, removeFromShelf,
-  getChapters, saveChapters, setBookPrivate, isPrivateShelfBook,
+  getChapters, saveChapters,
 } = useBookshelf()
 const { runChapterList } = useScriptBridge()
-const { privacyModeEnabled, togglePrivacyMode, privacyExitTick, privacyExitReason } = usePrivacyMode()
 
 const loading = ref(false)
 const searchKw = ref('')
 
-const visibleBooks = computed(() =>
-  privacyModeEnabled.value ? books.value : books.value.filter((book) => !book.isPrivate)
-)
-
-const privateBookCount = computed(() => books.value.filter((book) => book.isPrivate).length)
-const hiddenPrivateCount = computed(() =>
-  privacyModeEnabled.value ? 0 : books.value.filter((book) => book.isPrivate).length
-)
-
 const filteredBooks = computed(() => {
   const kw = searchKw.value.trim().toLowerCase()
-  if (!kw) return visibleBooks.value
-  return visibleBooks.value.filter(
+  if (!kw) return books.value
+  return books.value.filter(
     b => b.name.toLowerCase().includes(kw) || b.author.toLowerCase().includes(kw),
   )
 })
@@ -45,13 +33,9 @@ const dropdownX = ref(0)
 const dropdownY = ref(0)
 const contextBook = ref<ShelfBook | null>(null)
 
-const menuOptions = computed(() => {
-  const book = contextBook.value
-  return [
-    { label: book?.isPrivate ? '取消隐私标记' : '标记为隐私', key: 'toggle-private' },
-    { label: '移出书架', key: 'remove' },
-  ]
-})
+const menuOptions = [
+  { label: '移出书架', key: 'remove' },
+]
 
 function onContextMenu(book: ShelfBook, event: MouseEvent) {
   contextBook.value = book
@@ -62,9 +46,6 @@ function onContextMenu(book: ShelfBook, event: MouseEvent) {
 
 async function onMenuSelect(key: string) {
   showDropdown.value = false
-  if (key === 'toggle-private' && contextBook.value) {
-    await handleTogglePrivate(contextBook.value)
-  }
   if (key === 'remove' && contextBook.value) {
     try {
       await removeFromShelf(contextBook.value.id)
@@ -72,18 +53,6 @@ async function onMenuSelect(key: string) {
     } catch (e: unknown) {
       message.error(`移出失败: ${e instanceof Error ? e.message : String(e)}`)
     }
-  }
-}
-
-async function handleTogglePrivate(book: ShelfBook) {
-  try {
-    await setBookPrivate(book.id, !book.isPrivate)
-    message.success(book.isPrivate ? '已取消隐私标记' : '已标记为隐私书籍')
-    if (!privacyModeEnabled.value && !book.isPrivate && readerShelfId.value === book.id) {
-      showReader.value = false
-    }
-  } catch (e: unknown) {
-    message.error(`设置失败: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -134,10 +103,6 @@ async function refreshToc() {
 }
 
 async function openBook(book: ShelfBook) {
-  if (book.isPrivate && !privacyModeEnabled.value) {
-    message.warning('该书已标记为隐私，请先开启隐私模式')
-    return
-  }
   readerShelfId.value = book.id
   readerFileName.value = book.fileName
   readerSourceType.value = book.sourceType ?? 'novel'
@@ -187,26 +152,6 @@ watch(readerCurrentIndex, (idx) => {
   }
 })
 
-watch(privacyExitTick, () => {
-  if (!showReader.value || !readerShelfId.value) return
-  if (!isPrivateShelfBook(readerShelfId.value)) return
-  showReader.value = false
-  message.info(privacyExitReason.value === 'manual' ? '已退出隐私模式，隐私书籍阅读已关闭' : '隐私模式已自动退出，隐私书籍阅读已关闭')
-})
-
-const toolbarMenuOptions = computed(() => [
-  {
-    label: privacyModeEnabled.value ? '退出隐私模式' : '开启隐私模式',
-    key: 'toggle-privacy',
-  },
-])
-
-function handleToolbarMenuSelect(key: string) {
-  if (key === 'toggle-privacy') {
-    togglePrivacyMode()
-  }
-}
-
 // ── 生命周期 ──────────────────────────────────────────────────────────────
 onMounted(async () => {
   loading.value = true
@@ -221,34 +166,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="bookshelf-view" :class="{ 'bookshelf-view--privacy': privacyModeEnabled }">
+  <div class="bookshelf-view">
     <!-- 顶部 -->
     <div class="bs-header">
-      <div class="bs-header__main">
-        <h1 class="bs-header__title">书架</h1>
-        <p class="bs-header__sub">
-          {{ visibleBooks.length }} 本可见书籍
-          <template v-if="hiddenPrivateCount"> · 已隐藏 {{ hiddenPrivateCount }} 本隐私书籍</template>
-          <template v-else-if="privateBookCount"> · 含 {{ privateBookCount }} 本隐私书籍</template>
-        </p>
-      </div>
-      <div class="bs-header__actions">
-        <MobileToolbarMenu :options="toolbarMenuOptions" @select="handleToolbarMenuSelect">
-          <n-tooltip trigger="hover">
-            <template #trigger>
-              <n-button
-                size="small"
-                :type="privacyModeEnabled ? 'primary' : 'default'"
-                :secondary="!privacyModeEnabled"
-                @click="togglePrivacyMode"
-              >
-                {{ privacyModeEnabled ? '退出隐私模式' : '开启隐私模式' }}
-              </n-button>
-            </template>
-            {{ privacyModeEnabled ? '切换到普通书架视图' : '显示已标记为隐私的书籍' }}
-          </n-tooltip>
-        </MobileToolbarMenu>
-      </div>
+      <h1 class="bs-header__title">书架</h1>
+      <p class="bs-header__sub">{{ books.length }} 本书籍</p>
     </div>
 
     <!-- 工具栏 -->
@@ -264,12 +186,6 @@ onMounted(async () => {
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </template>
       </n-input>
-      <div v-if="privacyModeEnabled" class="bs-privacy-pill">
-        隐私模式已开启
-      </div>
-      <div v-else-if="hiddenPrivateCount" class="bs-privacy-pill bs-privacy-pill--muted">
-        隐私书籍默认隐藏
-      </div>
     </div>
 
     <!-- 内容区 -->
@@ -288,25 +204,13 @@ onMounted(async () => {
         </div>
 
         <!-- 书籍网格 -->
-        <div v-else-if="!filteredBooks.length && visibleBooks.length" class="bs-empty bs-empty--compact">
-          <h3 class="bs-empty__title">没有匹配的书籍</h3>
-          <p class="bs-empty__desc">换个关键词试试</p>
-        </div>
-
-        <div v-else-if="!visibleBooks.length && hiddenPrivateCount" class="bs-empty bs-empty--compact">
-          <h3 class="bs-empty__title">隐私书籍已隐藏</h3>
-          <p class="bs-empty__desc">开启隐私模式后才会显示这些书籍</p>
-        </div>
-
         <div v-else class="bs-grid">
           <ShelfBookCard
             v-for="book in filteredBooks"
             :key="book.id"
             :book="book"
-            :privacy-mode-enabled="privacyModeEnabled"
             @select="openBook"
             @contextmenu="onContextMenu"
-            @toggle-private="handleTogglePrivate"
           />
         </div>
       </n-spin>
@@ -353,20 +257,6 @@ onMounted(async () => {
 .bs-header {
   flex-shrink: 0;
   padding: 24px 24px 8px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.bs-header__main {
-  min-width: 0;
-}
-
-.bs-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .bs-header__title {
   font-size: 1.25rem;
@@ -385,25 +275,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   padding: 4px 24px 8px;
-}
-
-.bs-privacy-pill {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
-  color: var(--color-accent);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.bs-privacy-pill--muted {
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
 }
 
 .bs-content {
@@ -449,21 +321,9 @@ onMounted(async () => {
   margin: 0;
 }
 
-.bs-empty--compact {
-  padding: 48px 0;
-}
-
-.bookshelf-view--privacy .bs-content {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 120px);
-}
-
 /* ── 移动端适配 ─────────────────────────── */
 @media (pointer: coarse), (max-width: 640px) {
-  .bs-header {
-    padding: 16px 16px 6px;
-    flex-direction: column;
-  }
+  .bs-header { padding: 16px 16px 6px; }
   .bs-toolbar { padding: 4px 16px 8px; }
   .bs-content { padding: 0 16px 16px; }
   .bs-grid {

@@ -105,7 +105,7 @@ export const sections: DocSection[] = [
     title: '数据结构',
     badge: '参考',
     badgeType: 'default',
-    desc: '书源函数的参数与返回值类型定义，与 Monaco 编辑器 IntelliSense 保持一致。',
+    desc: '书源函数的参数与返回值类型定义。',
     codeFile: 'types.js',
   },
   {

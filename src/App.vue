@@ -131,6 +131,8 @@ function _onMqChange(e: MediaQueryListEvent) {
   systemPrefersDark.value = e.matches
 }
 onMounted(() => {
+  // [BOOT] App 首屏 mounted 打点，配合 main.ts 的 _bootT0 计算前端首帧耗时
+  console.log(`[BOOT][Frontend] App.vue onMounted t=${Date.now()}`)
   if (typeof window !== 'undefined' && window.matchMedia) {
     _mq = window.matchMedia('(prefers-color-scheme: dark)')
     _mq.addEventListener('change', _onMqChange)
@@ -231,7 +233,8 @@ function onNavSelect(id: string) {
 <template>
   <n-config-provider :theme="naiveTheme" :theme-overrides="naiveThemeOverrides">
     <n-message-provider>
-      <n-dialog-provider>
+      <n-notification-provider>
+        <n-dialog-provider>
         <!-- 独立窗口模式：日志查看器 -->
         <template v-if="LogView">
           <Suspense>
@@ -287,6 +290,7 @@ function onNavSelect(id: string) {
           <ScriptDialog />
         </template>
       </n-dialog-provider>
+      </n-notification-provider>
     </n-message-provider>
   </n-config-provider>
 </template>
