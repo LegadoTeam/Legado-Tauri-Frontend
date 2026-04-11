@@ -4,9 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>开源阅读Tauri</title>
+    <style>
+      /* 首屏骨架屏：在 Vue 挂载前立即显示，避免白屏等待 */
+      html, body { margin: 0; padding: 0; background: #18181b; }
+      #app-skeleton {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: #18181b;
+        z-index: 9999;
+        transition: opacity 0.2s ease;
+      }
+      #app-skeleton.hidden { opacity: 0; pointer-events: none; }
+      .skeleton-spinner {
+        width: 32px; height: 32px;
+        border: 3px solid #3f3f46;
+        border-top-color: #818cf8;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @media (prefers-color-scheme: light) {
+        html, body { background: #f4f4f5; }
+        #app-skeleton { background: #f4f4f5; }
+        .skeleton-spinner { border-color: #e4e4e7; border-top-color: #6366f1; }
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
 
   <body>
+    <!-- 骨架屏：Vue 挂载完成后由 main.ts 隐藏 -->
+    <div id="app-skeleton"><div class="skeleton-spinner"></div></div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
