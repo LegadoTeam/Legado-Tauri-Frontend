@@ -11,7 +11,8 @@ import TaskBar from './components/layout/TaskBar.vue'
 import BottomNav from './components/layout/BottomNav.vue'
 import MobileDebugFloat from './components/layout/MobileDebugFloat.vue'
 import MainContent from './components/layout/MainContent.vue'
-import ScriptDialog from './components/ScriptDialog.vue'
+// ScriptDialog 按需懒加载：仅在 Boa 引擎触发弹窗时才加载，不阻塞首屏
+const ScriptDialog = defineAsyncComponent(() => import('./components/ScriptDialog.vue'))
 
 // ── 独立窗口模式检测 ──────────────────────────────────────────────────────
 const urlParams = new URLSearchParams(window.location.search)
