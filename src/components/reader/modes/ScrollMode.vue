@@ -11,10 +11,17 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 const props = defineProps<{
   content: string;
   chapterTitle?: string;
+  /** 预加载的上一章正文（空字符串表示尚未加载或不存在） */
+  prevChapterContent?: string;
+  /** 预加载的上一章章节名 */
+  prevChapterTitle?: string;
   /** 预加载的下一章正文（空字符串表示尚未加载或不存在） */
   nextChapterContent?: string;
   /** 预加载的下一章章节名 */
   nextChapterTitle?: string;
+  paragraphSpacing: number;
+  textIndent: number;
+  hasPrev?: boolean;
   hasNext?: boolean;
   tapZoneLeft?: number;
   tapZoneRight?: number;
@@ -29,56 +36,196 @@ const emit = defineEmits<{
   (e: 'reachStart'): void;
   (e: 'reachEnd'): void;
   (e: 'tap', zone: 'left' | 'center' | 'right'): void;
-  (e: 'prev-chapter'): void;
-  /** 用户滚动进入下一章区域，携带当前章节内容区高度（用于无缝滚动位置补偿） */
+  /** 用户向上滚动进入上一章区域（无缝向前翻章） */
+  (e: 'prev-chapter-entered'): void;
+  /** 用户向下滚动进入下一章区域，携带当前章节内容区高度（用于无缝滚动位置补偿） */
   (e: 'next-chapter-entered', sectionHeight: number): void;
+}>();
+
+const scrollRef = ref<HTMLElement | null>(null);
+const prevSectionRef = ref<HTMLElement | null>(null);
+const currentSectionRef = ref<HTMLElement | null>(null);
+const nextChapterSentinelRef = ref<HTMLElement | null>(null);
+
+const paragraphs = ref<string[]>([]);
+const prevParagraphs = ref<string[]>([]);
+const nextParagraphs = ref<string[]>([]);
+
 /** 是否已滚动到底部附近 */
 const atBottom = ref(false);
 /** 是否已滚动到顶部 */
 const atTop = ref(true);
 
-// ── 上拉/下拉加载（共用 usePullToLoad composable） ──────────────────
-const {
-  pullDistance,
-  pullProgress,
-  bubbleBottomPx,
-  isReady,
-  dismissing,
-  boundaryMsg,
-  isDragging,
-  onTouchStart: pullTouchStart,
-  onTouchMove: pullTouchMove,
-  onTouchEnd: pullTouchEnd,
-  onMouseDown,
-  onWheel,
-  isMouseDragMoved,
-  resetOnContentChange,
-  cleanup,
-} = usePullToLoad({
-  containerRef: scrollRef,
-  atBottom,
-  hasNext: () => !!props.hasNext,
-  emitNext: () => emit('next-chapter'),
+// ── 无缝切章：记录待补偿的滚动偏移（-1 表示普通翻章，需重置滚动） ─────
+let seamlessSwapOffset = -1;
+/** 向上无缝翻章标志：不重置 scrollTop */
+let isBackwardSeamless = false;
+/** 上一章进入事件是否已触发（每次 prevContent 变化后重置） */
+let prevChapterEnteredFired = false;
+
+/**
+ * 父组件在更新 content prop 之前调用此方法，传入当前章节内容区高度。
+ * ScrollMode 的 content watcher 检测到此值 >= 0 时，
+ * 会在 DOM 更新后将 scrollTop 减去该高度，实现无缝衔接。
+ */
+function prepareSeamlessSwap(prevSectionHeight: number) {
+  seamlessSwapOffset = prevSectionHeight;
+}
+
+/**
+ * 向上无缝翻章：父组件更新 content prop 之前调用。
+ * 标记本次内容切换为向上翻章，内容 watcher 将保留当前 scrollTop 不变，
+ * 因为旧上一章内容（新 content）在 DOM 中位置未移动。
+ */
+function prepareSeamlessSwapBack() {
+  isBackwardSeamless = true;
+}
+
+// ── 哨兵观察器：检测用户何时滚动进入下一章区域 ──────────────────────
+let sentinelObserver: IntersectionObserver | null = null;
+
+function teardownSentinel() {
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
+}
+
+function setupSentinel() {
+  teardownSentinel();
+  const el = nextChapterSentinelRef.value;
+  const root = scrollRef.value;
+  if (!el || !root) {
+    return;
+  }
+  sentinelObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          teardownSentinel();
+          const sectionH = currentSectionRef.value?.offsetHeight ?? 0;
+          emit('next-chapter-entered', sectionH);
+        }
+      }
+    },
+    {
+      root,
+      // 哨兵进入视口上半部分时触发（给父组件留出预加载时间）
+      rootMargin: '0px 0px -40% 0px',
+    },
+  );
+  sentinelObserver.observe(el);
+}
+
+// ── 内容变化处理 ────────────────────────────────────────────────────
+watch(
+  () => props.content,
+  async (val) => {
+    paragraphs.value = val.split(/\n+/).filter((p) => p.trim());
+    atBottom.value = false;
+    atTop.value = true;
+    prevChapterEnteredFired = false;
+
+    if (seamlessSwapOffset >= 0) {
+      // 向下无缝翻章：调整 scrollTop 使画面位置不变
+      const offset = seamlessSwapOffset;
+      seamlessSwapOffset = -1;
+      await nextTick();
+      const el = scrollRef.value;
+      if (el) {
+        el.style.scrollBehavior = 'auto';
+        el.scrollTop = Math.max(0, el.scrollTop - offset);
+        requestAnimationFrame(() => {
+          el.style.scrollBehavior = '';
+        });
+      }
+      return;
+    }
+
+    if (isBackwardSeamless) {
+      // 向上无缝翻章：旧上一章内容现在是 content，在 DOM 中位置不变，
+      // scrollTop 无需调整，直接保持当前值即可。
+      isBackwardSeamless = false;
+      return;
+    }
+
+    // 普通翻章：滚到当前章节起始位置（跳过上方预渲染的上一章区域）
+    seamlessSwapOffset = -1;
+    await nextTick();
+    const el = scrollRef.value;
+    if (!el) {
+      return;
+    }
+    el.style.scrollBehavior = 'auto';
+    el.scrollTop = prevSectionRef.value?.offsetHeight ?? 0;
+    requestAnimationFrame(() => {
+      el.style.scrollBehavior = '';
+    });
+  },
+  { immediate: true },
+);
+
+// ── 下一章内容变化 ──────────────────────────────────────────────────
+watch(
+  () => props.nextChapterContent,
+  async (val) => {
+    nextParagraphs.value = val ? val.split(/\n+/).filter((p) => p.trim()) : [];
+    teardownSentinel();
+    if (val) {
+      await nextTick();
+      setupSentinel();
+    }
+  },
+  { immediate: true },
+);
+
+// ── 上一章内容变化 ──────────────────────────────────────────────────
+watch(
+  () => props.prevChapterContent,
+  async (val, oldVal) => {
+    const wasEmpty = !oldVal;
+    const isNowFilled = !!val;
+    prevParagraphs.value = val ? val.split(/\n+/).filter((p) => p.trim()) : [];
+    prevChapterEnteredFired = false;
+
+    if (wasEmpty && isNowFilled) {
+      // 上一章内容被插入到 DOM 顶部，需手动补偿 scrollTop
+      // （已通过 overflow-anchor:none 禁用浏览器自动锚定）
+      const el = scrollRef.value;
+      const savedTop = el?.scrollTop ?? 0;
+      await nextTick();
+      const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+      if (prevH > 0 && el) {
+        el.style.scrollBehavior = 'auto';
+        el.scrollTop = savedTop + prevH;
+        requestAnimationFrame(() => {
+          el.style.scrollBehavior = '';
+        });
+      }
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  if (props.nextChapterContent) {
+    setupSentinel();
+  }
 });
 
-// ── 触摸事件包装（添加 tap 检测） ──────────────────────────────────
+onBeforeUnmount(() => {
+  teardownSentinel();
+});
+
+// ── 触摸事件 ────────────────────────────────────────────────────────
 let touchStartX = 0;
 let touchStartY = 0;
-/** touch tap 已处理，抑制后续合成 click 事件 */
 let suppressNextClick = false;
 
 function onTouchStart(e: TouchEvent) {
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
-  pullTouchStart(e);
-}
-
-function onTouchMove(e: TouchEvent) {
-  pullTouchMove(e);
 }
 
 function onTouchEnd(e: TouchEvent) {
-  // 单指轻触 → 视为 tap，切换菜单（移动端可滚动容器内合成 click 不可靠）
   if (e.changedTouches.length === 1) {
     const t = e.changedTouches[0];
     const dx = Math.abs(t.clientX - touchStartX);
@@ -86,102 +233,75 @@ function onTouchEnd(e: TouchEvent) {
     const selection = window.getSelection();
     const hasSelection = !!selection && !selection.isCollapsed && !!selection.toString().trim();
     if (dx < 15 && dy < 15 && !hasSelection) {
-      if (!(e.target as HTMLElement).closest('.scroll-mode__chapter-btn')) {
-        suppressNextClick = true;
-        emit('tap', 'center');
-      }
-    }
-  }
-  pullTouchEnd();
-}
-
-function onTouchCancel() {
-  pullTouchEnd();
-}
-
-// ── 拖拽时禁用平滑滚动，确保即时跟手 ───────────────────────────────
-watch(isDragging, (dragging) => {
-  const el = scrollRef.value;
-  if (!el) {
-    return;
-  }
-  if (dragging) {
-    el.style.userSelect = 'none';
-    el.style.cursor = 'grabbing';
-    el.style.scrollBehavior = 'auto';
-  } else {
-    el.style.userSelect = '';
-    el.style.cursor = '';
-    el.style.scrollBehavior = '';
-    // 拖动结束时抑制后续 click 事件
-    if (isMouseDragMoved()) {
       suppressNextClick = true;
+      emit('tap', 'center');
     }
   }
-});
+}
 
-// ── 清理 ────────────────────────────────────────────────────────────
-onBeforeUnmount(() => cleanup());
-
-// ── 内容变时重置状态 ────────────────────────────────────────────────
-watch(
-  () => props.content,
-  (val) => {
-    paragraphs.value = val.split(/\n+/).filter((p) => p.trim());
-    resetOnContentChange();
-    atBottom.value = false;
-    atTop.value = true;
-    nextTick(() => {
-      const el = scrollRef.value;
-      if (!el) {
-        return;
-      }
-      // 禁用 CSS scroll-behavior: smooth，确保翻章时瞬间回到顶部，无滑动动画
-      el.style.scrollBehavior = 'auto';
-      el.scrollTop = 0;
-      requestAnimationFrame(() => {
-        el.style.scrollBehavior = '';
-      });
-    });
-  },
-  { immediate: true },
-);
-
+// ── 滚动事件 ────────────────────────────────────────────────────────
 function onScroll() {
   const el = scrollRef.value;
   if (!el) {
     return;
   }
   const { scrollTop, scrollHeight, clientHeight } = el;
-  const ratio = scrollHeight <= clientHeight ? 1 : scrollTop / (scrollHeight - clientHeight);
-  emit('progress', Math.min(1, Math.max(0, ratio)));
+  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+
+  // 进度按当前章节区域计算（不含上/下章预渲染部分）
+  const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
+  const adjustedScrollTop = Math.max(0, scrollTop - prevH);
+  const ratio =
+    currentSectionH <= clientHeight
+      ? 1
+      : Math.min(1, Math.max(0, adjustedScrollTop / (currentSectionH - clientHeight)));
+  emit('progress', ratio);
 
   const prevAtTop = atTop.value;
   const prevAtBottom = atBottom.value;
   atTop.value = scrollTop <= 0;
-  // 增大底部容差至 8px，避免子像素舍入导致反复触发
   atBottom.value = scrollTop + clientHeight >= scrollHeight - 8;
 
-  // 仅在边沿状态发生变化时发出事件，防止连续触发
   if (!prevAtTop && atTop.value) {
     emit('reachStart');
   }
   if (!prevAtBottom && atBottom.value) {
     emit('reachEnd');
   }
+
+  // 检测向上进入上一章：滚到上一章区域前 60% 时触发一次
+  if (!prevChapterEnteredFired && prevH > 0 && hasPrevChapterContent.value) {
+    if (scrollTop <= prevH * 0.6) {
+      prevChapterEnteredFired = true;
+      emit('prev-chapter-entered');
+    }
+  }
 }
 
-/** 允许父组件滚动到指定比例位置（瞬间跳转，禁用 smooth） */
+// ── 点击 ────────────────────────────────────────────────────────────
+function onClick(_e: MouseEvent) {
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return;
+  }
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+  emit('tap', 'center');
+}
+
+// ── 公开方法 ─────────────────────────────────────────────────────────
 function scrollToRatio(ratio: number) {
   const el = scrollRef.value;
   if (!el) {
     return;
   }
-  const max = el.scrollHeight - el.clientHeight;
-  // 覆盖 CSS scroll-behavior: smooth，确保恢复位置时瞬间到达
+  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const currentH = currentSectionRef.value?.offsetHeight ?? Math.max(0, el.scrollHeight - prevH);
+  const max = Math.max(0, currentH - el.clientHeight);
   el.style.scrollBehavior = 'auto';
-  el.scrollTop = max * Math.min(1, Math.max(0, ratio));
-  // 下一帧恢复 smooth（用户后续手动滚动仍然平滑）
+  el.scrollTop = prevH + max * Math.min(1, Math.max(0, ratio));
   requestAnimationFrame(() => {
     el.style.scrollBehavior = '';
   });
@@ -192,8 +312,11 @@ function getScrollRatio(): number {
   if (!el) {
     return -1;
   }
-  const max = el.scrollHeight - el.clientHeight;
-  return max <= 0 ? 1 : Math.min(1, Math.max(0, el.scrollTop / max));
+  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const currentH = currentSectionRef.value?.offsetHeight ?? Math.max(0, el.scrollHeight - prevH);
+  const adjustedScrollTop = Math.max(0, el.scrollTop - prevH);
+  const max = Math.max(0, currentH - el.clientHeight);
+  return max <= 0 ? 1 : Math.min(1, Math.max(0, adjustedScrollTop / max));
 }
 
 function scrollByPage(direction: 'up' | 'down'): boolean {
@@ -201,21 +324,17 @@ function scrollByPage(direction: 'up' | 'down'): boolean {
   if (!el) {
     return false;
   }
-
   const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
   if (maxScrollTop <= 0) {
     return false;
   }
-
   const current = el.scrollTop;
   const step = Math.max(80, Math.floor(el.clientHeight * 0.86));
   const target =
     direction === 'down' ? Math.min(maxScrollTop, current + step) : Math.max(0, current - step);
-
   if (Math.abs(target - current) < 1) {
     return false;
   }
-
   el.scrollTo({ top: target, behavior: 'smooth' });
   return true;
 }
@@ -228,36 +347,6 @@ function pageUp(): boolean {
   return scrollByPage('up');
 }
 
-/** 鼠标点击 → 任意区域均切换菜单（滚动模式不支持点击左右翻章） */
-function onClick(e: MouseEvent) {
-  const selection = window.getSelection();
-  if (selection && !selection.isCollapsed && selection.toString().trim()) {
-    return;
-  }
-  // touch tap 已处理，跳过合成 click 防止重复触发
-  if (suppressNextClick) {
-    suppressNextClick = false;
-    return;
-  }
-  // 鼠标拖拽不算点击
-  if (isMouseDragMoved()) {
-    return;
-  }
-  // 不拦截按钮点击
-  if ((e.target as HTMLElement).closest('.scroll-mode__chapter-btn')) {
-    return;
-  }
-  emit('tap', 'center');
-}
-
-/** 桌面端保留下一章按鈕；移动端用上拉手势 */
-const showNextBtn = computed(() => props.hasNext && atBottom.value && pullDistance.value === 0);
-const leftRatio = computed(() => props.tapZoneLeft ?? 0.3);
-const rightRatio = computed(() => props.tapZoneRight ?? 0.7);
-const centerRatio = computed(() => Math.max(0, rightRatio.value - leftRatio.value));
-const showAnyDebug = computed(() => !!props.layoutDebug || !!props.tapZoneDebug);
-
-/** 返回当前视口内第一个可见段落的索引，用于 TTS 定位起始位置 */
 function getFirstVisibleParaIndex(): number {
   const el = scrollRef.value;
   if (!el) {
@@ -277,7 +366,27 @@ function getFirstVisibleParaIndex(): number {
   return 0;
 }
 
-defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleParaIndex });
+// ── Debug 辅助 ───────────────────────────────────────────────────────
+const leftRatio = computed(() => props.tapZoneLeft ?? 0.3);
+const rightRatio = computed(() => props.tapZoneRight ?? 0.7);
+const centerRatio = computed(() => Math.max(0, rightRatio.value - leftRatio.value));
+const showAnyDebug = computed(() => !!props.layoutDebug || !!props.tapZoneDebug);
+
+// ── 章节边界条件 ─────────────────────────────────────────────────────
+const hasPrevChapterContent = computed(() => !!props.prevChapterContent);
+const hasNextChapterContent = computed(() => !!props.nextChapterContent);
+/** 无下一章且无预加载内容时显示结束画面 */
+const showEndScreen = computed(() => !props.hasNext && !hasNextChapterContent.value);
+
+defineExpose({
+  scrollToRatio,
+  getScrollRatio,
+  pageDown,
+  pageUp,
+  getFirstVisibleParaIndex,
+  prepareSeamlessSwap,
+  prepareSeamlessSwapBack,
+});
 </script>
 
 <template>
@@ -286,15 +395,44 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
     class="scroll-mode app-scrollbar app-scrollbar--thin app-scrollbar--reader"
     @scroll.passive="onScroll"
     @click="onClick"
-    @mousedown="onMouseDown"
-    @wheel="onWheel"
     @touchstart.passive="onTouchStart"
-    @touchmove.passive="onTouchMove"
     @touchend.passive="onTouchEnd"
-    @touchcancel.passive="onTouchCancel"
   >
-    <div class="scroll-mode__body" :class="{ 'scroll-mode__body--layout-debug': layoutDebug }">
-      <!-- 章节名标题 -->
+    <!-- ── 上一章节内容区（顶部预渲染，无缝向上翻章） ── -->
+    <template v-if="hasPrevChapterContent">
+      <div
+        ref="prevSectionRef"
+        class="scroll-mode__body scroll-mode__body--prev"
+        :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
+      >
+        <p v-if="prevChapterTitle" class="reader-chapter-title">{{ prevChapterTitle }}</p>
+        <p
+          v-for="(para, i) in prevParagraphs"
+          :key="`prev-${i}`"
+          class="reader-para scroll-mode__para"
+          :style="{
+            textIndent: `${textIndent}em`,
+            marginBottom: `${paragraphSpacing}px`,
+          }"
+        >
+          {{ para }}
+        </p>
+      </div>
+      <!-- 章节分隔线（上一章 → 当前章） -->
+      <div class="scroll-mode__chapter-sep">
+        <div class="scroll-mode__chapter-sep-line" />
+        <p class="scroll-mode__chapter-sep-title reader-chapter-title">
+          {{ chapterTitle || '当前章节' }}
+        </p>
+      </div>
+    </template>
+
+    <!-- ── 当前章节内容区 ── -->
+    <div
+      ref="currentSectionRef"
+      class="scroll-mode__body"
+      :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
+    >
       <p v-if="chapterTitle" class="reader-chapter-title">{{ chapterTitle }}</p>
 
       <p
@@ -311,6 +449,46 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
       </p>
     </div>
 
+    <!-- ── 下一章区域（预渲染，无缝拼接） ── -->
+    <template v-if="hasNextChapterContent">
+      <!-- 章节分隔 + 标题 -->
+      <div class="scroll-mode__chapter-sep">
+        <div class="scroll-mode__chapter-sep-line" />
+        <p class="scroll-mode__chapter-sep-title reader-chapter-title">
+          {{ nextChapterTitle || '下一章' }}
+        </p>
+      </div>
+
+      <!-- 哨兵元素：进入视口时触发章节切换 -->
+      <div ref="nextChapterSentinelRef" class="scroll-mode__sentinel" aria-hidden="true" />
+
+      <!-- 下一章正文 -->
+      <div
+        class="scroll-mode__body scroll-mode__body--next"
+        :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
+      >
+        <p
+          v-for="(para, i) in nextParagraphs"
+          :key="i"
+          class="reader-para scroll-mode__para"
+          :style="{
+            textIndent: `${textIndent}em`,
+            marginBottom: `${paragraphSpacing}px`,
+          }"
+        >
+          {{ para }}
+        </p>
+      </div>
+    </template>
+
+    <!-- ── 结束画面（无下一章） ── -->
+    <div v-if="showEndScreen" class="chapter-end-screen">
+      <div class="chapter-end-screen__icon">📖</div>
+      <p class="chapter-end-screen__title">已读完最后一章</p>
+      <p class="chapter-end-screen__sub">全书完，感谢阅读</p>
+    </div>
+
+    <!-- ── Debug 覆盖层 ── -->
     <div v-if="showAnyDebug" class="scroll-mode__debug">
       <template v-if="layoutDebug">
         <div class="scroll-mode__debug-pad scroll-mode__debug-pad--top" />
@@ -334,29 +512,6 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
         />
       </div>
     </div>
-
-    <!-- 上拉气泡 + 边界提示（共享组件） -->
-    <PullBubble
-      :visible="atBottom"
-      :bubble-bottom-px="bubbleBottomPx"
-      :is-ready="isReady"
-      :dismissing="dismissing"
-      :has-next="!!hasNext"
-      :boundary-msg="boundaryMsg"
-      :pull-progress="pullProgress"
-      :is-dragging="isDragging"
-    />
-
-    <!-- 下一章按钮（桌面端无触摸时显示） -->
-    <Transition name="scroll-btn-fade">
-      <button
-        v-if="showNextBtn"
-        class="scroll-mode__chapter-btn scroll-mode__chapter-btn--bottom"
-        @click="emit('next-chapter')"
-      >
-        下一章 →
-      </button>
-    </Transition>
   </div>
 </template>
 
@@ -370,19 +525,43 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   touch-action: manipulation;
-  /* 防止原生过度滚动（iOS 橡皮筋/Android 发光）与上拉气泡动效竞争 */
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: contain;
+  /* 禁用浏览器自动滚动锚定，改为手动精确补偿 */
+  overflow-anchor: none;
 }
 
 .scroll-mode__body {
   padding: var(--reader-padding, 24px);
-  min-height: 100%;
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
 }
 
-/* 章节名标题样式已提取至全局 src/style.css `.reader-chapter-title` */
+/* 章节分隔线 + 下一章标题 */
+.scroll-mode__chapter-sep {
+  padding: 8px var(--reader-padding-left, 24px) 0;
+}
 
+.scroll-mode__chapter-sep-line {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--reader-text-color, currentColor) 20%,
+    var(--reader-text-color, currentColor) 80%,
+    transparent
+  );
+  opacity: 0.15;
+  margin-bottom: 16px;
+}
+
+/* 哨兵：零高度不可见元素 */
+.scroll-mode__sentinel {
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 段落样式 */
 .scroll-mode__para {
   font-family: var(--reader-font-family);
   font-size: var(--reader-font-size);
@@ -400,20 +579,16 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
   color: var(--reader-text-color);
   word-break: break-all;
   overflow-wrap: break-word;
-  /* 允许浏览器合成粗体/斜体（解决中文字体无独立字重变体时加粗无效问题） */
   font-synthesis: weight style;
-  /* 抗锯齿渲染优化（解决合成层中文字体锦齿丢失导致的锯齿感） */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
 }
 
-/* TTS 高亮：使用主题选区色自动适配明暗主题 */
 .scroll-mode__para.tts-playing {
   background-color: var(--reader-tts-hl-bg, rgba(99, 226, 183, 0.2));
   border-radius: 4px;
-  /* 微内边距让高亮区域与文字有间距感 */
   padding-top: 2px;
   padding-bottom: 2px;
   margin-left: -4px;
@@ -453,47 +628,7 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
   background-color: var(--reader-selection-color);
 }
 
-/* 章节切换按钮 */
-.scroll-mode__chapter-btn {
-  display: block;
-  width: calc(100% - 48px);
-  margin: 12px auto;
-  padding: 12px 0;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--reader-text-color, inherit);
-  font-size: 0.9rem;
-  cursor: pointer;
-  text-align: center;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-
-.scroll-mode__chapter-btn:hover {
-  opacity: 1;
-}
-
-.scroll-mode__chapter-btn--top {
-  margin-top: 8px;
-  margin-bottom: 0;
-}
-
-.scroll-mode__chapter-btn--bottom {
-  margin-top: 0;
-  margin-bottom: 8px;
-}
-
-/* 按钮过渡动画 */
-.scroll-btn-fade-enter-active,
-.scroll-btn-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.scroll-btn-fade-enter-from,
-.scroll-btn-fade-leave-to {
-  opacity: 0;
-}
-
+/* Debug 覆盖层 */
 .scroll-mode__debug {
   position: absolute;
   inset: 0;
@@ -537,16 +672,12 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
   background: rgba(59, 130, 246, 0.18);
 }
 
-.scroll-mode__debug-content-box,
 .scroll-mode__debug-content-box {
   position: absolute;
   top: var(--reader-padding-top, 24px);
   right: var(--reader-padding-right, 24px);
   bottom: var(--reader-padding-bottom, 24px);
   left: var(--reader-padding-left, 24px);
-}
-
-.scroll-mode__debug-content-box {
   border: 1px dashed rgba(34, 197, 94, 0.95);
   background: rgba(34, 197, 94, 0.08);
 }
@@ -570,6 +701,6 @@ defineExpose({ scrollToRatio, getScrollRatio, pageDown, pageUp, getFirstVisibleP
 }
 
 .scroll-mode__debug-tap--next {
-  background: rgba(249, 115, 22, 0.12);
+  background: rgba(239, 68, 68, 0.12);
 }
 </style>

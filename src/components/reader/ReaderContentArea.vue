@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { Ref } from 'vue';
-import { NSpin, NAlert, NDropdown, useMessage } from 'naive-ui';
+import { NSpin, NAlert, NButton, NDropdown, useMessage } from 'naive-ui';
 import type { PagedModeApi, ScrollModeApi, ComicModeApi } from './composables/useReaderModeBridge';
 import { useFrontendPlugins, type ReaderTextSelectionContext } from '@/composables/useFrontendPlugins';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
@@ -43,6 +43,22 @@ const props = defineProps<{
   tapZoneDebug: boolean;
   paragraphSpacing: number;
   textIndent: number;
+  /** 预加载的滚动模式上一章正文 */
+  prevScrollChapterContent?: string;
+  /** 预加载的滚动模式上一章章节名 */
+  prevScrollChapterTitle?: string;
+  /** 预加载的滚动模式下一章正文 */
+  nextScrollChapterContent?: string;
+  /** 预加载的滚动模式下一章章节名 */
+  nextScrollChapterTitle?: string;
+  /** 预加载的漫画模式上一章内容 */
+  prevComicChapterContent?: string;
+  /** 预加载的漫画模式上一章章节名 */
+  prevComicChapterTitle?: string;
+  /** 预加载的漫画模式下一章内容 */
+  nextComicChapterContent?: string;
+  /** 预加载的漫画模式下一章章节名 */
+  nextComicChapterTitle?: string;
   /** Plain object (markRaw) containing parent Ref objects to write into */
   contentRefs: {
     pagedModeRef: Ref<PagedModeApi | null>;
@@ -56,6 +72,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'tap', zone: 'left' | 'center' | 'right'): void;
+  (e: 'retry'): void;
   (e: 'paged-page-change', page: number): void;
   (e: 'paged-progress', ratio: number): void;
   (e: 'scroll-progress', ratio: number): void;
@@ -64,6 +81,14 @@ const emit = defineEmits<{
   (e: 'next-chapter'): void;
   (e: 'prev-boundary'): void;
   (e: 'next-boundary'): void;
+  /** 滚动模式下用户进入上一章区域 */
+  (e: 'scroll-prev-chapter-entered'): void;
+  /** 滚动模式下用户进入下一章区域 */
+  (e: 'scroll-next-chapter-entered', sectionHeight: number): void;
+  /** 漫画模式下用户进入上一章区域 */
+  (e: 'comic-prev-chapter-entered'): void;
+  /** 漫画模式下用户进入下一章区域 */
+  (e: 'comic-next-chapter-entered', sectionHeight: number): void;
 }>();
 
 const message = useMessage();
@@ -300,7 +325,11 @@ onBeforeUnmount(() => {
     @pointercancel.capture="clearLongPressTimer"
   >
     <n-spin v-if="blockingLoading" :show="true" class="reader-modal__spin" />
-    <n-alert v-else-if="blockingError" type="error" :title="error" style="margin: 24px" />
+    <n-alert v-else-if="blockingError" type="error" :title="error" style="margin: 24px">
+      <n-button type="error" size="small" style="margin-top: 8px" @click="emit('retry')">
+        重试
+      </n-button>
+    </n-alert>
 
     <ComicMode
       v-else-if="isComicMode"
@@ -313,10 +342,16 @@ onBeforeUnmount(() => {
       :chapter-index="chapterIndex"
       :has-prev="hasPrev"
       :has-next="hasNext"
+      :prev-chapter-content="prevComicChapterContent"
+      :prev-chapter-title="prevComicChapterTitle"
+      :next-chapter-content="nextComicChapterContent"
+      :next-chapter-title="nextComicChapterTitle"
       @tap="emit('tap', $event)"
       @progress="emit('comic-progress', $event)"
       @prev-chapter="emit('prev-chapter')"
       @next-chapter="emit('next-chapter')"
+      @prev-chapter-entered="emit('comic-prev-chapter-entered')"
+      @next-chapter-entered="emit('comic-next-chapter-entered', $event)"
     />
 
     <PagedMode
@@ -353,6 +388,10 @@ onBeforeUnmount(() => {
       :text-indent="textIndent"
       :has-prev="hasPrev"
       :has-next="hasNext"
+      :prev-chapter-content="prevScrollChapterContent"
+      :prev-chapter-title="prevScrollChapterTitle"
+      :next-chapter-content="nextScrollChapterContent"
+      :next-chapter-title="nextScrollChapterTitle"
       :tap-zone-left="tapZoneLeft"
       :tap-zone-right="tapZoneRight"
       :layout-debug="layoutDebugMode"
@@ -360,8 +399,8 @@ onBeforeUnmount(() => {
       :tts-highlight-index="ttsScrollHighlightIdx"
       @tap="emit('tap', $event)"
       @progress="emit('scroll-progress', $event)"
-      @prev-chapter="emit('prev-chapter')"
-      @next-chapter="emit('next-chapter')"
+      @prev-chapter-entered="emit('scroll-prev-chapter-entered')"
+      @next-chapter-entered="emit('scroll-next-chapter-entered', $event)"
     />
 
     <n-dropdown

@@ -552,9 +552,200 @@ const activePagedPages = computed(() => pagedCache.getPages(activeChapterIndex.v
 const prevBoundaryPage = computed(() =>
   hasPrev.value ? pagedCache.getBoundaryPage(activeChapterIndex.value - 1, 'last') : '',
 );
-const nextBoundaryPage = computed(() =>
-  hasNext.value ? pagedCache.getBoundaryPage(activeChapterIndex.value + 1, 'first') : '',
+const nextBoundaryPage = computed(() => {
+  if (!hasNext.value) {
+    return '<div class="paged-mode-end-screen"><div class="paged-mode-end-screen__icon">📖</div><p class="paged-mode-end-screen__title">已读完最后一章</p><p class="paged-mode-end-screen__sub">全书完，感谢阅读</p></div>';
+  }
+  return pagedCache.getBoundaryPage(activeChapterIndex.value + 1, 'first');
+});
+
+// ── 无缝滚动/漫画 下一章预加载 ──────────────────────────────────────────
+const nextScrollChapterContent = ref('');
+const nextScrollChapterTitle = ref('');
+const nextComicChapterContent = ref('');
+const nextComicChapterTitle = ref('');
+let nextChapterPrefetchAbort: AbortController | null = null;
+
+async function prefetchNextChapterForSeamless(index: number) {
+  nextChapterPrefetchAbort?.abort();
+  nextChapterPrefetchAbort = new AbortController();
+  const signal = nextChapterPrefetchAbort.signal;
+
+  if (index < 0 || index >= props.chapters.length) {
+    nextScrollChapterContent.value = '';
+    nextScrollChapterTitle.value = '';
+    nextComicChapterContent.value = '';
+    nextComicChapterTitle.value = '';
+    return;
+  }
+
+  const chapter = getChapter(index);
+  const title = chapter?.name ?? '';
+
+  try {
+    const text = await fetchProcessedChapterText(index, 'reader.content.beforeRender');
+    if (signal.aborted) {
+      return;
+    }
+    if (isComicMode.value) {
+      nextComicChapterContent.value = text;
+      nextComicChapterTitle.value = title;
+    } else {
+      nextScrollChapterContent.value = text;
+      nextScrollChapterTitle.value = title;
+    }
+  } catch {
+    if (!signal.aborted) {
+      nextScrollChapterContent.value = '';
+      nextScrollChapterTitle.value = '';
+      nextComicChapterContent.value = '';
+      nextComicChapterTitle.value = '';
+    }
+  }
+}
+
+watch(
+  [activeChapterIndex, isScrollMode, isComicMode],
+  () => {
+    nextScrollChapterContent.value = '';
+    nextScrollChapterTitle.value = '';
+    nextComicChapterContent.value = '';
+    nextComicChapterTitle.value = '';
+    if ((isScrollMode.value || isComicMode.value) && hasNext.value) {
+      void prefetchNextChapterForSeamless(activeChapterIndex.value + 1);
+    }
+  },
+  { immediate: true },
 );
+
+/** 滚动模式：用户向下滚动进入下一章区域，无缝切换章节 */
+async function onScrollNextChapterEntered(sectionHeight: number) {
+  if (!hasNext.value) {
+    return;
+  }
+  const newContent = nextScrollChapterContent.value;
+  if (!newContent) {
+    // 预缓存失败或内容尚未就绪，回退到标准加载流程（显示 loading 状态与错误提示）
+    saveDetailedProgress();
+    navDirection.value = 'forward';
+    void openChapter(activeChapterIndex.value + 1, { position: 'first' });
+    return;
+  }
+  scrollModeRef.value?.prepareSeamlessSwap?.(sectionHeight);
+  saveDetailedProgress();
+  navDirection.value = 'forward';
+  const newIndex = activeChapterIndex.value + 1;
+  const oldContent = content.value;
+  const oldTitle = currentChapterName.value;
+  // 将当前章节保存为新的上一章（三章节滑动窗口）
+  prevScrollChapterContent.value = oldContent;
+  prevScrollChapterTitle.value = oldTitle;
+  activeChapterIndex.value = newIndex;
+  content.value = newContent;
+  nextScrollChapterContent.value = '';
+  nextScrollChapterTitle.value = '';
+  markChapterRead(newIndex);
+  const chapter = getChapter(newIndex);
+  if (chapter && currentShelfId.value) {
+    void updateProgress(currentShelfId.value, newIndex, chapter.url, buildProgressPayload()).catch(() => {});
+  }
+  if (newIndex + 1 < props.chapters.length) {
+    void prefetchNextChapterForSeamless(newIndex + 1);
+  }
+}
+
+/** 滚动模式：用户向上滚动进入上一章区域，无缝向前切换章节 */
+async function onScrollPrevChapterEntered() {
+  if (!hasPrev.value || !prevScrollChapterContent.value) {
+    return;
+  }
+  scrollModeRef.value?.prepareSeamlessSwapBack?.();
+  saveDetailedProgress();
+  navDirection.value = 'backward';
+  const newIndex = activeChapterIndex.value - 1;
+  const oldContent = content.value;
+  const oldTitle = currentChapterName.value;
+  const newContent = prevScrollChapterContent.value;
+  // 将当前章节保存为新的下一章
+  nextScrollChapterContent.value = oldContent;
+  nextScrollChapterTitle.value = oldTitle;
+  activeChapterIndex.value = newIndex;
+  content.value = newContent;
+  prevScrollChapterContent.value = '';
+  prevScrollChapterTitle.value = '';
+  markChapterRead(newIndex);
+  const chapter = getChapter(newIndex);
+  if (chapter && currentShelfId.value) {
+    void updateProgress(currentShelfId.value, newIndex, chapter.url, buildProgressPayload()).catch(() => {});
+  }
+  if (newIndex - 1 >= 0) {
+    void prefetchPrevChapterForSeamless(newIndex - 1);
+  }
+}
+
+/** 漫画模式：用户向下滚动进入下一章区域，无缝切换章节 */
+async function onComicNextChapterEntered(sectionHeight: number) {
+  if (!hasNext.value) {
+    return;
+  }
+  const newContent = nextComicChapterContent.value;
+  if (!newContent) {
+    // 预缓存失败或内容尚未就绪，回退到标准加载流程
+    saveDetailedProgress();
+    navDirection.value = 'forward';
+    void openChapter(activeChapterIndex.value + 1, { position: 'first' });
+    return;
+  }
+  comicModeRef.value?.prepareSeamlessSwap?.(sectionHeight);
+  saveDetailedProgress();
+  navDirection.value = 'forward';
+  const newIndex = activeChapterIndex.value + 1;
+  const oldContent = content.value;
+  const oldTitle = currentChapterName.value;
+  // 将当前章节保存为新的上一章
+  prevComicChapterContent.value = oldContent;
+  prevComicChapterTitle.value = oldTitle;
+  activeChapterIndex.value = newIndex;
+  content.value = newContent;
+  nextComicChapterContent.value = '';
+  nextComicChapterTitle.value = '';
+  markChapterRead(newIndex);
+  const chapter = getChapter(newIndex);
+  if (chapter && currentShelfId.value) {
+    void updateProgress(currentShelfId.value, newIndex, chapter.url, buildProgressPayload()).catch(() => {});
+  }
+  if (newIndex + 1 < props.chapters.length) {
+    void prefetchNextChapterForSeamless(newIndex + 1);
+  }
+}
+
+/** 漫画模式：用户向上滚动进入上一章区域，无缝向前切换 */
+async function onComicPrevChapterEntered() {
+  if (!hasPrev.value || !prevComicChapterContent.value) {
+    return;
+  }
+  comicModeRef.value?.prepareSeamlessSwapBack?.();
+  saveDetailedProgress();
+  navDirection.value = 'backward';
+  const newIndex = activeChapterIndex.value - 1;
+  const oldContent = content.value;
+  const oldTitle = currentChapterName.value;
+  const newContent = prevComicChapterContent.value;
+  nextComicChapterContent.value = oldContent;
+  nextComicChapterTitle.value = oldTitle;
+  activeChapterIndex.value = newIndex;
+  content.value = newContent;
+  prevComicChapterContent.value = '';
+  prevComicChapterTitle.value = '';
+  markChapterRead(newIndex);
+  const chapter = getChapter(newIndex);
+  if (chapter && currentShelfId.value) {
+    void updateProgress(currentShelfId.value, newIndex, chapter.url, buildProgressPayload()).catch(() => {});
+  }
+  if (newIndex - 1 >= 0) {
+    void prefetchPrevChapterForSeamless(newIndex - 1);
+  }
+}
 
 const blockingLoading = computed(() => {
   if (isPagedMode.value) {
@@ -785,10 +976,14 @@ const { openChapter, openLinearChapter, openPagedChapter } = useReaderChapterOpe
   buildProgressPayload,
   updateProgress,
   reportLoadError: (loadError) => {
-    message.error(`加载正文失败: ${loadError}`);
+    message.error(`加载正文失败: ${loadError}`, { duration: 8000, closable: true });
   },
   clearRepaginateWork,
 });
+
+function retryCurrentChapter() {
+  void openChapter(activeChapterIndex.value, { forceNetwork: true });
+}
 
 const readerPrefetch = createReaderPrefetchController({
   currentShelfId,
@@ -1396,6 +1591,7 @@ onBeforeUnmount(() => {
       @next-chapter="gotoNextChapter"
       @progress="onVideoProgress"
       @ended="onVideoEnded"
+      @retry="retryCurrentChapter"
     />
 
     <!-- ── 小说 / 漫画模式：沉浸全屏阅读器 ── -->
@@ -1434,6 +1630,14 @@ onBeforeUnmount(() => {
         :paragraph-spacing="settings.typography.paragraphSpacing"
         :text-indent="settings.typography.textIndent"
         :content-refs="contentRefs"
+        :prev-scroll-chapter-content="prevScrollChapterContent"
+        :prev-scroll-chapter-title="prevScrollChapterTitle"
+        :next-scroll-chapter-content="nextScrollChapterContent"
+        :next-scroll-chapter-title="nextScrollChapterTitle"
+        :prev-comic-chapter-content="prevComicChapterContent"
+        :prev-comic-chapter-title="prevComicChapterTitle"
+        :next-comic-chapter-content="nextComicChapterContent"
+        :next-comic-chapter-title="nextComicChapterTitle"
         @tap="onTap"
         @paged-page-change="onPagedPageChange"
         @paged-progress="onPagedProgress"
@@ -1443,6 +1647,11 @@ onBeforeUnmount(() => {
         @next-chapter="gotoNextChapter"
         @prev-boundary="gotoPrevBoundary"
         @next-boundary="gotoNextBoundary"
+        @scroll-next-chapter-entered="onScrollNextChapterEntered"
+        @scroll-prev-chapter-entered="onScrollPrevChapterEntered"
+        @comic-next-chapter-entered="onComicNextChapterEntered"
+        @comic-prev-chapter-entered="onComicPrevChapterEntered"
+        @retry="retryCurrentChapter"
       />
 
       <ReaderPluginLayer />

@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ChevronLeft, Link, Keyboard, ArrowUp } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
@@ -41,6 +41,7 @@ const emit = defineEmits<{
   (e: 'next-chapter'): void;
   (e: 'progress', time: number, duration: number): void;
   (e: 'ended'): void;
+  (e: 'retry'): void;
   /** 切换线路分组时通知父组件 */
   (e: 'switch-group', groupIndex: number): void;
 }>();
@@ -419,7 +420,11 @@ defineExpose({ getCurrentTime, getDuration });
             <span>获取播放地址…</span>
           </div>
           <div v-else-if="error" class="vp__player-placeholder vp__player-placeholder--error">
-            <n-alert type="error" :title="error" style="width: 90%; max-width: 420px" />
+            <n-alert type="error" :title="error" style="width: 90%; max-width: 420px">
+              <n-button type="error" size="small" style="margin-top: 8px" @click="emit('retry')">
+                重试
+              </n-button>
+            </n-alert>
           </div>
           <VideoMode
             v-else
