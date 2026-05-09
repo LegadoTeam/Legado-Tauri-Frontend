@@ -1,34 +1,117 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, computed } from 'vue'
-import { openUrl } from '@tauri-apps/plugin-opener'
-import type { ChapterItem } from '../../composables/useScriptBridge'
-import type { ReaderBookInfo } from './types'
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { useVirtualList } from '@vueuse/core';
+import { Trash2, RefreshCw } from 'lucide-vue-next';
+import { ref, nextTick, watch, computed } from 'vue';
+import type { ChapterItem } from '@/stores';
+import type { ReaderBookInfo } from './types';
+import AppInput from '../base/AppInput.vue';
+import AppTabs from '../base/AppTabs.vue';
+import BookCoverImg from '../BookCoverImg.vue';
 
-defineOptions({ inheritAttrs: false })
+defineOptions({ inheritAttrs: false });
 
 const props = defineProps<{
-  show: boolean
-  chapters: ChapterItem[]
-  currentIndex: number
-  bookInfo?: ReaderBookInfo
+  show: boolean;
+  chapters: ChapterItem[];
+  currentIndex: number;
+  bookInfo?: ReaderBookInfo;
   /** 已阅读过的章节索引集合（0 ~ 当前章节） */
-  readIndices?: Set<number>
+  readIndices?: Set<number>;
   /** 已下载缓存的章节索引集合 */
-  cachedIndices?: Set<number>
+  cachedIndices?: Set<number>;
   /** 目录刷新中（父组件控制加载状态） */
-  refreshingToc?: boolean
-}>()
+  refreshingToc?: boolean;
+  /** 书源类型：novel | comic */
+  sourceType?: string;
+}>();
 
 const emit = defineEmits<{
-  (e: 'update:show', val: boolean): void
-  (e: 'select', idx: number): void
-  (e: 'refresh-toc'): void
-}>()
+  (e: 'update:show', val: boolean): void;
+  (e: 'select', idx: number): void;
+  (e: 'refresh-toc'): void;
+  /** 清理单章缓存（章节索引） */
+  (e: 'clear-chapter-cache', idx: number): void;
+  /** 清理全书所有章节缓存 */
+  (e: 'clear-all-cache'): void;
+}>();
 
-type TabKey = 'toc' | 'detail'
-const activeTab = ref<TabKey>('toc')
+type TabKey = 'toc' | 'detail';
+const activeTab = ref<TabKey>('toc');
+const tocTabs = [
+  { key: 'toc', label: '目录' },
+  { key: 'detail', label: '详情' },
+];
 
-const listRef = ref<HTMLElement | null>(null)
+const searchQuery = ref('');
+
+/** 过滤后的章节列表（带原始索引） */
+const filteredChapters = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) {
+    return props.chapters.map((ch, index) => ({ ch, index }));
+  }
+  return props.chapters
+    .map((ch, index) => ({ ch, index }))
+    .filter(({ ch }) => ch.name.toLowerCase().includes(q));
+});
+
+const {
+  list: virtualList,
+  containerProps,
+  wrapperProps,
+  scrollTo,
+} = useVirtualList(filteredChapters, { itemHeight: 48, overscan: 8 });
+
+function scrollCurrentChapterIntoView() {
+  const idx = filteredChapters.value.findIndex((item) => item.index === props.currentIndex);
+  if (idx < 0) {
+    return;
+  }
+
+  // 先让虚拟列表跳到目标附近，确保当前章节节点被渲染出来。
+  scrollTo(idx);
+
+  requestAnimationFrame(() => {
+    const currentEl = document.querySelector<HTMLElement>('.reader-toc__item--active');
+    currentEl?.scrollIntoView({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth',
+    });
+  });
+}
+
+let tocSwipePointerId: number | null = null;
+let tocSwipeStartX = 0;
+let tocSwipeStartY = 0;
+
+function onTocPointerDown(e: PointerEvent) {
+  if (!e.isPrimary) {
+    return;
+  }
+  tocSwipePointerId = e.pointerId;
+  tocSwipeStartX = e.clientX;
+  tocSwipeStartY = e.clientY;
+}
+
+function onTocPointerUp(e: PointerEvent) {
+  if (tocSwipePointerId !== e.pointerId) {
+    return;
+  }
+  const dx = e.clientX - tocSwipeStartX;
+  const dy = e.clientY - tocSwipeStartY;
+  tocSwipePointerId = null;
+  if (dx < -64 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+    emit('update:show', false);
+  }
+}
+
+function onTocPointerCancel(e: PointerEvent) {
+  if (tocSwipePointerId === e.pointerId) {
+    tocSwipePointerId = null;
+  }
+}
 
 watch(
   () => props.show,
@@ -36,52 +119,83 @@ watch(
     if (val) {
       nextTick(() => {
         if (activeTab.value === 'toc') {
-          const active = listRef.value?.querySelector('.reader-toc__item--active')
-          active?.scrollIntoView({ block: 'center' })
+          scrollCurrentChapterIntoView();
         }
-      })
+      });
     }
   },
-)
+);
+
+watch(
+  () => [props.currentIndex, props.show, activeTab.value, searchQuery.value] as const,
+  ([, show, tab]) => {
+    if (!show || tab !== 'toc') {
+      return;
+    }
+    nextTick(() => {
+      scrollCurrentChapterIntoView();
+    });
+  },
+);
 
 function onSelect(idx: number) {
-  emit('select', idx)
-  emit('update:show', false)
+  emit('select', idx);
+  emit('update:show', false);
 }
 
-const fallbackCover = `data:image/svg+xml,${encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="110" viewBox="0 0 80 110">' +
-  '<rect width="80" height="110" rx="4" fill="%233a3a45"/>' +
-  '<rect x="10" y="12" width="5" height="86" rx="1.5" fill="%23555568"/>' +
-  '<rect x="15" y="12" width="55" height="86" rx="2" fill="%23464658" stroke="%23555568" stroke-width="0.5"/>' +
-  '<rect x="64" y="15" width="3" height="80" rx="1" fill="%234e4e62"/>' +
-  '<path d="M30 36 C30 36 35 34 40 36 L40 52 C35 50 30 52 30 52 Z" fill="%23606078"/>' +
-  '<path d="M50 36 C50 36 45 34 40 36 L40 52 C45 50 50 52 50 52 Z" fill="%23555570"/>' +
-  '<line x1="40" y1="36" x2="40" y2="52" stroke="%237a7a92" stroke-width="0.6"/>' +
-  '<text x="40" y="74" text-anchor="middle" fill="%237a7a92" font-size="8" font-family="sans-serif">暂无封面</text>' +
-  '</svg>'
-)}`
-
 function formatTime(ts?: number) {
-  if (!ts) return '—'
-  const d = new Date(ts)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (!ts) {
+    return '—';
+  }
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 const detailRows = computed(() => {
-  const b = props.bookInfo
-  if (!b) return []
-  const rows: { label: string; value: string; isUrl?: boolean }[] = []
-  if (b.sourceName) rows.push({ label: '来源扩展', value: b.sourceName })
-  if (b.fileName) rows.push({ label: '书源文件', value: b.fileName })
-  if (b.bookUrl) rows.push({ label: '书籍地址', value: b.bookUrl, isUrl: true })
-  if (b.kind) rows.push({ label: '分类标签', value: b.kind })
-  if (b.lastChapter) rows.push({ label: '最新章节', value: b.lastChapter })
-  if (b.totalChapters) rows.push({ label: '总章节数', value: `${b.totalChapters} 章` })
-  if (b.addedAt) rows.push({ label: '加入时间', value: formatTime(b.addedAt) })
-  if (b.lastReadAt) rows.push({ label: '最后阅读', value: formatTime(b.lastReadAt) })
-  return rows
-})
+  const b = props.bookInfo;
+  if (!b) {
+    return [];
+  }
+  const rows: { label: string; value: string; isUrl?: boolean }[] = [];
+  if (b.sourceName) {
+    rows.push({ label: '来源扩展', value: b.sourceName });
+  }
+  if (b.fileName) {
+    rows.push({ label: '书源文件', value: b.fileName });
+  }
+  if (b.bookUrl) {
+    rows.push({ label: '书籍地址', value: b.bookUrl, isUrl: true });
+  }
+  if (b.kind) {
+    rows.push({ label: '分类标签', value: b.kind });
+  }
+  if (b.status) {
+    rows.push({ label: '状态', value: b.status });
+  }
+  if (b.lastChapter) {
+    rows.push({ label: '最新章节', value: b.lastChapter });
+  }
+  if (b.wordCount) {
+    rows.push({ label: '字数', value: b.wordCount });
+  }
+  if (b.chapterCount) {
+    rows.push({ label: '章节总数', value: `${b.chapterCount} 章` });
+  }
+  if (b.updateTime) {
+    rows.push({ label: '更新时间', value: b.updateTime });
+  }
+  if (b.totalChapters) {
+    rows.push({ label: '目录章节数', value: `${b.totalChapters} 章` });
+  }
+  if (b.addedAt) {
+    rows.push({ label: '加入时间', value: formatTime(b.addedAt) });
+  }
+  if (b.lastReadAt) {
+    rows.push({ label: '最后阅读', value: formatTime(b.lastReadAt) });
+  }
+  return rows;
+});
+
 </script>
 
 <template>
@@ -92,14 +206,21 @@ const detailRows = computed(() => {
 
   <!-- 面板 -->
   <Transition name="reader-toc-slide">
-    <div v-if="show" class="reader-toc" @click.stop>
+    <div
+      v-if="show"
+      class="reader-toc"
+      @click.stop
+      @pointerdown="onTocPointerDown"
+      @pointerup="onTocPointerUp"
+      @pointercancel="onTocPointerCancel"
+    >
       <!-- 书籍信息头部 -->
       <div v-if="bookInfo" class="reader-toc__book-header">
-        <img
+        <BookCoverImg
           class="reader-toc__cover"
-          :src="bookInfo.coverUrl || fallbackCover"
+          :src="bookInfo.coverUrl"
+          :base-url="bookInfo.bookUrl"
           :alt="bookInfo.name"
-          @error="(e: Event) => (e.target as HTMLImageElement).src = fallbackCover"
         />
         <div class="reader-toc__book-meta">
           <div class="reader-toc__book-name" :title="bookInfo.name">{{ bookInfo.name }}</div>
@@ -109,25 +230,18 @@ const detailRows = computed(() => {
       </div>
 
       <!-- Tab 切换 -->
-      <div class="reader-toc__tabs">
-        <button
-          class="reader-toc__tab"
-          :class="{ 'reader-toc__tab--active': activeTab === 'detail' }"
-          @click="activeTab = 'detail'"
-        >
-          详情
-        </button>
-        <button
-          class="reader-toc__tab"
-          :class="{ 'reader-toc__tab--active': activeTab === 'toc' }"
-          @click="activeTab = 'toc'"
-        >
-          目录
-        </button>
-      </div>
+      <AppTabs
+        class="reader-toc__tabs-new"
+        :model-value="activeTab"
+        :tabs="tocTabs"
+        @update:model-value="(v) => (activeTab = v as TabKey)"
+      />
 
       <!-- 详情内容 -->
-      <div v-if="activeTab === 'detail'" class="reader-toc__detail">
+      <div
+        v-if="activeTab === 'detail'"
+        class="reader-toc__detail app-scrollbar app-scrollbar--thin app-scrollbar--inverse"
+      >
         <!-- 简介 -->
         <div v-if="bookInfo?.intro" class="reader-toc__intro">
           <div class="reader-toc__intro-title">简介</div>
@@ -137,7 +251,14 @@ const detailRows = computed(() => {
         <div class="reader-toc__info-list">
           <div v-for="row in detailRows" :key="row.label" class="reader-toc__info-row">
             <span class="reader-toc__info-label">{{ row.label }}</span>
-            <a v-if="row.isUrl" class="reader-toc__info-value reader-toc__info-link" href="#" :title="row.value" @click.prevent="openUrl(row.value)">{{ row.value }}</a>
+            <a
+              v-if="row.isUrl"
+              class="reader-toc__info-value reader-toc__info-link"
+              href="#"
+              :title="row.value"
+              @click.prevent="openUrl(row.value)"
+              >{{ row.value }}</a
+            >
             <span v-else class="reader-toc__info-value" :title="row.value">{{ row.value }}</span>
           </div>
         </div>
@@ -148,38 +269,81 @@ const detailRows = computed(() => {
       <div v-else class="reader-toc__list-wrap">
         <div class="reader-toc__list-header">
           <span>共 {{ chapters.length }} 章</span>
-          <button
-            class="reader-toc__refresh-btn"
-            :disabled="props.refreshingToc"
-            :class="{ 'reader-toc__refresh-btn--spinning': props.refreshingToc }"
-            title="更新目录"
-            @click="emit('refresh-toc')"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"/>
-              <polyline points="1 20 1 14 7 14"/>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-            {{ props.refreshingToc ? '更新中…' : '更新目录' }}
-          </button>
+          <div class="reader-toc__header-actions">
+            <button
+              v-if="cachedIndices && cachedIndices.size > 0"
+              class="reader-toc__refresh-btn reader-toc__refresh-btn--danger"
+              title="清空全书缓存"
+              @click="emit('clear-all-cache')"
+            >
+              <Trash2 :size="12" />
+              清空全书
+            </button>
+            <button
+              class="reader-toc__refresh-btn"
+              :disabled="props.refreshingToc"
+              :class="{ 'reader-toc__refresh-btn--spinning': props.refreshingToc }"
+              title="更新目录"
+              @click="emit('refresh-toc')"
+            >
+              <RefreshCw :size="14" />
+              {{ props.refreshingToc ? '更新中…' : '更新目录' }}
+            </button>
+          </div>
         </div>
-        <div ref="listRef" class="reader-toc__list">
-          <button
-            v-for="(ch, idx) in chapters"
-            :key="idx"
-            class="reader-toc__item"
-            :class="{
-              'reader-toc__item--active':  idx === currentIndex,
-              'reader-toc__item--read':    idx !== currentIndex && readIndices?.has(idx),
-              'reader-toc__item--cached':  cachedIndices?.has(idx),
-              'reader-toc__item--no-cache': cachedIndices && !cachedIndices.has(idx),
-            }"
-            @click="onSelect(idx)"
-          >
-            <span class="reader-toc__item-name">{{ ch.name }}</span>
-            <span v-if="idx === currentIndex" class="reader-toc__badge reader-toc__badge--current">阅读中</span>
-            <span v-else-if="readIndices?.has(idx)" class="reader-toc__badge reader-toc__badge--read">已读</span>
-          </button>
+        <!-- 搜索框 -->
+        <div class="reader-toc__search">
+          <AppInput v-model="searchQuery" placeholder="搜索章节…" />
+        </div>
+        <!-- 虚拟滚动章节列表 -->
+        <div
+          v-bind="containerProps"
+          class="reader-toc__list app-scrollbar app-scrollbar--inverse"
+        >
+          <div v-bind="wrapperProps">
+            <div
+              v-for="item in virtualList"
+              :key="item.data.index"
+              class="reader-toc__item"
+              role="button"
+              tabindex="0"
+              :class="{
+                'reader-toc__item--active': item.data.index === currentIndex,
+                'reader-toc__item--read':
+                  item.data.index !== currentIndex && readIndices?.has(item.data.index),
+                'reader-toc__item--cached': cachedIndices?.has(item.data.index),
+                'reader-toc__item--no-cache':
+                  cachedIndices &&
+                  !cachedIndices.has(item.data.index) &&
+                  item.data.index !== currentIndex,
+              }"
+              @click="onSelect(item.data.index)"
+              @keydown.enter.prevent="onSelect(item.data.index)"
+              @keydown.space.prevent="onSelect(item.data.index)"
+            >
+              <span class="reader-toc__item-name">{{ item.data.ch.name }}</span>
+              <span
+                v-if="item.data.index === currentIndex"
+                class="reader-toc__badge reader-toc__badge--current"
+                >阅读中</span
+              >
+              <span
+                v-else-if="readIndices?.has(item.data.index)"
+                class="reader-toc__badge reader-toc__badge--read"
+                >已读</span
+              >
+              <button
+                class="reader-toc__item-clear"
+                :class="{ 'reader-toc__item-clear--visible': cachedIndices?.has(item.data.index) }"
+                :disabled="!cachedIndices?.has(item.data.index)"
+                :aria-hidden="!cachedIndices?.has(item.data.index)"
+                title="清除本章缓存"
+                @click.stop="emit('clear-chapter-cache', item.data.index)"
+              >
+                <Trash2 :size="12" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -206,6 +370,10 @@ const detailRows = computed(() => {
   color: #e0e0e0;
   display: flex;
   flex-direction: column;
+  /* 无 bookInfo 头部时，tabs 直接贴顶，用 padding-top 避让状态栏 */
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  touch-action: pan-y;
 }
 
 /* ---- 书籍信息头部 ---- */
@@ -274,7 +442,9 @@ const detailRows = computed(() => {
   color: inherit;
   opacity: 0.55;
   cursor: pointer;
-  transition: opacity 0.15s, border-color 0.15s;
+  transition:
+    opacity 0.15s,
+    border-color 0.15s;
 }
 .reader-toc__tab:hover {
   opacity: 0.8;
@@ -372,6 +542,12 @@ const detailRows = computed(() => {
   opacity: 0.45;
 }
 
+.reader-toc__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .reader-toc__refresh-btn {
   display: inline-flex;
   align-items: center;
@@ -384,7 +560,9 @@ const detailRows = computed(() => {
   font-size: 0.6875rem;
   cursor: pointer;
   opacity: 1;
-  transition: background 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
   white-space: nowrap;
 }
 
@@ -392,6 +570,12 @@ const detailRows = computed(() => {
   background: rgba(99, 226, 183, 0.15);
   border-color: #63e2b7;
   color: #63e2b7;
+}
+
+.reader-toc__refresh-btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #f87171;
+  color: #f87171;
 }
 
 .reader-toc__refresh-btn:disabled {
@@ -404,14 +588,21 @@ const detailRows = computed(() => {
 }
 
 @keyframes toc-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .reader-toc__list {
   flex: 1;
   overflow-y: auto;
   padding: 0 0 4px;
+  /* 移动端较宽的滚动条，方便触摸拖动 */
+  --app-scrollbar-size: 8px;
+  --app-scrollbar-radius: 4px;
 }
 
 .reader-toc__item {
@@ -422,7 +613,7 @@ const detailRows = computed(() => {
   text-align: left;
   background: none;
   border: none;
-  color: inherit;
+  /* color: #fff; */
   font-size: 0.8125rem;
   padding: 10px 20px;
   cursor: pointer;
@@ -457,6 +648,45 @@ const detailRows = computed(() => {
   white-space: nowrap;
 }
 
+/* 单章缓存清除小按钮 */
+.reader-toc__item-clear {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    background 0.15s;
+  margin-left: 4px;
+}
+
+.reader-toc__item-clear--visible {
+  visibility: visible;
+}
+
+.reader-toc__item:hover .reader-toc__item-clear--visible {
+  opacity: 1;
+}
+
+.reader-toc__item-clear:disabled {
+  cursor: default;
+}
+
+.reader-toc__item-clear--visible:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
 /* 状态徽章 */
 .reader-toc__badge {
   flex-shrink: 0;
@@ -478,14 +708,6 @@ const detailRows = computed(() => {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* 滚动条 */
-.reader-toc__list::-webkit-scrollbar,
-.reader-toc__detail::-webkit-scrollbar { width: 4px; }
-.reader-toc__list::-webkit-scrollbar-track,
-.reader-toc__detail::-webkit-scrollbar-track { background: transparent; }
-.reader-toc__list::-webkit-scrollbar-thumb,
-.reader-toc__detail::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
-
 /* 动画 */
 .reader-toc-fade-enter-active,
 .reader-toc-fade-leave-active {
@@ -503,5 +725,42 @@ const detailRows = computed(() => {
 .reader-toc-slide-enter-from,
 .reader-toc-slide-leave-to {
   transform: translateX(-100%);
+}
+
+/* AppTabs 暗色适配（panel 背景为深色） */
+.reader-toc__tabs-new {
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-text-soft: rgba(255, 255, 255, 0.55);
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-accent: #63e2b7;
+  --control-md: 2.5rem;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.reader-toc__tabs-new :deep(.app-tabs) {
+  width: 100%;
+  overflow: hidden;
+}
+
+.reader-toc__tabs-new :deep(.app-tabs__tab) {
+  flex: 1 1 50%;
+  min-width: 0;
+  padding-inline: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 搜索框 */
+.reader-toc__search {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  --color-border: rgba(255, 255, 255, 0.15);
+  --color-surface: rgba(255, 255, 255, 0.06);
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-text-muted: rgba(255, 255, 255, 0.4);
+  --color-accent: #63e2b7;
+  --color-focus: #63e2b7;
 }
 </style>

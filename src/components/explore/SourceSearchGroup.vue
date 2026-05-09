@@ -1,21 +1,28 @@
 <script setup lang="ts">
-import type { BookSourceMeta } from '../../composables/useBookSource'
-import type { BookItem } from '../../composables/useScriptBridge'
-import { openUrl } from '@tauri-apps/plugin-opener'
-import BookCard from './BookCard.vue'
-import defaultLogoUrl from '../../assets/booksource-default.svg'
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { computed } from 'vue';
+import type { BookItem } from '@/stores';
+import type { BookSourceMeta } from '../../composables/useBookSource';
+import SourceTypeBadge from '../base/SourceTypeBadge.vue';
+import defaultLogoUrl from '../../assets/booksource-default.svg';
+import BookCard from './BookCard.vue';
 
-defineProps<{
-  source: BookSourceMeta
-  results: BookItem[]
-  loading: boolean
-  error: string
-  showCovers?: boolean
-}>()
+const props = defineProps<{
+  source: BookSourceMeta;
+  results: BookItem[];
+  loading: boolean;
+  error: string;
+  showCovers?: boolean;
+}>();
 
 const emit = defineEmits<{
-  (e: 'select', book: BookItem, fileName: string): void
-}>()
+  (e: 'select', book: BookItem, fileName: string): void;
+}>();
+
+const sourceTypeIsNonDefault = computed(() => {
+  const t = props.source.sourceType;
+  return !!t && t !== 'novel';
+});
 </script>
 
 <template>
@@ -30,9 +37,24 @@ const emit = defineEmits<{
         @error="($event.target as HTMLImageElement).src = defaultLogoUrl"
       />
       <img v-else :src="defaultLogoUrl" class="ssg__logo" :alt="source.name" />
-      <a v-if="source.url" class="ssg__name ssg__name--link" href="#" @click.prevent="openUrl(source.url)">{{ source.name }}</a>
+      <a
+        v-if="source.url"
+        class="ssg__name ssg__name--link"
+        href="#"
+        @click.prevent="openUrl(source.url)"
+        >{{ source.name }}</a
+      >
       <span v-else class="ssg__name">{{ source.name }}</span>
-      <n-tag v-if="source.tags[0]" size="tiny" :bordered="false" class="ssg__tag">{{ source.tags[0] }}</n-tag>
+      <SourceTypeBadge
+        v-if="sourceTypeIsNonDefault"
+        :source-type="source.sourceType"
+        :opaque="true"
+        :size="12"
+        class="ssg__type-icon"
+      />
+      <n-tag v-if="source.tags[0]" size="tiny" :bordered="false" class="ssg__tag">{{
+        source.tags[0]
+      }}</n-tag>
       <span v-if="loading" class="ssg__status ssg__status--loading">搜索中…</span>
       <n-tag v-else-if="error" size="tiny" type="error" :bordered="false">失败</n-tag>
       <span v-else-if="results.length" class="ssg__status">{{ results.length }} 条结果</span>
@@ -47,7 +69,7 @@ const emit = defineEmits<{
       <n-spin size="small" />
     </div>
     <!-- 结果网格 -->
-    <div v-else-if="results.length" class="ssg__grid">
+    <div v-else-if="results.length" class="ssg__grid app-scrollbar">
       <BookCard
         v-for="book in results"
         :key="book.bookUrl"
@@ -102,6 +124,9 @@ const emit = defineEmits<{
   --n-text-color: var(--color-text-muted) !important;
   font-size: 0.6875rem !important;
 }
+.ssg__type-icon {
+  flex-shrink: 0;
+}
 .ssg__status {
   margin-left: auto;
   font-size: 0.75rem;
@@ -129,16 +154,10 @@ const emit = defineEmits<{
 
 .ssg__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 200px), 1fr));
   gap: 6px;
   padding: 8px;
   max-height: 500px;
   overflow-y: auto;
-}
-.ssg__grid::-webkit-scrollbar { width: 5px; }
-.ssg__grid::-webkit-scrollbar-track { background: transparent; }
-.ssg__grid::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
 }
 </style>

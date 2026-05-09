@@ -1,54 +1,68 @@
 <script setup lang="ts">
-import type { NavItem } from './SideBar.vue'
+import type { Component } from 'vue';
+import { BookOpen, Compass, Search, LayoutGrid, Package, SlidersHorizontal } from 'lucide-vue-next';
+import type { NavItem } from '@/types';
 
-withDefaults(defineProps<{
-  items?: NavItem[]
-  activeId?: string
-}>(), {
-  items: () => [],
-  activeId: ''
-})
+const props = withDefaults(
+  defineProps<{
+    items?: NavItem[];
+    activeId?: string;
+  }>(),
+  {
+    items: () => [],
+    activeId: '',
+  },
+);
 
 const emit = defineEmits<{
-  select: [id: string]
-}>()
+  select: [id: string];
+}>();
+
+function onKeyDown(event: KeyboardEvent, index: number) {
+  const len = props.items.length;
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    const next = (index + 1) % len;
+    (document.querySelectorAll('.bottom-nav__item')[next] as HTMLElement)?.focus();
+  } else if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    const prev = (index - 1 + len) % len;
+    (document.querySelectorAll('.bottom-nav__item')[prev] as HTMLElement)?.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    emit('select', props.items[index].id);
+  }
+}
 
 /**
- * 内置 Lucide 风格 SVG 图标库（与 SideBar 保持一致）
- * 值为 SVG 内部元素字符串，由组件自身控制，不接受外部输入，无 XSS 风险。
+ * 内置导航图标映射（使用 lucide-vue-next 组件）
  */
-const ICON_PATHS: Record<string, string> = {
-  bookshelf:  `<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>`,
-  explore:    `<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>`,
-  search:     `<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`,
-  booksource: `<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M3 17h4m-2-2v4"/>`,
-  extensions: `<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>`,
-  settings:   `<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>`,
-}
+const ICON_COMPONENTS: Record<string, Component> = {
+  bookshelf: BookOpen,
+  explore: Compass,
+  search: Search,
+  booksource: LayoutGrid,
+  extensions: Package,
+  settings: SlidersHorizontal,
+};
 </script>
 
 <template>
-  <nav class="bottom-nav">
+  <nav class="bottom-nav" role="tablist" :aria-label="'主导航'">
     <button
-      v-for="item in items"
+      v-for="(item, index) in items"
       :key="item.id"
-      class="bottom-nav__item"
+      class="bottom-nav__item focusable"
       :class="{ 'bottom-nav__item--active': activeId === item.id }"
       :aria-label="item.label"
+      :aria-selected="activeId === item.id"
+      role="tab"
+      tabindex="0"
       @click="emit('select', item.id)"
+      @keydown="onKeyDown($event, index)"
     >
       <span class="bottom-nav__icon" aria-hidden="true">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="22" height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          v-html="ICON_PATHS[item.icon] ?? ''"
-        />
+        <component :is="ICON_COMPONENTS[item.icon]" :size="22" :stroke-width="1.75" />
       </span>
       <span class="bottom-nav__label">{{ item.label }}</span>
     </button>
@@ -61,13 +75,12 @@ const ICON_PATHS: Record<string, string> = {
   display: flex;
   align-items: stretch;
   justify-content: space-around;
-  min-height: var(--bottomnav-h);
-  background: var(--color-surface-raised);
+  min-height: calc(var(--bottom-bar-height) + var(--safe-bottom));
+  background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   user-select: none;
-  padding: 0 2px;
-  /* iOS / Android 圆角屏安全区避让 */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding: 0 var(--space-1);
+  padding-bottom: var(--safe-bottom);
 }
 
 .bottom-nav__item {
@@ -76,13 +89,14 @@ const ICON_PATHS: Record<string, string> = {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: var(--space-1);
   border: none;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: color var(--transition-fast);
-  padding: 2px 0;
+  transition: color var(--dur-fast) var(--ease-standard);
+  padding: var(--space-1) 0;
+  min-height: var(--tap-target);
   min-width: 0;
   -webkit-tap-highlight-color: transparent;
 }
@@ -105,13 +119,13 @@ const ICON_PATHS: Record<string, string> = {
 }
 
 .bottom-nav__label {
-  font-size: 0.688rem;
-  font-weight: 500;
+  font-size: var(--fs-11);
+  font-weight: var(--fw-medium);
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
 }
 </style>

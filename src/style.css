@@ -1,13 +1,17 @@
+@import 'tailwindcss';
+
 /* ============================================================
    CSS 设计令牌
    ============================================================ */
 :root {
   /* 尺寸 */
   --titlebar-h: 40px;
-  --taskbar-h: 28px;
+  --taskbar-h: 48px;
   --sidebar-w: 200px;
   --sidebar-collapsed-w: 48px;
   --bottomnav-h: 56px;
+  /* 鸿蒙 ArkWeb 软键盘高度注入（非鸿蒙端保持 0px） */
+  --keyboard-inset-bottom: 0px;
 
   /* 间距 */
   --space-xs: 4px;
@@ -23,7 +27,7 @@
 
   /* 语义色 */
   --color-danger: #ef4444;
-  --color-danger-subtle: rgba(239, 68, 68, 0.10);
+  --color-danger-subtle: rgba(239, 68, 68, 0.1);
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-surface-sunken: #e4e4e7;
@@ -31,6 +35,12 @@
   /* 过渡 */
   --transition-fast: 120ms ease;
   --transition-base: 220ms ease;
+
+  /* 滚动条 */
+  --scrollbar-size: 6px;
+  --scrollbar-radius: 999px;
+  --scrollbar-thumb: rgba(82, 82, 91, 0.28);
+  --scrollbar-thumb-hover: rgba(82, 82, 91, 0.46);
 
   /* 颜色——亮色主题 */
   --color-surface: #f4f4f5;
@@ -46,13 +56,39 @@
   --color-accent-subtle: #eef2ff;
 
   /* 侧边栏 — 亮色主题 */
-  --color-sidebar-bg: #fbfbfc;
-  --color-sidebar-border: #e4e4e7;
+  --color-sidebar-bg: #edf1ff;
+  --color-sidebar-border: #dde3f0;
   --color-sidebar-text: #27272a;
   --color-sidebar-text-muted: #71717a;
-  --color-sidebar-hover: #eef2ff;
-  --color-sidebar-active-bg: #e0e7ff;
+  --color-sidebar-hover: #dde7ff;
+  --color-sidebar-active-bg: #d4dbff;
   --color-sidebar-active-text: #4338ca;
+
+  /* 内容区背景 — 亮色主题 */
+  --color-content-bg: #e9eaf3;
+  --content-bg-texture:
+    radial-gradient(ellipse 90% 42% at 50% -4%, rgba(99, 102, 241, 0.08) 0%, transparent 65%),
+    radial-gradient(ellipse 42% 36% at 96% 6%, rgba(139, 92, 246, 0.05) 0%, transparent 52%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 44px,
+      rgba(99, 102, 241, 0.014) 44px,
+      rgba(99, 102, 241, 0.014) 45px
+    );
+
+  /* 全局背景底纹 — 亮色主题（仅在 .app-layout 最底层渲染，侧栏/顶栏/底栏透明透出） */
+  --app-bg-texture:
+    radial-gradient(ellipse 60% 55% at 0% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 45% at 100% 100%, rgba(139, 92, 246, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 35% 30% at 12% 88%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0px,
+      transparent 22px,
+      rgba(99, 102, 241, 0.02) 22px,
+      rgba(99, 102, 241, 0.02) 23px
+    );
 
   font-family: Inter, 'Noto Sans SC', system-ui, sans-serif;
   font-size: 16px;
@@ -64,7 +100,7 @@
 
 /* ── 暗色主题变量集 ────────────────────────────────────────────────────── */
 /* 1. 强制暗色：data-theme="dark" */
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   --color-surface: #18181b;
   --color-surface-raised: #27272a;
   --color-surface-hover: #3f3f46;
@@ -90,11 +126,40 @@
   --color-sidebar-hover: rgba(255, 255, 255, 0.06);
   --color-sidebar-active-bg: rgba(129, 140, 248, 0.2);
   --color-sidebar-active-text: #c7d2fe;
+
+  /* 内容区背景 — 深色主题 */
+  --color-content-bg: #13141d;
+  --content-bg-texture:
+    radial-gradient(ellipse 90% 42% at 50% -4%, rgba(129, 140, 248, 0.1) 0%, transparent 65%),
+    radial-gradient(ellipse 42% 36% at 96% 6%, rgba(167, 139, 250, 0.07) 0%, transparent 52%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 44px,
+      rgba(255, 255, 255, 0.014) 44px,
+      rgba(255, 255, 255, 0.014) 45px
+    );
+
+  /* 全局背景底纹 — 深色主题 */
+  --app-bg-texture:
+    radial-gradient(ellipse 60% 55% at 0% 0%, rgba(129, 140, 248, 0.14) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 45% at 100% 100%, rgba(167, 139, 250, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse 35% 30% at 12% 88%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0px,
+      transparent 22px,
+      rgba(129, 140, 248, 0.03) 22px,
+      rgba(129, 140, 248, 0.03) 23px
+    );
+
+  --scrollbar-thumb: rgba(161, 161, 170, 0.34);
+  --scrollbar-thumb-hover: rgba(161, 161, 170, 0.54);
 }
 
 /* 2. 自动模式（data-theme="auto"）：跟随系统偏好 */
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="auto"],
+  :root[data-theme='auto'],
   :root:not([data-theme]) {
     --color-surface: #18181b;
     --color-surface-raised: #27272a;
@@ -121,12 +186,38 @@
     --color-sidebar-hover: rgba(255, 255, 255, 0.06);
     --color-sidebar-active-bg: rgba(129, 140, 248, 0.2);
     --color-sidebar-active-text: #c7d2fe;
+
+    /* 内容区背景 — 深色主题（auto 系统跟随） */
+    --color-content-bg: #13141d;
+    --content-bg-texture:
+      radial-gradient(ellipse 90% 42% at 50% -4%, rgba(129, 140, 248, 0.1) 0%, transparent 65%),
+      radial-gradient(ellipse 42% 36% at 96% 6%, rgba(167, 139, 250, 0.07) 0%, transparent 52%),
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 44px,
+        rgba(255, 255, 255, 0.014) 44px,
+        rgba(255, 255, 255, 0.014) 45px
+      );
+
+    /* 全局背景底纹 — 深色主题（auto 系统跟随） */
+    --app-bg-texture:
+      radial-gradient(ellipse 60% 55% at 0% 0%, rgba(129, 140, 248, 0.14) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 45% at 100% 100%, rgba(167, 139, 250, 0.1) 0%, transparent 55%),
+      radial-gradient(ellipse 35% 30% at 12% 88%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
+      repeating-linear-gradient(
+        -45deg,
+        transparent 0px,
+        transparent 22px,
+        rgba(129, 140, 248, 0.03) 22px,
+        rgba(129, 140, 248, 0.03) 23px
+      );
   }
 }
 
 /* 3. 强制亮色：data-theme="light" 时显式重置（覆盖系统暗色偏好） */
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="light"] {
+  :root[data-theme='light'] {
     --color-surface: #f4f4f5;
     --color-surface-raised: #ffffff;
     --color-surface-hover: #e4e4e7;
@@ -140,37 +231,145 @@
     --color-accent-subtle: #eef2ff;
 
     --color-danger: #ef4444;
-    --color-danger-subtle: rgba(239, 68, 68, 0.10);
+    --color-danger-subtle: rgba(239, 68, 68, 0.1);
     --color-success: #22c55e;
     --color-warning: #f59e0b;
     --color-surface-sunken: #e4e4e7;
 
-    --color-sidebar-bg: #fbfbfc;
-    --color-sidebar-border: #e4e4e7;
+    --color-sidebar-bg: #edf1ff;
+    --color-sidebar-border: #dde3f0;
     --color-sidebar-text: #27272a;
     --color-sidebar-text-muted: #71717a;
-    --color-sidebar-hover: #eef2ff;
-    --color-sidebar-active-bg: #e0e7ff;
+    --color-sidebar-hover: #dde7ff;
+    --color-sidebar-active-bg: #d4dbff;
     --color-sidebar-active-text: #4338ca;
+
+    /* 内容区背景 — 亮色主题（强制覆盖系统暗色偏好） */
+    --color-content-bg: #e9eaf3;
+    --content-bg-texture:
+      radial-gradient(ellipse 90% 42% at 50% -4%, rgba(99, 102, 241, 0.08) 0%, transparent 65%),
+      radial-gradient(ellipse 42% 36% at 96% 6%, rgba(139, 92, 246, 0.05) 0%, transparent 52%),
+      repeating-linear-gradient(
+        0deg,
+        transparent 0px,
+        transparent 44px,
+        rgba(99, 102, 241, 0.014) 44px,
+        rgba(99, 102, 241, 0.014) 45px
+      );
+
+    /* 全局背景底纹 — 亮色主题（强制覆盖系统暗色偏好） */
+    --app-bg-texture:
+      radial-gradient(ellipse 60% 55% at 0% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 45% at 100% 100%, rgba(139, 92, 246, 0.07) 0%, transparent 55%),
+      radial-gradient(ellipse 35% 30% at 12% 88%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+      repeating-linear-gradient(
+        -45deg,
+        transparent 0px,
+        transparent 22px,
+        rgba(99, 102, 241, 0.02) 22px,
+        rgba(99, 102, 241, 0.02) 23px
+      );
+
+    --scrollbar-thumb: rgba(82, 82, 91, 0.28);
+    --scrollbar-thumb-hover: rgba(82, 82, 91, 0.46);
   }
 }
 
 /* ============================================================
    Reset
    ============================================================ */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #app {
+html,
+body,
+#app {
   height: 100%;
   overflow: hidden;
 }
 
-ul, ol {
+ul,
+ol {
   list-style: none;
+}
+
+/* ============================================================
+   全局滚动条
+   ============================================================ */
+
+/*
+ * 默认入口：普通业务面板统一使用 app-scrollbar / app-scrollbar--hidden。
+ * 局部覆盖边界：仅阅读器沉浸式界面、视频条带、日志等高对比度特殊面板允许自定义滚动条。
+ */
+
+.app-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb, var(--scrollbar-thumb)) transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar {
+  width: var(--app-scrollbar-size, var(--scrollbar-size));
+  height: var(--app-scrollbar-size, var(--scrollbar-size));
+}
+
+.app-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb, var(--scrollbar-thumb));
+  border-radius: var(--app-scrollbar-radius, var(--scrollbar-radius));
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover, var(--scrollbar-thumb-hover));
+}
+
+.app-scrollbar--thin {
+  --app-scrollbar-size: 4px;
+  --app-scrollbar-radius: 2px;
+}
+
+.app-scrollbar--inverse {
+  --app-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --app-scrollbar-thumb-hover: rgba(255, 255, 255, 0.34);
+}
+
+.app-scrollbar--reader {
+  --app-scrollbar-thumb: rgba(128, 128, 128, 0.3);
+  --app-scrollbar-thumb-hover: rgba(128, 128, 128, 0.48);
+}
+
+.app-scrollbar--muted {
+  --app-scrollbar-thumb: rgba(63, 63, 70, 0.84);
+  --app-scrollbar-thumb-hover: rgba(113, 113, 122, 0.96);
+}
+
+.app-scrollbar--hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-scrollbar--hidden::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.app-scrollbar-proxy--hidden :where(.n-tabs-nav-scroll-wrapper) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-scrollbar-proxy--hidden :where(.n-tabs-nav-scroll-wrapper)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* ============================================================
@@ -179,9 +378,76 @@ ul, ol {
 
 /**
  * 章节名标题 — 所有非漫画翻页/滚动模式共用。
- * 分页模式通过 v-html 注入 <p class="reader-chapter-title">，需全局生效。
- * 关键属性加 !important 以覆盖各模式 :deep(p) 设置的排版变量。
+ * 分页模式通过 v-html 注入章节块，需全局生效。
+ * 关键属性加 !important 以覆盖各模式的局部排版变量。
  */
+.reader-page-fragments {
+  width: 100%;
+  height: 100%;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+.reader-block {
+  margin: 0;
+  padding: 0;
+  font-family: var(--reader-font-family);
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  letter-spacing: var(--reader-letter-spacing);
+  word-spacing: var(--reader-word-spacing);
+  font-weight: var(--reader-font-weight);
+  font-style: var(--reader-font-style);
+  text-align: var(--reader-text-align);
+  text-decoration: var(--reader-text-decoration);
+  font-variant: var(--reader-font-variant);
+  -webkit-text-stroke-width: var(--reader-text-stroke-width);
+  -webkit-text-stroke-color: var(--reader-text-stroke-color);
+  text-shadow: var(--reader-text-shadow);
+  color: var(--reader-text-color);
+  word-break: break-all;
+  overflow-wrap: break-word;
+  font-synthesis: weight style;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+.reader-line {
+  display: block;
+  box-sizing: border-box;
+  overflow: hidden;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+.reader-line--justify {
+  text-align-last: justify;
+}
+
+.reader-gap {
+  display: block;
+  width: 100%;
+}
+
+.reader-page-fragments--manual-lines .reader-block {
+  text-indent: 0 !important;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.reader-page-fragments--manual-lines .reader-line {
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+.reader-page-fragments--manual-lines .reader-chapter-title {
+  padding-top: 0;
+  margin-bottom: 0;
+}
+
 .reader-chapter-title {
   font-family: var(--reader-font-family);
   font-size: calc(var(--reader-font-size) + 4px) !important;
@@ -216,10 +482,16 @@ ul, ol {
   pointer-events: none;
   z-index: 10000;
 }
-.boundary-toast-enter-active { transition: opacity 0.2s ease; }
-.boundary-toast-leave-active { transition: opacity 0.4s ease; }
+.boundary-toast-enter-active {
+  transition: opacity 0.2s ease;
+}
+.boundary-toast-leave-active {
+  transition: opacity 0.4s ease;
+}
 .boundary-toast-enter-from,
-.boundary-toast-leave-to { opacity: 0; }
+.boundary-toast-leave-to {
+  opacity: 0;
+}
 
 button {
   font: inherit;
@@ -246,7 +518,9 @@ button {
   }
 
   /* 去除 Android 点击高亮 */
-  button, a, [role="button"] {
+  button,
+  a,
+  [role='button'] {
     -webkit-tap-highlight-color: transparent;
   }
 }

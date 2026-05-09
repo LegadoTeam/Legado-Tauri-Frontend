@@ -1,133 +1,159 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { isTauri } from '@/composables/useEnv'
-import { invoke } from '@tauri-apps/api/core'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { ref, watch } from 'vue';
+import { extractLocalFilePath, isLocalFileRef, toFileSrcSync } from '@/composables/useFileSrc';
+import { invokeWithTimeout } from '@/composables/useInvoke';
+import {
+  getCoverImageHeaders,
+  getCoverImageReferer,
+  getCoverImageSourceUrl,
+  getCoverImageUrl,
+  type CoverImageInput,
+} from '@/utils/coverImage';
 
 /**
  * 书籍封面图片组件
  *
  * Props:
- *   src     — 封面 URL（可为相对路径）
+ *   src     — 封面 URL，或 { url, referer, sourceUrl, headers }
  *   alt     — alt 文本
  *   baseUrl — 用于解析相对 URL 的基础 URL（通常为 bookUrl / tocUrl），
  *             同时作为本地磁盘缓存的触发条件（仅在 Tauri 环境生效）
  *
- * 缓存策略（Tauri 环境）：
- *   1. 每次 src 变化时，先用 JS URL API 解析相对路径
- *   2. 向 Rust 查询本地缓存（cover_check_cache）
- *   3. 命中 → 立即使用 convertFileSrc(localPath) 显示本地图片
- *   4. 未命中 → 使用绝对网络 URL 正常加载
- *   5. 图片 onLoad 成功后 → 后台调用 cover_download_cache 异步缓存
+ * 缓存策略（Tauri / Web-WS）：
+ *   1. 每次 src 变化时，解析封面 URL 和来源元数据
+ *   2. 交给 Rust 检查缓存；未命中时 Rust 带 Referer 下载
+ *   3. Rust 返回本地缓存路径后再显示图片，期间保持加载中
  *
  * 相对 URL 解析：
  *   new URL(src, baseUrl) — 标准 WHATWG URL 解析，与浏览器行为一致
  */
 
-const props = withDefaults(defineProps<{
-  src?: string
-  alt?: string
-  /** 用于解析相对路径的基础 URL（bookUrl / tocUrl 等），同时启用本地缓存 */
-  baseUrl?: string
-}>(), { alt: '' })
+const props = withDefaults(
+  defineProps<{
+    src?: CoverImageInput;
+    alt?: string;
+    /** 用于解析相对路径的基础 URL（bookUrl / tocUrl 等），同时启用本地缓存 */
+    baseUrl?: string;
+  }>(),
+  { alt: '' },
+);
 
-type CoverStatus = 'loading' | 'loaded' | 'error' | 'empty'
+type CoverStatus = 'loading' | 'loaded' | 'error' | 'empty';
 
-const status = ref<CoverStatus>('empty')
+const status = ref<CoverStatus>('empty');
 /** 最终传给 <img> 的 src（已解析 & 可能是本地 asset:// URI） */
-const resolvedSrc = ref<string | undefined>(undefined)
+const resolvedSrc = ref<string | undefined>(undefined);
 /** 当前展示的是否来自本地缓存（避免重复触发下载） */
-const isFromCache = ref(false)
-/** 当前等待缓存的绝对网络 URL */
-const pendingCacheUrl = ref<string | undefined>(undefined)
+const isFromCache = ref(false);
 /**
  * 最近一次 onLoad 成功时的 resolvedSrc 值。
  * 当 watch 触发但 resolvedSrc 未变化时，直接恢复 'loaded' 状态，
  * 避免 status 卡在 'loading'（img src 不变则 onLoad 不会重复触发）。
  */
-const lastLoadedSrc = ref<string | undefined>(undefined)
+const lastLoadedSrc = ref<string | undefined>(undefined);
 
 /** 用序号防止异步竞态：只有最新一次 watch 触发的结果才会生效 */
-let resolveSeq = 0
+let resolveSeq = 0;
+
+async function hasCoverCacheTransport(): Promise<boolean> {
+  const { isTransportAvailable } = await import('@/composables/useTransport');
+  return isTransportAvailable();
+}
 
 /** 将可能为相对路径的 url 解析为绝对 URL */
 function toAbsUrl(url: string, base: string | undefined): string {
-  if (!base) return url
+  if (!base) {
+    return url;
+  }
   try {
-    return new URL(url, base).href
+    return new URL(url, base).href;
   } catch {
-    return url
+    return url;
   }
 }
 
 /** 应用新的 resolvedSrc，若与上次成功加载的 src 相同则直接标记为 loaded */
-function applyResolvedSrc(newSrc: string, fromCache: boolean, cacheUrl?: string) {
-  isFromCache.value = fromCache
-  pendingCacheUrl.value = cacheUrl
-  resolvedSrc.value = newSrc
+function applyResolvedSrc(newSrc: string, fromCache: boolean) {
+  isFromCache.value = fromCache;
+  resolvedSrc.value = newSrc;
   // img src 未变化时，onLoad 不会重触发，直接恢复 loaded 状态
-  status.value = newSrc === lastLoadedSrc.value ? 'loaded' : 'loading'
+  status.value = newSrc === lastLoadedSrc.value ? 'loaded' : 'loading';
 }
 
 watch(
   [() => props.src, () => props.baseUrl],
   async ([src, baseUrl]) => {
-    const seq = ++resolveSeq
+    const seq = ++resolveSeq;
+    const rawUrl = getCoverImageUrl(src);
 
-    if (!src) {
-      resolvedSrc.value = undefined
-      isFromCache.value = false
-      pendingCacheUrl.value = undefined
-      status.value = 'empty'
-      return
+    if (!rawUrl) {
+      resolvedSrc.value = undefined;
+      isFromCache.value = false;
+      status.value = 'empty';
+      return;
     }
 
-    // Step 1: 解析为绝对 URL（JS 端，同步）
-    const absUrl = toAbsUrl(src, baseUrl)
+    if (isLocalFileRef(rawUrl)) {
+      applyResolvedSrc(toFileSrcSync(extractLocalFilePath(rawUrl)), true);
+      return;
+    }
 
-    // Step 2: Tauri 环境下查询本地缓存
-    if (isTauri && baseUrl) {
+    const sourceUrl = getCoverImageSourceUrl(src);
+    const absUrl = toAbsUrl(rawUrl, sourceUrl || baseUrl);
+    status.value = 'loading';
+    resolvedSrc.value = undefined;
+
+    if (await hasCoverCacheTransport()) {
       try {
-        const localPath = await invoke<string | null>('cover_check_cache', { url: absUrl })
-        if (seq !== resolveSeq) return // 请求已过期
-        if (localPath) {
-          applyResolvedSrc(convertFileSrc(localPath), true, undefined)
-          return
+        const result = await invokeWithTimeout<{ localPath: string; localRef: string }>(
+          'cover_resolve_cache',
+          {
+            request: {
+              url: absUrl,
+              referer: getCoverImageReferer(src),
+              headers: getCoverImageHeaders(src) ?? null,
+            },
+          },
+          20000,
+        );
+        if (seq !== resolveSeq) {
+          return;
         }
+        applyResolvedSrc(toFileSrcSync(result.localPath), true);
+        return;
       } catch {
-        // 缓存查询失败，静默降级到网络 URL
+        if (seq === resolveSeq) {
+          status.value = 'error';
+        }
+        return;
       }
     }
 
-    if (seq !== resolveSeq) return
-    applyResolvedSrc(absUrl, false, absUrl)
+    if (seq !== resolveSeq) {
+      return;
+    }
+    applyResolvedSrc(absUrl, false);
   },
-  { immediate: true }
-)
+  { immediate: true },
+);
 
 function onLoad() {
-  lastLoadedSrc.value = resolvedSrc.value
-  status.value = 'loaded'
-  // 图片加载成功：后台异步缓存（仅非缓存来源的图片，且在 Tauri 环境）
-  if (isTauri && !isFromCache.value && pendingCacheUrl.value) {
-    invoke('cover_download_cache', { url: pendingCacheUrl.value }).catch(() => {
-      // 静默失败：缓存失败不影响当前显示
-    })
-  }
+  lastLoadedSrc.value = resolvedSrc.value;
+  status.value = 'loaded';
 }
 
 function onError() {
   // 若本地缓存文件异常（如被手动删除），尝试回退到原始网络 URL
-  if (isFromCache.value && props.src && props.baseUrl) {
-    const absUrl = toAbsUrl(props.src, props.baseUrl)
+  const rawUrl = getCoverImageUrl(props.src);
+  if (isFromCache.value && rawUrl && props.baseUrl && !isLocalFileRef(rawUrl)) {
+    const absUrl = toAbsUrl(rawUrl, getCoverImageSourceUrl(props.src) || props.baseUrl);
     if (resolvedSrc.value !== absUrl) {
-      applyResolvedSrc(absUrl, false, absUrl)
-      return
+      applyResolvedSrc(absUrl, false);
+      return;
     }
   }
-  status.value = 'error'
+  status.value = 'error';
 }
-
 </script>
 
 <template>
@@ -161,7 +187,12 @@ function onError() {
         aria-hidden="true"
       >
         <rect x="4" y="2" width="12" height="18" rx="2" stroke="currentColor" stroke-width="1.5" />
-        <path d="M4 7h12M7 11h6M7 14h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+        <path
+          d="M4 7h12M7 11h6M7 14h4"
+          stroke="currentColor"
+          stroke-width="1.2"
+          stroke-linecap="round"
+        />
         <path
           d="M16 5v14l2.5-1.5 2.5 1.5V5"
           stroke="currentColor"
@@ -221,8 +252,12 @@ function onError() {
 }
 
 @keyframes cover-shimmer {
-  0%   { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 /* ── 占位状态 ── */

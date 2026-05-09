@@ -1,132 +1,345 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useMessage } from 'naive-ui'
-import type { BookSourceMeta } from '../../composables/useBookSource'
-import type { BookItem } from '../../composables/useScriptBridge'
-import { useScriptBridge } from '../../composables/useScriptBridge'
-import { isHtmlExploreResult } from '../../composables/useExploreBridge'
-import BookCard from './BookCard.vue'
-import ExploreHtmlRenderer from './ExploreHtmlRenderer.vue'
+import { useMessage } from 'naive-ui';
+import { ref, computed, onMounted, watch } from 'vue';
+import type { BookItem } from '@/stores';
+import { useScriptBridgeStore } from '@/stores';
+import type { BookSourceMeta } from '../../composables/useBookSource';
+import { isHtmlExploreResult } from '../../composables/useExploreBridge';
+import {
+  getCachedExploreCategories,
+  setCachedExploreCategories,
+  getCachedExploreBooks,
+  setCachedExploreBooks,
+} from '../../composables/useExploreCategoryCache';
+import AppSkeleton from '../base/AppSkeleton.vue';
+import BookCard from './BookCard.vue';
+import ExploreHtmlRenderer from './ExploreHtmlRenderer.vue';
 
 const props = defineProps<{
-  source: BookSourceMeta
-  showCovers?: boolean
-  /** 递增触发刷新 */
-  refreshTrigger?: number
-}>()
+  source: BookSourceMeta;
+  active?: boolean;
+  prefetch?: boolean;
+  showCovers?: boolean;
+  /** 仅当版本变化时才触发重载 */
+  reloadVersion?: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'select', book: BookItem, fileName: string): void
-  (e: 'open-book', bookUrl: string): void
-  (e: 'search', keyword: string): void
-  (e: 'refreshing', val: boolean): void
-}>()
+  (e: 'select', book: BookItem, fileName: string): void;
+  (e: 'open-book', bookUrl: string): void;
+  (e: 'search', keyword: string): void;
+  (e: 'refreshing', val: boolean): void;
+}>();
 
-const message = useMessage()
-const { runExplore, clearExploreCache } = useScriptBridge()
+const message = useMessage();
+const { runExplore, clearExploreCache } = useScriptBridgeStore();
 
 /** 最小 loading 展示时长（ms），防止 loading 一闪而过 */
 // MIN_LOADING_MS: 已注释掉的 loading 最小展示时长（保留供将来启用）
 
 // ── 分类 ──────────────────────────────────────────────────────────────────
-const categories = ref<string[]>([])
-const catLoading = ref(true)
-const catError = ref('')
+const categories = ref<string[]>([]);
+const catLoading = ref(false); // 有缓存时不显示骨架屏
+const catError = ref('');
+
+/** 比较两个字符串数组是否内容相同（顺序敏感） */
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/** 比较两个书籍列表是否相同（用 bookUrl 作为稳定标识符） */
+function bookListsEqual(a: BookItem[], b: BookItem[]): boolean {
+  return a.length === b.length && a.every((item, i) => item.bookUrl === b[i].bookUrl);
+}
+
+/** 手动刷新时置 true，loadBooks 消费后重置，强制跳过持久化缓存 */
+let forceRefreshBooksFlag = false;
 
 // ── 当前选中分类的书籍 ──────────────────────────────────────────────────
-const activeCategory = ref('')
-const books = ref<BookItem[]>([])
-const booksLoading = ref(false)
-const booksError = ref('')
+const activeCategory = ref('');
+const books = ref<BookItem[]>([]);
+const booksLoading = ref(false);
+const booksError = ref('');
 /** HTML 交互页内容（当 explore 返回 {type:'html'} 时使用） */
-const htmlContent = ref<string | null>(null)
+const htmlContent = ref<string | null>(null);
+const hasAttemptedInitialLoad = ref(false);
+const pendingActivationRefresh = ref(false);
+/** 是否已完成过至少一次书籍内容加载 */
+const booksEverLoaded = ref(false);
+/** 非激活状态下触发了刷新，激活时需要补加载书籍 */
+const pendingBooksLoad = ref(false);
+let categoryRequestToken = 0;
+let booksRequestToken = 0;
 
-async function loadCategories(restoreCategory?: string) {
-  catLoading.value = true
-  catError.value = ''
+// ── 翻页 ─────────────────────────────────────────────────────────────────
+const currentPage = ref(1);
+
+const paginationPages = computed(() => {
+  const start = Math.max(1, currentPage.value - 3);
+  const end = currentPage.value + 3;
+  const pages: number[] = [];
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  return pages;
+});
+
+function goToPage(page: number) {
+  if (page < 1 || booksLoading.value) {
+    return;
+  }
+  void loadBooks(activeCategory.value, page);
+}
+
+async function loadCategories(restoreCategory?: string, skipBooks = false) {
+  const requestToken = ++categoryRequestToken;
+  catError.value = '';
+
+  // ── stale-while-revalidate ───────────────────────────────────
+  // 1. 立刻用缓存（无骨架屏）；2. 后台异步刷新；3. 仅有变化才重渲染
+  const cached = getCachedExploreCategories(props.source.fileName);
+  if (cached && cached.length > 0) {
+    // 直接应用缓存，不显示骨架屏
+    categories.value = cached;
+    catLoading.value = false;
+    if (!skipBooks && !booksEverLoaded.value) {
+      const target =
+        restoreCategory && cached.includes(restoreCategory) ? restoreCategory : cached[0];
+      void loadBooks(target);
+    }
+    // 后台刷新（静默，失败不报错）
+    void (async () => {
+      try {
+        const raw = await runExplore(props.source.fileName, 'GETALL');
+        if (requestToken !== categoryRequestToken) return;
+        if (!Array.isArray(raw)) return;
+        const fresh = raw.filter((v): v is string => typeof v === 'string');
+        // 仅有变化才更新缓存 + 重渲染，内容与缓存一致时无需任何操作
+        if (!stringArraysEqual(categories.value, fresh)) {
+          categories.value = fresh;
+          setCachedExploreCategories(props.source.fileName, fresh);
+          // 当前分类不在新列表中，切换到首个分类
+          if (fresh.length && !fresh.includes(activeCategory.value)) {
+            void loadBooks(fresh[0]);
+          }
+        }
+      } catch {
+        // 后台刷新失败不影响 UI
+      }
+    })();
+    return;
+  }
+
+  // 无缓存：正常显示骨架屏加载
+  catLoading.value = true;
   try {
-    const raw = await runExplore(props.source.fileName, 'GETALL')
+    const raw = await runExplore(props.source.fileName, 'GETALL');
+    if (requestToken !== categoryRequestToken) {
+      return;
+    }
     if (Array.isArray(raw)) {
-      categories.value = raw.filter((v): v is string => typeof v === 'string')
-      if (categories.value.length) {
-        const target = restoreCategory && categories.value.includes(restoreCategory)
-          ? restoreCategory
-          : categories.value[0]
-        await loadBooks(target)
+      const cats = raw.filter((v): v is string => typeof v === 'string');
+      categories.value = cats;
+      // 首次获取到分类后立即缓存
+      if (cats.length) setCachedExploreCategories(props.source.fileName, cats);
+      if (cats.length && !skipBooks) {
+        const target =
+          restoreCategory && cats.includes(restoreCategory) ? restoreCategory : cats[0];
+        await loadBooks(target);
       }
     }
   } catch (e: unknown) {
-    catError.value = e instanceof Error ? e.message : String(e)
+    if (requestToken === categoryRequestToken) {
+      catError.value = e instanceof Error ? e.message : String(e);
+    }
   } finally {
-    catLoading.value = false
+    if (requestToken === categoryRequestToken) {
+      catLoading.value = false;
+    }
   }
 }
 
-async function loadBooks(category: string) {
-  activeCategory.value = category
-  booksError.value = ''
-  booksLoading.value = true
-  htmlContent.value = null
+async function loadBooks(category: string, page = 1) {
+  const requestToken = ++booksRequestToken;
+  activeCategory.value = category;
+  currentPage.value = page;
+  booksError.value = '';
+  booksEverLoaded.value = true;
 
+  // ── 第 1 页：stale-while-revalidate 持久化缓存 ──────────────────────────
+  const forceRefresh = forceRefreshBooksFlag;
+  forceRefreshBooksFlag = false;
+
+  if (page === 1 && !forceRefresh) {
+    const cached = getCachedExploreBooks(props.source.fileName, category);
+    if (cached) {
+      // 立即展示缓存数据，不显示 loading 遮罩
+      htmlContent.value = null;
+      books.value = cached;
+      booksLoading.value = false;
+
+      // 后台静默刷新
+      void (async () => {
+        try {
+          const raw = await runExplore(props.source.fileName, category, 1);
+          if (requestToken !== booksRequestToken) return;
+          if (isHtmlExploreResult(raw)) {
+            // HTML 交互页不缓存，直接切换
+            htmlContent.value = raw.html;
+            books.value = [];
+            return;
+          }
+          const fresh = Array.isArray(raw) ? (raw as BookItem[]) : [];
+          // 更新缓存（无论是否有变化都刷新时间戳）
+          setCachedExploreBooks(props.source.fileName, category, fresh);
+          // 仅当内容有变化时才更新视图
+          if (!bookListsEqual(books.value, fresh)) {
+            books.value = fresh;
+          }
+        } catch {
+          // 后台刷新失败不影响 UI
+        }
+      })();
+      return;
+    }
+  }
+
+  // ── 无缓存 / 翻页 / 强制刷新：正常 loading 流程 ─────────────────────────
+  booksLoading.value = true;
   try {
-    const raw = await runExplore(props.source.fileName, category)
+    const raw = await runExplore(props.source.fileName, category, page);
+    if (requestToken !== booksRequestToken) {
+      return;
+    }
     if (isHtmlExploreResult(raw)) {
-      // HTML 交互页模式
-      htmlContent.value = raw.html
-      books.value = []
+      // HTML 交互页模式（不缓存）
+      htmlContent.value = raw.html;
+      books.value = [];
     } else {
       // 标准书籍列表模式
-      books.value = Array.isArray(raw) ? (raw as BookItem[]) : []
+      htmlContent.value = null;
+      const freshBooks = Array.isArray(raw) ? (raw as BookItem[]) : [];
+      books.value = freshBooks;
+      // 第 1 页结果写入持久化缓存
+      if (page === 1) {
+        setCachedExploreBooks(props.source.fileName, category, freshBooks);
+      }
     }
   } catch (e: unknown) {
-    booksError.value = e instanceof Error ? e.message : String(e)
-    message.error(`加载 ${category} 失败: ${booksError.value}`)
+    if (requestToken === booksRequestToken) {
+      booksError.value = e instanceof Error ? e.message : String(e);
+      message.error(`加载 ${category} 失败: ${booksError.value}`);
+    }
   } finally {
-    booksLoading.value = false
+    if (requestToken === booksRequestToken) {
+      booksLoading.value = false;
+    }
   }
 }
 
-onMounted(() => loadCategories())
+async function ensureLoadedWhenEligible() {
+  if (!props.active && !props.prefetch) {
+    return;
+  }
+  if (booksLoading.value) {
+    return;
+  }
+  if (catLoading.value && hasAttemptedInitialLoad.value && !pendingActivationRefresh.value) {
+    return;
+  }
+  if (!hasAttemptedInitialLoad.value || pendingActivationRefresh.value) {
+    const restoreCategory = pendingActivationRefresh.value ? activeCategory.value : undefined;
+    hasAttemptedInitialLoad.value = true;
+    pendingActivationRefresh.value = false;
+    // 非激活状态只预加载分类列表，切换过来时再按需加载书籍
+    const skipBooks = !props.active;
+    if (skipBooks) {
+      pendingBooksLoad.value = true;
+    }
+    await loadCategories(restoreCategory, skipBooks);
+  } else if (
+    props.active &&
+    categories.value.length > 0 &&
+    (!booksEverLoaded.value || pendingBooksLoad.value)
+  ) {
+    // 分类已预加载完毕，刚切换到此 tab，补加载书籍内容
+    pendingBooksLoad.value = false;
+    await loadBooks(activeCategory.value || categories.value[0]);
+  }
+}
 
-const refreshing = ref(false)
+const refreshing = ref(false);
 
 /** 刷新：清空缓存，重新加载分类并尽量恢复原选中分类 */
 async function handleRefresh() {
-  refreshing.value = true
-  emit('refreshing', true)
-  const previousCategory = activeCategory.value
+  refreshing.value = true;
+  emit('refreshing', true);
+  const previousCategory = activeCategory.value;
   try {
-    await clearExploreCache(props.source.fileName)
-    await loadCategories(previousCategory)
-    message.success('刷新成功')
+    await clearExploreCache(props.source.fileName);
+    // 标记跳过持久化书籍缓存，确保本次加载强制走网络
+    forceRefreshBooksFlag = true;
+    await loadCategories(previousCategory);
+    message.success('刷新成功');
   } catch (e: unknown) {
-    message.error(`刷新失败: ${e instanceof Error ? e.message : String(e)}`)
+    forceRefreshBooksFlag = false; // 异常时重置
+    message.error(`刷新失败: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    refreshing.value = false
-    emit('refreshing', false)
+    refreshing.value = false;
+    emit('refreshing', false);
   }
 }
 
-// 外部 refreshTrigger 递增时触发刷新
-watch(() => props.refreshTrigger, (val, old) => {
-  if (val !== undefined && old !== undefined && val !== old) {
-    handleRefresh()
-  }
-})
+onMounted(() => {
+  void ensureLoadedWhenEligible();
+});
+
+watch(
+  () => [props.active, props.prefetch] as const,
+  ([active, prefetch]) => {
+    if (active || prefetch) {
+      void ensureLoadedWhenEligible();
+    }
+  },
+  { immediate: true },
+);
+
+// 仅当当前书源的 reloadVersion 变化时才重载；未激活页签只标记待刷新
+watch(
+  () => props.reloadVersion,
+  (val, old) => {
+    if (val !== undefined && old !== undefined && val !== old) {
+      if (props.active) {
+        void handleRefresh();
+      } else {
+        pendingActivationRefresh.value = true;
+        void ensureLoadedWhenEligible();
+      }
+    }
+  },
+);
 </script>
 
 <template>
   <div class="ses">
     <!-- 加载分类中 -->
-    <div v-if="catLoading" class="ses__cat-loading">
-      <n-spin size="small" />
-      <span>加载分类中…</span>
+    <div v-if="catLoading" class="ses__skeleton">
+      <div class="ses__skeleton-cats">
+        <AppSkeleton
+          v-for="idx in 4"
+          :key="`cat-${idx}`"
+          variant="rect"
+          width="72px"
+          height="28px"
+        />
+      </div>
+      <div class="ses__skeleton-grid">
+        <AppSkeleton v-for="idx in 6" :key="`card-${idx}`" variant="rect" height="112px" />
+      </div>
     </div>
 
     <!-- 分类加载失败 -->
-    <div v-else-if="catError" class="ses__error">
-      加载失败: {{ catError }}
-    </div>
+    <div v-else-if="catError" class="ses__error">加载失败: {{ catError }}</div>
 
     <!-- 分类标签行 -->
     <template v-else-if="categories.length">
@@ -170,10 +383,35 @@ watch(() => props.refreshTrigger, (val, old) => {
             :key="book.bookUrl"
             :book="book"
             :show-cover="showCovers ?? true"
+            :source-type="source.sourceType"
             @select="emit('select', book, source.fileName)"
           />
         </div>
         <div v-else-if="!booksLoading" class="ses__empty">暂无数据</div>
+      </div>
+
+      <!-- 翻页栏（标准书单模式，首页有数据或已翻页时显示） -->
+      <div v-if="!htmlContent && (books.length > 0 || currentPage > 1)" class="ses__pagination">
+        <button
+          class="ses__page-btn"
+          :disabled="currentPage === 1 || booksLoading"
+          @click="goToPage(currentPage - 1)"
+        >
+          上一页
+        </button>
+        <button
+          v-for="p in paginationPages"
+          :key="p"
+          class="ses__page-btn"
+          :class="{ 'ses__page-btn--active': p === currentPage }"
+          :disabled="booksLoading"
+          @click="goToPage(p)"
+        >
+          {{ p }}
+        </button>
+        <button class="ses__page-btn" :disabled="booksLoading" @click="goToPage(currentPage + 1)">
+          下一页
+        </button>
       </div>
     </template>
 
@@ -188,18 +426,28 @@ watch(() => props.refreshTrigger, (val, old) => {
   flex-direction: column;
 }
 
-.ses__cat-loading {
+.ses__skeleton {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 16px 0;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 10px 0 var(--space-4);
+}
+
+.ses__skeleton-cats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ses__skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 210px), 1fr));
+  gap: var(--space-2);
 }
 
 .ses__error {
-  padding: 12px 0;
-  font-size: 0.8125rem;
+  padding: var(--space-3) 0;
+  font-size: var(--fs-13);
   color: var(--color-danger);
 }
 
@@ -210,19 +458,24 @@ watch(() => props.refreshTrigger, (val, old) => {
   flex-wrap: wrap;
 }
 .ses__cat-btn {
-  padding: 4px 12px;
+  padding: 4px var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-1);
   background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: 0.8125rem;
+  color: var(--color-text-soft);
+  font-size: var(--fs-13);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
   white-space: nowrap;
 }
-.ses__cat-btn:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+@media (hover: hover) and (pointer: fine) {
+  .ses__cat-btn:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
 }
 .ses__cat-btn--active {
   background: var(--color-accent);
@@ -254,17 +507,64 @@ watch(() => props.refreshTrigger, (val, old) => {
   opacity: 0;
 }
 
+@keyframes ses-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .ses__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--explore-col-min, 210px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 210px), 1fr));
   gap: 6px;
   padding: 8px 0;
 }
 
 .ses__empty {
-  padding: 24px 0;
+  padding: var(--space-6) 0;
   text-align: center;
-  font-size: 0.8125rem;
+  font-size: var(--fs-13);
   color: var(--color-text-muted);
+}
+
+.ses__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 0 8px;
+  flex-wrap: wrap;
+}
+
+.ses__page-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: var(--fs-13);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+  white-space: nowrap;
+  min-width: 36px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ses__page-btn:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+}
+.ses__page-btn--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  font-weight: var(--fw-semibold);
+}
+.ses__page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

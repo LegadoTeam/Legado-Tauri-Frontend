@@ -1,33 +1,51 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { BookItem } from '../../composables/useScriptBridge'
-import type { AggregatedBook, TaggedBookItem } from './AggregatedSearchResults.vue'
-import defaultLogoUrl from '../../assets/booksource-default.svg'
-import BookCoverImg from '../BookCoverImg.vue'
+import { ChevronRight } from 'lucide-vue-next';
+import { ref } from 'vue';
+import type { BookItem } from '@/stores';
+import type { AggregatedBook, TaggedBookItem } from '@/types';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { getBookMetaBadges, getBookMetaLine, getLatestChapterText } from '@/utils/bookMeta';
+import defaultLogoUrl from '../../assets/booksource-default.svg';
+import BookCoverImg from '../BookCoverImg.vue';
 
 const props = defineProps<{
-  group: AggregatedBook
-  showCover?: boolean
-}>()
+  group: AggregatedBook;
+  showCover?: boolean;
+}>();
 
 const emit = defineEmits<{
-  (e: 'select', book: BookItem, fileName: string): void
-}>()
+  (e: 'select', book: BookItem, fileName: string): void;
+}>();
 
-const showSourcePicker = ref(false)
+const showSourcePicker = ref(false);
+
+useOverlayBackstack(
+  () => showSourcePicker.value,
+  () => {
+    showSourcePicker.value = false;
+  },
+);
 
 function handleClick() {
   if (props.group.sources.length > 1) {
-    showSourcePicker.value = true
+    showSourcePicker.value = true;
   } else {
-    const item = props.group.primary
-    emit('select', item.book, item.fileName)
+    const item = props.group.primary;
+    emit('select', item.book, item.fileName);
   }
 }
 
 function selectSource(item: TaggedBookItem) {
-  showSourcePicker.value = false
-  emit('select', item.book, item.fileName)
+  showSourcePicker.value = false;
+  emit('select', item.book, item.fileName);
+}
+
+function latestChapter(book: BookItem): string {
+  return getLatestChapterText(book);
+}
+
+function metaLine(book: BookItem): string[] {
+  return getBookMetaLine(book);
 }
 </script>
 
@@ -44,23 +62,62 @@ function selectSource(item: TaggedBookItem) {
     <!-- 主卡片 -->
     <div class="stacked-card__main">
       <div v-if="showCover" class="stacked-card__cover">
-        <BookCoverImg :src="group.primary.book.coverUrl" :alt="group.primary.book.name" :base-url="group.primary.book.bookUrl" />
+        <BookCoverImg
+          :src="group.primary.book.coverUrl"
+          :alt="group.primary.book.name"
+          :base-url="group.primary.book.bookUrl"
+        />
       </div>
       <div class="stacked-card__info">
-        <span class="stacked-card__name" :title="group.primary.book.name">
-          {{ group.primary.book.name }}
+        <span
+          class="stacked-card__name"
+          :class="{ 'stacked-card__name--placeholder': !group.primary.book.name }"
+          :title="group.primary.book.name || '未知书名'"
+        >
+          {{ group.primary.book.name || '未知书名' }}
         </span>
-        <span class="stacked-card__author" :title="group.primary.book.author">
-          {{ group.primary.book.author }}
+        <span
+          class="stacked-card__author"
+          :class="{ 'stacked-card__author--placeholder': !group.primary.book.author }"
+          :title="group.primary.book.author || '佚名'"
+        >
+          {{ group.primary.book.author || '佚名' }}
         </span>
-        <div class="stacked-card__tags">
-          <n-tag v-if="group.primary.book.kind" size="tiny" :bordered="false" class="stacked-card__tag">
-            {{ group.primary.book.kind }}
+        <div
+          v-if="getBookMetaBadges(group.primary.book).length"
+          class="stacked-card__tags"
+        >
+          <n-tag
+            v-for="badge in getBookMetaBadges(group.primary.book)"
+            :key="badge.key"
+            size="tiny"
+            :bordered="false"
+            class="stacked-card__tag"
+            :class="`stacked-card__tag--${badge.tone}`"
+          >
+            {{ badge.label }}
           </n-tag>
         </div>
-        <span v-if="group.primary.book.lastChapter" class="stacked-card__latest" :title="group.primary.book.lastChapter">
-          {{ group.primary.book.lastChapter }}
+        <span
+          v-if="latestChapter(group.primary.book)"
+          class="stacked-card__latest"
+          :title="latestChapter(group.primary.book)"
+        >
+          最新：{{ latestChapter(group.primary.book) }}
         </span>
+        <div
+          v-if="metaLine(group.primary.book).length"
+          class="stacked-card__meta-line"
+          :title="metaLine(group.primary.book).join(' · ')"
+        >
+          <span
+            v-for="item in metaLine(group.primary.book)"
+            :key="item"
+            class="stacked-card__meta-item"
+          >
+            {{ item }}
+          </span>
+        </div>
       </div>
       <!-- 多来源角标 -->
       <span v-if="group.sources.length > 1" class="stacked-card__badge">
@@ -88,7 +145,11 @@ function selectSource(item: TaggedBookItem) {
       >
         <!-- 封面 -->
         <div class="source-picker__cover">
-          <BookCoverImg :src="item.book.coverUrl" :alt="item.book.name" :base-url="item.book.bookUrl" />
+          <BookCoverImg
+            :src="item.book.coverUrl"
+            :alt="item.book.name"
+            :base-url="item.book.bookUrl"
+          />
         </div>
 
         <!-- 右侧信息区 -->
@@ -97,12 +158,16 @@ function selectSource(item: TaggedBookItem) {
           <div class="source-picker__source-row">
             <img
               class="source-picker__logo"
-              :src="(item.sourceLogo && item.sourceLogo.toLowerCase() !== 'default') ? item.sourceLogo : defaultLogoUrl"
+              :src="
+                item.sourceLogo && item.sourceLogo.toLowerCase() !== 'default'
+                  ? item.sourceLogo
+                  : defaultLogoUrl
+              "
               :alt="item.sourceName"
               @error="($event.target as HTMLImageElement).src = defaultLogoUrl"
             />
             <span class="source-picker__source-name">{{ item.sourceName }}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="source-picker__arrow"><polyline points="9 18 15 12 9 6"/></svg>
+            <ChevronRight class="source-picker__arrow" :size="13" />
           </div>
 
           <!-- 作者 -->
@@ -111,20 +176,27 @@ function selectSource(item: TaggedBookItem) {
           </div>
 
           <!-- 分类标签 -->
-          <div v-if="item.book.kind" class="source-picker__tags">
+          <div v-if="getBookMetaBadges(item.book).length" class="source-picker__tags">
             <n-tag
-              v-for="tag in item.book.kind.split(/[,，|\/]/).map(t => t.trim()).filter(Boolean)"
-              :key="tag"
+              v-for="badge in getBookMetaBadges(item.book)"
+              :key="badge.key"
               size="tiny"
               :bordered="false"
               class="source-picker__tag"
-            >{{ tag }}</n-tag>
+              :class="`source-picker__tag--${badge.tone}`"
+              >{{ badge.label }}</n-tag
+            >
           </div>
 
           <!-- 最新章节 -->
-          <div v-if="item.book.lastChapter" class="source-picker__last-chapter">
+          <div v-if="latestChapter(item.book)" class="source-picker__last-chapter">
             <span class="source-picker__label">最新</span>
-            <span class="source-picker__chapter-text">{{ item.book.lastChapter }}</span>
+            <span class="source-picker__chapter-text">{{ latestChapter(item.book) }}</span>
+          </div>
+          <div v-if="metaLine(item.book).length" class="source-picker__meta-line">
+            <span v-for="meta in metaLine(item.book)" :key="meta" class="source-picker__meta-item">
+              {{ meta }}
+            </span>
           </div>
 
           <!-- 简介 -->
@@ -156,9 +228,9 @@ function selectSource(item: TaggedBookItem) {
   position: absolute;
   left: 0;
   right: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-2);
   border: 1px solid var(--color-border);
-  background: var(--color-surface-raised);
+  background: var(--color-surface);
   pointer-events: none;
 }
 .stacked-card__layer--2 {
@@ -183,22 +255,26 @@ function selectSource(item: TaggedBookItem) {
   position: relative;
   z-index: 1;
   display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
+  gap: var(--space-2);
+  padding: var(--space-2) 10px;
+  border-radius: var(--radius-2);
   border: 1px solid var(--color-border);
-  background: var(--color-surface-raised);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  background: var(--color-surface);
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
 }
-.stacked-card:hover .stacked-card__main {
-  border-color: var(--color-accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+@media (hover: hover) and (pointer: fine) {
+  .stacked-card:hover .stacked-card__main {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
 }
 
 .stacked-card__cover {
-  width: 48px;
-  height: 64px;
-  border-radius: var(--radius-xs);
+  width: var(--book-card-cover-w, 48px);
+  height: var(--book-card-cover-h, 64px);
+  border-radius: var(--radius-1);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -213,22 +289,31 @@ function selectSource(item: TaggedBookItem) {
 }
 
 .stacked-card__name {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-size: var(--fs-13);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.3;
 }
+.stacked-card__name--placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-weight: var(--fw-normal);
+}
 
 .stacked-card__author {
-  font-size: 0.6875rem;
+  font-size: var(--fs-11);
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.2;
+}
+.stacked-card__author--placeholder {
+  opacity: 0.5;
+  font-style: italic;
 }
 
 .stacked-card__tags {
@@ -237,19 +322,43 @@ function selectSource(item: TaggedBookItem) {
   flex-wrap: wrap;
 }
 .stacked-card__tag {
-  --n-color: var(--color-surface-hover) !important;
+  --n-color: var(--color-hover) !important;
   --n-text-color: var(--color-text-muted) !important;
-  font-size: 0.625rem !important;
+  font-size: var(--fs-10) !important;
+}
+.stacked-card__tag--status {
+  --n-color: color-mix(in srgb, var(--color-success) 12%, transparent) !important;
+  --n-text-color: var(--color-success) !important;
 }
 
 .stacked-card__latest {
-  font-size: 0.625rem;
+  font-size: var(--fs-10);
   color: var(--color-text-muted);
   opacity: 0.7;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.2;
+}
+.stacked-card__meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+  font-size: var(--fs-10);
+  color: var(--color-text-muted);
+  opacity: 0.72;
+}
+.stacked-card__meta-item {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stacked-card__meta-item + .stacked-card__meta-item::before {
+  content: '·';
+  margin-right: 6px;
+  opacity: 0.6;
 }
 
 /* ── 来源角标 ── */
@@ -258,11 +367,11 @@ function selectSource(item: TaggedBookItem) {
   top: 4px;
   right: 6px;
   padding: 1px 6px;
-  border-radius: 10px;
-  font-size: 0.625rem;
-  font-weight: 600;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-10);
+  font-weight: var(--fw-semibold);
   color: #fff;
-  background: var(--color-accent, #6366f1);
+  background: var(--color-accent);
   line-height: 1.4;
   z-index: 2;
 }
@@ -278,24 +387,25 @@ function selectSource(item: TaggedBookItem) {
 .source-picker__card {
   position: relative;
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 4px;
   cursor: pointer;
-  transition: background var(--transition-fast);
-  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease-standard);
+  border-radius: var(--radius-2);
 }
-.source-picker__card:hover {
-  background: var(--color-surface-hover);
+@media (hover: hover) and (pointer: fine) {
+  .source-picker__card:hover {
+    background: var(--color-hover);
+  }
 }
 
 /* 封面 */
 .source-picker__cover {
   width: 72px;
   height: 96px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-1);
   flex-shrink: 0;
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 /* 右侧内容区 */
@@ -317,15 +427,15 @@ function selectSource(item: TaggedBookItem) {
 .source-picker__logo {
   width: 20px;
   height: 20px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-1);
   object-fit: contain;
   flex-shrink: 0;
 }
 
 .source-picker__source-name {
   flex: 1;
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: var(--fs-14);
+  font-weight: var(--fw-bold);
   color: var(--color-accent);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -336,19 +446,23 @@ function selectSource(item: TaggedBookItem) {
   flex-shrink: 0;
   color: var(--color-text-muted);
   opacity: 0.5;
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition:
+    opacity var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
 }
-.source-picker__card:hover .source-picker__arrow {
-  opacity: 1;
-  transform: translateX(2px);
+@media (hover: hover) and (pointer: fine) {
+  .source-picker__card:hover .source-picker__arrow {
+    opacity: 1;
+    transform: translateX(2px);
+  }
 }
 
 /* 字段标签 */
 .source-picker__label {
   display: inline-block;
-  font-size: 0.6875rem;
+  font-size: var(--fs-11);
   color: var(--color-text-muted);
-  background: var(--color-surface-hover);
+  background: var(--color-hover);
   border-radius: 3px;
   padding: 0 4px;
   margin-right: 5px;
@@ -358,8 +472,8 @@ function selectSource(item: TaggedBookItem) {
 
 /* 作者 */
 .source-picker__author {
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  font-size: var(--fs-13);
+  color: var(--color-text-soft);
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -372,9 +486,13 @@ function selectSource(item: TaggedBookItem) {
   flex-wrap: wrap;
 }
 .source-picker__tag {
-  --n-color: var(--color-surface-hover) !important;
+  --n-color: var(--color-hover) !important;
   --n-text-color: var(--color-text-muted) !important;
-  font-size: 0.625rem !important;
+  font-size: var(--fs-10) !important;
+}
+.source-picker__tag--status {
+  --n-color: color-mix(in srgb, var(--color-success) 12%, transparent) !important;
+  --n-text-color: var(--color-success) !important;
 }
 
 /* 最新章节 */
@@ -384,21 +502,34 @@ function selectSource(item: TaggedBookItem) {
   overflow: hidden;
 }
 .source-picker__chapter-text {
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  font-size: var(--fs-13);
+  color: var(--color-text-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.source-picker__meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  font-size: var(--fs-12);
+  color: var(--color-text-muted);
+}
+.source-picker__meta-item + .source-picker__meta-item::before {
+  content: '·';
+  margin-right: 8px;
+  opacity: 0.65;
+}
 
 /* 简介 */
 .source-picker__intro {
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   color: var(--color-text-muted);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { isMobile } from '@/composables/useEnv'
+import { isMobile } from '@/composables/useEnv';
 
-const props = withDefaults(defineProps<{
-  /** 设置项标签 */
-  label: string
-  /** 设置项描述（可选） */
-  desc?: string
-  /** 是否强制垂直堆叠（默认在手机端自动垂直） */
-  vertical?: boolean
-}>(), {
-  vertical: false,
-})
+const props = withDefaults(
+  defineProps<{
+    /** 设置项标签 */
+    label: string;
+    /** 设置项描述（可选） */
+    desc?: string;
+    /** 是否强制垂直堆叠（默认在手机端自动垂直） */
+    vertical?: boolean;
+  }>(),
+  {
+    vertical: false,
+  },
+);
 </script>
 
 <template>
@@ -30,8 +33,8 @@ const props = withDefaults(defineProps<{
   display: grid;
   grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
-  padding: 12px 0;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
 }
 
 .setting-item + .setting-item {
@@ -46,22 +49,22 @@ const props = withDefaults(defineProps<{
 }
 
 .setting-item__label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-primary);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-medium);
+  color: var(--color-text);
 }
 
 .setting-item__desc {
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   color: var(--color-text-muted);
-  line-height: 1.4;
+  line-height: var(--lh-tight);
 }
 
 .setting-item__control {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   flex-wrap: wrap;
 }
@@ -71,7 +74,7 @@ const props = withDefaults(defineProps<{
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .setting-item--vertical .setting-item__control {
@@ -83,7 +86,7 @@ const props = withDefaults(defineProps<{
 @media (max-width: 900px) {
   .setting-item {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .setting-item__control {

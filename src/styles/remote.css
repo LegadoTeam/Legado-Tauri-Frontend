@@ -1,0 +1,56 @@
+:root {
+  --remote-focus-scale: 1.04;
+  --remote-focus-outline: 3px;
+  --remote-focus-offset: 4px;
+}
+
+[data-input-mode='remote'] .focusable,
+[data-input-mode='keyboard'] .focusable {
+  transition:
+    transform var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-base) var(--ease-standard),
+    background var(--dur-base) var(--ease-standard);
+}
+
+[data-input-mode='remote'] .focusable:focus,
+[data-input-mode='remote'] .focusable:focus-visible,
+[data-input-mode='remote'] .focusable[data-focused='true'] {
+  outline: var(--remote-focus-outline) solid var(--color-focus);
+  outline-offset: var(--remote-focus-offset);
+  transform: scale(var(--remote-focus-scale));
+  box-shadow: var(--shadow-2);
+}
+
+[data-input-mode='remote'] .app-button,
+[data-input-mode='remote'] .app-list-item {
+  min-height: 3.5rem;
+}
+
+[data-input-mode='remote'] .reader-bottom-bar {
+  min-height: calc(4.5rem + var(--safe-bottom));
+}
+
+[data-input-mode='remote'] .reader-content {
+  font-size: max(var(--reader-font-size, 1.125rem), 1.25rem);
+}
+
+@media (min-width: 1200px) {
+  [data-input-mode='remote'] {
+    --tap-target: 3.5rem;
+    --control-md: 3.5rem;
+    --control-lg: 4rem;
+  }
+}
+
+/* ── 遥控器/键盘模式：悬停才显示的操作按钮改为常驻显示 ──────────────────── */
+[data-input-mode='remote'] .src-card__actions,
+[data-input-mode='keyboard'] .src-card__actions {
+  opacity: 1 !important;
+  transition: none;
+}
+
+/* 书源管理卡片聚焦时突出显示 */
+[data-input-mode='remote'] .src-card:focus-within .src-card__actions,
+[data-input-mode='keyboard'] .src-card:focus-within .src-card__actions {
+  opacity: 1;
+}

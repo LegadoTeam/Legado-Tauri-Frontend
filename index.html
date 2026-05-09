@@ -2,32 +2,102 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>开源阅读Tauri</title>
     <style>
       /* 首屏骨架屏：在 Vue 挂载前立即显示，避免白屏等待 */
-      html, body { margin: 0; padding: 0; background: #18181b; }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #18181b;
+      }
       #app-skeleton {
-        position: fixed; inset: 0;
-        display: flex; align-items: center; justify-content: center;
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         background: #18181b;
         z-index: 9999;
         transition: opacity 0.2s ease;
       }
-      #app-skeleton.hidden { opacity: 0; pointer-events: none; }
+      #app-skeleton.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #app-skeleton.boot-error {
+        align-items: flex-start;
+        justify-content: center;
+        padding: 12vh 24px 24px;
+      }
       .skeleton-spinner {
-        width: 32px; height: 32px;
+        width: 32px;
+        height: 32px;
         border: 3px solid #3f3f46;
         border-top-color: #818cf8;
         border-radius: 50%;
         animation: spin 0.7s linear infinite;
       }
-      @media (prefers-color-scheme: light) {
-        html, body { background: #f4f4f5; }
-        #app-skeleton { background: #f4f4f5; }
-        .skeleton-spinner { border-color: #e4e4e7; border-top-color: #6366f1; }
+      .skeleton-error {
+        width: min(560px, 100%);
+        border: 1px solid rgba(239, 68, 68, 0.28);
+        border-radius: 12px;
+        background: rgba(24, 24, 27, 0.96);
+        color: #fafafa;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+        padding: 20px;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
+      .skeleton-error__title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .skeleton-error__message {
+        margin-top: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #e4e4e7;
+        line-height: 1.6;
+      }
+      .skeleton-error__hint {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #a1a1aa;
+        line-height: 1.6;
+      }
+      @media (prefers-color-scheme: light) {
+        html,
+        body {
+          background: #f4f4f5;
+        }
+        #app-skeleton {
+          background: #f4f4f5;
+        }
+        .skeleton-spinner {
+          border-color: #e4e4e7;
+          border-top-color: #6366f1;
+        }
+        .skeleton-error {
+          border-color: rgba(239, 68, 68, 0.22);
+          background: rgba(255, 255, 255, 0.96);
+          color: #18181b;
+          box-shadow: 0 18px 50px rgba(24, 24, 27, 0.16);
+        }
+        .skeleton-error__message {
+          color: #27272a;
+        }
+        .skeleton-error__hint {
+          color: #52525b;
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
     </style>
   </head>
 
@@ -35,6 +105,120 @@
     <!-- 骨架屏：Vue 挂载完成后由 main.ts 隐藏 -->
     <div id="app-skeleton"><div class="skeleton-spinner"></div></div>
     <div id="app"></div>
+    <script>
+      (() => {
+        const BOOT_TIMEOUT_MS = 15000;
+        const state = {
+          stage: 'html-ready',
+          errorShown: false,
+        };
+
+        function escapeHtml(value) {
+          return String(value).replace(/[&<>\"']/g, (ch) => {
+            if (ch === '&') return '&amp;';
+            if (ch === '<') return '&lt;';
+            if (ch === '>') return '&gt;';
+            if (ch === '"') return '&quot;';
+            return '&#39;';
+          });
+        }
+
+        function renderBootError(message) {
+          if (state.errorShown) return;
+          state.errorShown = true;
+          const skeleton = document.getElementById('app-skeleton');
+          if (!skeleton) return;
+          skeleton.classList.remove('hidden');
+          skeleton.classList.add('boot-error');
+          skeleton.innerHTML =
+            '<div class="skeleton-error">' +
+            '<div class="skeleton-error__title">应用启动失败</div>' +
+            `<div class="skeleton-error__message">${escapeHtml(message)}</div>` +
+            '<div class="skeleton-error__hint">请按 F12 打开 DevTools 查看报错；如果连页面脚本都没起起来，请检查正式版资源文件是否完整。</div>' +
+            '</div>';
+        }
+
+        function formatReason(reason) {
+          if (!reason) return '未知错误';
+          if (typeof reason === 'string') return reason;
+          if (reason instanceof Error) return reason.stack || reason.message || String(reason);
+          if (typeof reason === 'object') {
+            try {
+              return JSON.stringify(reason, null, 2);
+            } catch (_) {
+              return String(reason);
+            }
+          }
+          return String(reason);
+        }
+
+        window.__LEGADO_SET_BOOT_STAGE = (stage) => {
+          state.stage = stage;
+        };
+        window.__LEGADO_SHOW_BOOT_ERROR = (message) => {
+          renderBootError(message);
+        };
+
+        window.addEventListener('error', (event) => {
+          const details =
+            event.error?.stack ||
+            event.message ||
+            `资源加载失败: ${event.filename || 'unknown file'}`;
+          renderBootError(details);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+          renderBootError(`未处理的 Promise 异常:\n${formatReason(event.reason)}`);
+        });
+
+        window.setTimeout(() => {
+          if (state.stage !== 'app-mounted' && !state.errorShown) {
+            renderBootError(
+              `前端入口在 ${BOOT_TIMEOUT_MS / 1000}s 内没有完成挂载，当前阶段: ${state.stage}`,
+            );
+          }
+        }, BOOT_TIMEOUT_MS);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
+
+    <script>
+      (function (w, d, s, q, i) {
+        w[q] = w[q] || [];
+        var f = d.getElementsByTagName(s)[0],
+          j = d.createElement(s);
+        j.async = true;
+        j.id = 'beacon-aplus';
+        j.src = 'https://d.alicdn.com/alilog/mlog/aplus/' + i + '.js';
+        f.parentNode.insertBefore(j, f);
+      })(window, document, 'script', 'aplus_queue', '203467608');
+
+      //集成应用的appKey
+      aplus_queue.push({
+        action: 'aplus.setMetaInfo',
+        arguments: ['appKey', '69e8aa7b9a7f376488c9bee9'],
+      });
+      /************************以下内容为可选配置内容****************************/
+      //sdk提供手动pv发送机制，启用手动pv(即关闭自动pv)，需设置aplus-waiting=MAN;
+      //注意：由于单页面路由改变时不会刷新页面，无法自动发送pv，所以对于单页应用，强烈建议您关闭自动PV, 手动控制PV事件
+      aplus_queue.push({
+        action: 'aplus.setMetaInfo',
+        arguments: ['aplus-waiting', 'MAN'],
+      });
+      //是否开启调试模式
+      aplus_queue.push({
+        action: 'aplus.setMetaInfo',
+        arguments: ['DEBUG', true],
+      });
+      //是否指定用作计算umid的id类型，默认为cnaid，目前支持:
+      //1. 微信和QQ: openid; 字节和百度 anonymousid; 支付宝 alipay_id
+      //2. 微信、QQ、字节、百度平台的 unionid
+      //3. 业务方自己生成的随机id uuid
+      aplus_queue.push({
+        action: 'aplus.setMetaInfo',
+        arguments: ['aplus-idtype', 'xxxx'], //取值参考见附表1
+      });
+      /******************************************************************/
+    </script>
   </body>
 </html>

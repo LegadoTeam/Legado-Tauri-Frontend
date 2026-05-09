@@ -1,896 +1,1667 @@
-<script setup lang="ts">
-/**
- * ChapterReaderModal — 阅读器主容器（瘦编排层）
- *
- * 负责章节内容加载、离线缓存、子组件编排。
- * UI 细节委派给 ReaderTopBar / ReaderBottomBar / ReaderTocPanel。
- */
-import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useMessage } from 'naive-ui'
-import type { ChapterItem } from '../../composables/useScriptBridge'
-import { useScriptBridge } from '../../composables/useScriptBridge'
-import { useBookshelf } from '../../composables/useBookshelf'
-import { useReaderSettings } from '../reader/composables/useReaderSettings'
-import ScrollMode from '../reader/modes/ScrollMode.vue'
-import SlideMode from '../reader/modes/SlideMode.vue'
-import CoverMode from '../reader/modes/CoverMode.vue'
-import NoneMode from '../reader/modes/NoneMode.vue'
-import SimulationMode from '../reader/modes/SimulationMode.vue'
-import ComicMode from '../reader/modes/ComicMode.vue'
-import ReaderTopBar from '../reader/ReaderTopBar.vue'
-import ReaderBottomBar from '../reader/ReaderBottomBar.vue'
-import ReaderTocPanel from '../reader/ReaderTocPanel.vue'
-import type { ReaderBookInfo } from '../reader/types'
+﻿<script setup lang="ts">
+import { useMessage, useDialog } from 'naive-ui';
+import { storeToRefs } from 'pinia';
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { CachedChapter } from '@/types';
+import {
+  type ChapterGroup,
+  type ChapterItem,
+  useAppConfigStore,
+  useBookshelfStore,
+  useReaderSessionStore,
+  useReaderSettingsStore,
+  useReaderUiStore,
+  useScriptBridgeStore,
+} from '@/stores';
+import type { ReaderBookInfo, WholeBookSwitchedPayload } from '../reader/types';
+import { eventListenSync } from '../../composables/useEventBus';
+import {
+  FRONTEND_PLUGIN_TOAST_EVENT,
+  useFrontendPlugins,
+} from '../../composables/useFrontendPlugins';
+import { useOverlayBackstack } from '../../composables/useOverlayBackstack';
+import { useSync } from '../../composables/useSync';
+import { getCoverImageUrl } from '../../utils/coverImage';
+import ReaderMenuLayer from '../../features/reader/components/ReaderMenuLayer.vue';
+import ReaderModal from '../../features/reader/components/ReaderModal.vue';
+import ReaderPluginLayer from '../../features/reader/components/ReaderPluginLayer.vue';
+import ReaderShell from '../../features/reader/components/ReaderShell.vue';
+import {
+  createReaderCacheController,
+  createReaderPrefetchController,
+} from '../../features/reader/services/readerCache';
+import {
+  clearAllRuntimeTextCache,
+  clearChapterRuntimeTextCache,
+  clearProcessedRuntimeTextCache,
+  createReaderRuntimeTextCache,
+} from '../../features/reader/services/readerContentPipeline';
+import { createReaderLifecycleController } from '../../features/reader/services/readerLifecycle';
+import { createReaderNavigationController } from '../../features/reader/services/readerNavigation';
+import { createReaderSourceSwitchController } from '../../features/reader/services/readerSourceSwitch';
+import { usePagedChapterCache } from '../reader/composables/usePagedChapterCache';
+import { useReaderChapterOpen } from '../reader/composables/useReaderChapterOpen';
+import { useReaderLayoutDump } from '../reader/composables/useReaderLayoutDump';
+import { useReaderModeBridge } from '../reader/composables/useReaderModeBridge';
+import {
+  type ReaderPositionMode,
+  useReaderPosition,
+} from '../reader/composables/useReaderPosition';
+import { useReaderProgressSync } from '../reader/composables/useReaderProgressSync';
+import { useReaderSessionBridge } from '../reader/composables/useReaderSessionBridge';
+import { useReaderTtsManager } from '../reader/composables/useReaderTtsManager';
+import VideoPlayerPage from '../reader/modes/VideoPlayerPage.vue';
+import ReaderContentArea from '../reader/ReaderContentArea.vue';
+
+type PagedModeKind = 'slide' | 'cover' | 'simulation' | 'none';
+
+declare global {
+  interface Window {
+    LegadoAndroidInput?: {
+      setVolumeKeyPageTurnEnabled?: (enabled: boolean) => void;
+    };
+  }
+}
+
+const ReaderMenuLayerComponent = markRaw(ReaderMenuLayer);
+type ReaderNavigationController = ReturnType<typeof createReaderNavigationController>;
 
 const props = defineProps<{
-  show: boolean
-  chapterUrl: string
-  chapterName: string
-  fileName: string
-  chapters: ChapterItem[]
-  currentIndex: number
-  shelfBookId?: string
-  bookInfo?: ReaderBookInfo
-  /** 书源类型：novel（默认）或 comic */
-  sourceType?: string
-  /** 目录刷新中（由父组件控制） */
-  refreshingToc?: boolean
-}>()
+  show: boolean;
+  chapterUrl: string;
+  chapterName: string;
+  fileName: string;
+  chapters: ChapterItem[];
+  currentIndex: number;
+  shelfBookId?: string;
+  bookInfo?: ReaderBookInfo;
+  sourceType?: string;
+  refreshingToc?: boolean;
+  /** 视频多线路分组数据（可选） */
+  chapterGroups?: ChapterGroup[];
+  /** 初始选中的线路索引 */
+  initialGroupIndex?: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'update:show', val: boolean): void
-  (e: 'update:currentIndex', val: number): void
-  (e: 'refresh-toc'): void
-}>()
+  (e: 'update:show', val: boolean): void;
+  (e: 'update:currentIndex', val: number): void;
+  (e: 'refresh-toc'): void;
+  (e: 'added-to-shelf', shelfId: string): void;
+  (e: 'source-switched', payload: WholeBookSwitchedPayload): void;
+}>();
 
-const message = useMessage()
-const { runChapterContent } = useScriptBridge()
-const { updateProgress, saveContent, getContent, getCachedIndices, getShelfBook } = useBookshelf()
+const message = useMessage();
+const dialog = useDialog();
+const _appCfg = useAppConfigStore();
+const { config } = storeToRefs(_appCfg);
+const { runChapterContent, appendDebugLog } = useScriptBridgeStore();
+const sync = useSync();
 const {
-  settings, getContentStyle,
-  activateBookSettings, deactivateBookSettings, getSettingsJson,
-} = useReaderSettings()
+  updateProgress,
+  saveContent,
+  getContent,
+  deleteContent,
+  getCachedIndices,
+  getShelfBook,
+  addToShelf,
+  saveChapters,
+  ensureLoaded: ensureShelfLoaded,
+} = useBookshelfStore();
 
-/** 漫画模式强制白色背景，不受主题 / 夜间模式影响 */
+/**
+ * 在阅读过程中本地获得的书架 ID（通过阅读器内加入书架功能）。
+ * 与 props.shelfBookId 合并为 currentShelfId，优先使用 prop 中传入的已有 ID。
+ */
+const localAddedShelfId = ref('');
+/** 当前生效的书架 ID：来自 prop（已在书架中）或阅读中动态加入书架后设置 */
+const currentShelfId = computed(() => props.shelfBookId || localAddedShelfId.value);
+/** 是否已在书架（含阅读中途加入的情况） */
+const isOnShelf = computed(() => !!currentShelfId.value);
+const addingToShelf = ref(false);
+const readerSessionStore = useReaderSessionStore();
+const {
+  activeChapterIndex,
+  loading,
+  pagedLoading,
+  content,
+  error,
+  currentPageIndex,
+  currentScrollRatio,
+  pagedPageIndex,
+  readIndices,
+  cachedIndices,
+  temporaryChapterOverrides,
+  pendingRestorePageIndex,
+  pendingRestoreScrollRatio,
+  pendingResumePlaybackTime,
+  openingChapter,
+  restoringPosition,
+  navDirection,
+} = storeToRefs(readerSessionStore);
+const readerUiStore = useReaderUiStore();
+const {
+  showMenu,
+  showToc,
+  settingsVisible,
+  showSourceSwitchDialog,
+  sourceSwitchMode,
+  menuOpenTime,
+} = storeToRefs(readerUiStore);
+const {
+  settings,
+  getContentStyle,
+  activateBookSettings,
+  deactivateBookSettings,
+  getSettingsJson,
+  tapZoneDebugPreviewVisible,
+} = useReaderSettingsStore();
+const {
+  state: pluginState,
+  ensureInitialized: ensureFrontendPlugins,
+  openReaderSession,
+  updateReaderSession,
+  closeReaderSession,
+  runReaderContentPipeline,
+  readerAppearanceVars,
+  readerSkins,
+} = useFrontendPlugins();
+
+const runtimeTextCache = createReaderRuntimeTextCache();
+const {
+  rawChapterTextCache,
+  rawChapterTextRequests,
+  processedChapterTextCache,
+  processedChapterTextRequests,
+} = runtimeTextCache;
+
+const menuLayerRef = ref<InstanceType<typeof ReaderMenuLayer> | null>(null);
+const readerBodyRef = ref<HTMLElement | null>(null);
+const measureHostRef = ref<HTMLElement | null>(null);
+const backgroundMeasureHostRef = ref<HTMLElement | null>(null);
+
+let shelfDataReady: Promise<void> | null = null;
+let resizeObserver: ResizeObserver | null = null;
+let resizeRaf = 0;
+let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let unlistenPluginToast: (() => void) | null = null;
+let readerNavigation: ReaderNavigationController | null = null;
+
+const REPAGINATE_DEBOUNCE_MS = 120;
+
+function closeMenuLayerSettings() {
+  const closeSettings = menuLayerRef.value?.closeSettings;
+  if (typeof closeSettings === 'function') {
+    closeSettings();
+  }
+}
+
+const isComicMode = computed(() => props.sourceType === 'comic');
+const isVideoMode = computed(() => props.sourceType === 'video');
+// 皮肤可以锁定翻页模式，优先级高于用户设置
+const activeSkinLockedFlipMode = computed<string | null>(() => {
+  const skinId = settings.skinPresetId;
+  if (!skinId) {
+    return null;
+  }
+  return readerSkins.value.find((s) => s.localId === skinId)?.lockedFlipMode ?? null;
+});
+const effectiveFlipMode = computed(() => activeSkinLockedFlipMode.value ?? settings.flipMode);
+const isScrollMode = computed(
+  () => !isComicMode.value && !isVideoMode.value && effectiveFlipMode.value === 'scroll',
+);
+const pagedMode = computed<PagedModeKind | null>(() => {
+  if (isComicMode.value || isVideoMode.value || effectiveFlipMode.value === 'scroll') {
+    return null;
+  }
+  return effectiveFlipMode.value as PagedModeKind;
+});
+const legacyPagedMode = computed<PagedModeKind | null>(() => {
+  if (!pagedMode.value) {
+    return null;
+  }
+  return pagedMode.value;
+});
+const isPagedMode = computed(() => pagedMode.value !== null);
+
 const effectiveStyle = computed(() => {
-  const base = getContentStyle()
-  if (props.sourceType === 'comic') {
-    base['--reader-bg-color'] = '#ffffff'
-    base['--reader-bg-image'] = 'none'
-    base['--reader-text-color'] = '#1a1a1a'
+  const base = getContentStyle();
+  if (isComicMode.value || isVideoMode.value) {
+    base['--reader-bg-color'] = '#000000';
+    base['--reader-bg-image'] = 'none';
+    base['--reader-bg-size'] = 'auto';
+    base['--reader-bg-position'] = 'center';
+    base['--reader-bg-repeat'] = 'no-repeat';
+    base['--reader-bg-attachment'] = 'scroll';
+    base['--reader-bg-blend-mode'] = 'normal';
+    base['--reader-text-color'] = '#ffffff';
   }
-  return base
-})
+  Object.assign(base, readerAppearanceVars.value);
+  // TTS 高亮色：由选区色派生，自动适配任意主题
+  // 使用 CSS color-mix 确保与主题深浅完美融合
+  base['--reader-tts-hl-bg'] = 'color-mix(in srgb, var(--reader-selection-color) 65%, transparent)';
+  return base;
+});
 
-const loading = ref(false)
-const content = ref('')
-const error = ref('')
-
-/* ---- 阅读位置追踪 ---- */
-/** 当前分页模式的页码 */
-const currentPageIndex = ref(-1)
-/** 当前滚动模式的滚动比例 0~1 */
-const currentScrollRatio = ref(-1)
-/** 上一次保存的章节 index (防止重复保存) */
-let lastSavedChapterIndex = -1
-
-/* ---- 阅读状态追踪 ---- */
-/** 已读过的章节索引集合（从书架进度初始化：0 ~ readChapterIndex） */
-const readIndices = ref<Set<number>>(new Set())
-/** 已下载缓存的章节索引集合（从磁盘扫描获取） */
-const cachedIndices = ref<Set<number>>(new Set())
-
-/** 弹窗打开时，从书架数据初始化阅读状态 */
-async function loadShelfStatus() {
-  if (!props.shelfBookId) return
-
-  // 已缓存索引：扫描磁盘
-  try {
-    cachedIndices.value = await getCachedIndices(props.shelfBookId)
-  } catch {
-    cachedIndices.value = new Set()
-  }
-
-  // 已读索引：0 ~ readChapterIndex 均视为已阅读
-  // bookInfo 上携带了 readChapterIndex（通过 totalChapters 等字段传递）
-  // 实际上 shelfBook 有 readChapterIndex，但这里只能从 bookInfo 间接获取
-  // 用 currentIndex（打开时的初始值）作为已读上限更准确
-  const readUpTo = props.currentIndex >= 0 ? props.currentIndex : -1
-  const set = new Set<number>()
-  for (let i = 0; i <= readUpTo; i++) set.add(i)
-  readIndices.value = set
+function buildReaderContentPayload(
+  stage: Parameters<typeof runReaderContentPipeline>[0],
+  contentText: string,
+  index: number,
+) {
+  const chapter = getChapter(index);
+  return {
+    stage,
+    content: contentText,
+    sourceType: props.sourceType ?? 'novel',
+    fileName: props.fileName,
+    chapterIndex: index,
+    chapterName: chapter?.name ?? props.chapterName,
+    chapterUrl: chapter?.url ?? props.chapterUrl,
+  };
 }
 
-/* ---- 预取缓存 ---- */
-/** key: chapterUrl → value: 正文文本（内存缓存，随弹窗生命周期清除） */
-const prefetchCache = new Map<string, string>()
-/** 正在预取中的 url 集合，防止重复请求 */
-const prefetching = new Set<string>()
-/** 预取缓存最大条数，超出时淘汰最老的条目 */
-const PREFETCH_MAX = 3
-
-/** 将条目写入预取缓存，超出上限时淘汰最早写入的条目 */
-function setPrefetch(url: string, text: string) {
-  if (prefetchCache.size >= PREFETCH_MAX) {
-    const firstKey = prefetchCache.keys().next().value
-    if (firstKey !== undefined) prefetchCache.delete(firstKey)
-  }
-  prefetchCache.set(url, text)
+function getChapter(index: number): ChapterItem | undefined {
+  return index >= 0 && index < props.chapters.length ? props.chapters[index] : undefined;
 }
 
-/* ---- UI 状态 ---- */
-const showMenu = ref(false)
-const showToc = ref(false)
-const settingsVisible = ref(false)
-const bottomBarRef = ref<InstanceType<typeof ReaderBottomBar> | null>(null)
+const activeChapter = computed(() => getChapter(activeChapterIndex.value));
+const hasPrev = computed(() => activeChapterIndex.value > 0);
+const hasNext = computed(() => activeChapterIndex.value < props.chapters.length - 1);
+const currentChapterName = computed(() => activeChapter.value?.name ?? props.chapterName);
+const currentChapterUrl = computed(() => activeChapter.value?.url ?? props.chapterUrl);
+const currentChapterOverride = computed(
+  () => temporaryChapterOverrides.value[activeChapterIndex.value] ?? null,
+);
 
-/** showMenu 关闭时重置 settingsVisible，防止下次打开菜单时顶部栏消失 */
-watch(showMenu, (v) => {
-  if (!v) {
-    bottomBarRef.value?.closeSettings()
-    settingsVisible.value = false
+const {
+  buildReaderSessionSnapshot,
+  openSession,
+  closeSession,
+  syncSessionSnapshot,
+  updateSessionVisibility,
+} = useReaderSessionBridge({
+  getShow: () => props.show,
+  fileName: props.fileName,
+  sourceType: props.sourceType,
+  bookInfo: props.bookInfo,
+  getChapterCount: () => props.chapters.length,
+  fallbackChapterName: props.chapterName,
+  fallbackChapterUrl: props.chapterUrl,
+  currentShelfId,
+  activeChapterIndex,
+  currentPageIndex,
+  currentScrollRatio,
+  content,
+  settings,
+  readerBodyRef,
+  getChapter,
+  openReaderSession,
+  updateReaderSession,
+  closeReaderSession,
+});
+
+watch(showMenu, (visible) => {
+  if (!visible) {
+    // 菜单关闭时，如果设置面板仍然开着（理论上不应发生，但做保险处理），
+    // 强制同步关闭并让统一返回栈 watcher 完成注销。
+    if (settingsVisible.value) {
+      settingsVisible.value = false;
+    }
+    closeMenuLayerSettings();
   }
-})
+});
 
-/* ---- 章节导航 ---- */
-const hasPrev = computed(() => props.currentIndex > 0)
-const hasNext = computed(() => props.currentIndex < props.chapters.length - 1)
-
-/** 导航方向：切换到上一章时为 backward，用于开始阅读上一章末页 */
-const navDirection = ref<'forward' | 'backward'>('forward')
-
-const currentChapterName = computed(() => {
-  if (props.currentIndex >= 0 && props.currentIndex < props.chapters.length) {
-    return props.chapters[props.currentIndex].name
-  }
-  return props.chapterName
-})
-
-function gotoPrev() {
-  if (hasPrev.value) {
-    saveDetailedProgress()
-    navDirection.value = 'backward'
-    emit('update:currentIndex', props.currentIndex - 1)
-  }
-}
-
-function gotoNext() {
-  if (hasNext.value) {
-    saveDetailedProgress()
-    navDirection.value = 'forward'
-    emit('update:currentIndex', props.currentIndex + 1)
-  }
-}
-
-function gotoChapter(idx: number) {
+watch(activeChapterIndex, (idx) => {
   if (idx !== props.currentIndex) {
-    saveDetailedProgress()
-    navDirection.value = idx < props.currentIndex ? 'backward' : 'forward'
-    emit('update:currentIndex', idx)
+    emit('update:currentIndex', idx);
+  }
+});
+
+// 自动预缓存：每次切换章节后，静默检查并补齐未缓存章节
+watch(activeChapterIndex, (idx) => {
+  const count = config.value.cache_prefetch_count;
+  // 0 = 关闭；视频不缓存；未在书架
+  if (count === 0 || props.sourceType === 'video' || !currentShelfId.value) {
+    return;
+  }
+  // 确定需要缓存的范围
+  const effectiveCount = count < 0 ? props.chapters.length : count;
+  const rangeEnd = Math.min(idx + 1 + effectiveCount, props.chapters.length);
+  if (idx + 1 >= props.chapters.length) {
+    return;
+  }
+
+  // 检查范围内是否有任何未缓存章节
+  let anyUncached = false;
+  for (let n = idx + 1; n < rangeEnd; n++) {
+    if (!cachedIndices.value.has(n)) {
+      anyUncached = true;
+      break;
+    }
+  }
+  if (!anyUncached) {
+    return;
+  }
+
+  // 静默启动，不阻塞阅读，不显示任何通知
+  void readerPrefetch.triggerSilentPrefetch(idx, count);
+});
+
+watch(
+  () => props.currentIndex,
+  (idx) => {
+    if (!props.show) {
+      activeChapterIndex.value = idx;
+    }
+  },
+);
+
+watch(
+  () => pluginState.contentVersion,
+  async (version, previous) => {
+    if (!props.show || previous === 0 || version === previous) {
+      return;
+    }
+
+    clearProcessedRuntimeTextCache(runtimeTextCache);
+    pagedCache.invalidatePages();
+
+    if (isPagedMode.value) {
+      await openChapter(activeChapterIndex.value, {
+        position: 'resume',
+        pageIndex: currentPageIndex.value >= 0 ? currentPageIndex.value : undefined,
+        pageRatio: currentScrollRatio.value >= 0 ? currentScrollRatio.value : undefined,
+      });
+      return;
+    }
+
+    pendingRestorePageIndex.value = currentPageIndex.value;
+    pendingRestoreScrollRatio.value = currentScrollRatio.value;
+    await openChapter(activeChapterIndex.value, {
+      position: 'resume',
+    });
+  },
+);
+
+async function loadShelfStatus() {
+  if (!currentShelfId.value) {
+    return;
+  }
+
+  try {
+    cachedIndices.value = await getCachedIndices(currentShelfId.value);
+  } catch {
+    cachedIndices.value = new Set();
+  }
+
+  const nextRead = new Set<number>();
+  const readUpTo = activeChapterIndex.value >= 0 ? activeChapterIndex.value : -1;
+  for (let index = 0; index <= readUpTo; index++) {
+    nextRead.add(index);
+  }
+  readIndices.value = nextRead;
+}
+
+function markChapterRead(index: number) {
+  readIndices.value.add(index);
+}
+
+async function fetchRawChapterText(index: number, forceNetwork = false): Promise<string> {
+  const chapter = getChapter(index);
+  if (!chapter) {
+    return '';
+  }
+  const chapterOverride = temporaryChapterOverrides.value[index];
+
+  if (forceNetwork) {
+    rawChapterTextCache.delete(index);
+    rawChapterTextRequests.delete(index);
+  }
+
+  const cached = rawChapterTextCache.get(index);
+  if (!forceNetwork && cached !== undefined) {
+    return cached;
+  }
+
+  const inflight = rawChapterTextRequests.get(index);
+  if (!forceNetwork && inflight) {
+    return inflight;
+  }
+
+  const request = (async () => {
+    let text: string | null = null;
+
+    if (chapterOverride) {
+      const raw = await runChapterContent(chapterOverride.fileName, chapterOverride.chapterUrl);
+      text = typeof raw === 'string' ? raw : String(raw ?? '');
+    }
+
+    if (!text && !forceNetwork && currentShelfId.value) {
+      try {
+        text = await getContent(currentShelfId.value, index);
+        // 兼容旧版预加载的漫画 marker（仅写了 "comic" 而非图片 URL 列表）
+        if (props.sourceType === 'comic' && text === 'comic') {
+          text = null;
+        }
+      } catch {
+        // 回退到网络请求
+      }
+    }
+
+    if (!text) {
+      const raw = await runChapterContent(props.fileName, chapter.url);
+      text = typeof raw === 'string' ? raw : String(raw ?? '');
+      if (currentShelfId.value && text) {
+        saveContent(currentShelfId.value, index, text).catch(() => {});
+      }
+    }
+
+    const nextText = text ?? '';
+    rawChapterTextCache.set(index, nextText);
+
+    if (currentShelfId.value && nextText) {
+      cachedIndices.value.add(index);
+    }
+
+    return nextText;
+  })();
+
+  rawChapterTextRequests.set(index, request);
+
+  try {
+    return await request;
+  } finally {
+    if (rawChapterTextRequests.get(index) === request) {
+      rawChapterTextRequests.delete(index);
+    }
+  }
+}
+
+async function fetchProcessedChapterText(
+  index: number,
+  finalStage: 'reader.content.beforePaginate' | 'reader.content.beforeRender',
+  forceNetwork = false,
+): Promise<string> {
+  if (props.sourceType === 'comic' || props.sourceType === 'video') {
+    return fetchRawChapterText(index, forceNetwork);
+  }
+
+  const cacheKey = `${index}:${finalStage}`;
+  if (forceNetwork) {
+    processedChapterTextCache.delete(cacheKey);
+    processedChapterTextRequests.delete(cacheKey);
+  }
+
+  const cached = processedChapterTextCache.get(cacheKey);
+  if (!forceNetwork && cached !== undefined) {
+    return cached;
+  }
+
+  const inflight = processedChapterTextRequests.get(cacheKey);
+  if (!forceNetwork && inflight) {
+    return inflight;
+  }
+
+  const request = (async () => {
+    let nextText = await fetchRawChapterText(index, forceNetwork);
+    nextText = await runReaderContentPipeline(
+      'reader.content.raw',
+      buildReaderContentPayload('reader.content.raw', nextText, index),
+    );
+    nextText = await runReaderContentPipeline(
+      'reader.content.cleaned',
+      buildReaderContentPayload('reader.content.cleaned', nextText, index),
+    );
+    nextText = await runReaderContentPipeline(
+      'reader.content.beforePaginate',
+      buildReaderContentPayload('reader.content.beforePaginate', nextText, index),
+    );
+    if (finalStage === 'reader.content.beforeRender') {
+      nextText = await runReaderContentPipeline(
+        'reader.content.beforeRender',
+        buildReaderContentPayload('reader.content.beforeRender', nextText, index),
+      );
+    }
+    processedChapterTextCache.set(cacheKey, nextText);
+    return nextText;
+  })();
+
+  processedChapterTextRequests.set(cacheKey, request);
+
+  try {
+    return await request;
+  } finally {
+    if (processedChapterTextRequests.get(cacheKey) === request) {
+      processedChapterTextRequests.delete(cacheKey);
+    }
+  }
+}
+
+const pagedCache = usePagedChapterCache({
+  activeHostRef: measureHostRef,
+  backgroundHostRef: backgroundMeasureHostRef,
+  loadChapterText: (index, forceNetwork) =>
+    fetchProcessedChapterText(index, 'reader.content.beforePaginate', forceNetwork),
+  getChapterTitle: (index) => getChapter(index)?.name ?? '',
+  getTypography: () => settings.typography,
+  getPadding: () => settings.pagePadding,
+  getPaginationEngine: () => settings.paginationEngine,
+});
+
+const activePagedPages = computed(() => pagedCache.getPages(activeChapterIndex.value));
+const prevBoundaryPage = computed(() =>
+  hasPrev.value ? pagedCache.getBoundaryPage(activeChapterIndex.value - 1, 'last') : '',
+);
+const nextBoundaryPage = computed(() =>
+  hasNext.value ? pagedCache.getBoundaryPage(activeChapterIndex.value + 1, 'first') : '',
+);
+
+const blockingLoading = computed(() => {
+  if (isPagedMode.value) {
+    return pagedLoading.value && (activePagedPages.value.length === 0 || openingChapter.value);
+  }
+  // 滚动/线性模式：切换章节时（openingChapter）也显示加载动画，
+  // 避免未下载的章节无动画、界面冻结在旧内容。
+  //
+  // ⚠️ 【易错点·勿改】此值为 true 时，ReaderContentArea 渲染 spinner 而非 ScrollMode，
+  // scrollModeRef.value 为 null，无法恢复/读取滚动位置。
+  // useReaderChapterOpen.openLinearChapter 在内容就绪后会提前将 loading.value 置 false，
+  // 保证 restoreLinearPosition 执行时 blockingLoading 已经为 false，ScrollMode 已挂载。
+  // 不要把 loading.value = false 推迟到 finally，否则位置恢复失效。
+  return loading.value && (!content.value || openingChapter.value);
+});
+
+const blockingError = computed(() => {
+  if (!error.value) {
+    return false;
+  }
+  if (isPagedMode.value) {
+    return activePagedPages.value.length === 0;
+  }
+  return !content.value;
+});
+
+function setPagedPage(page: number) {
+  const total = activePagedPages.value.length;
+  if (total <= 0) {
+    pagedPageIndex.value = 0;
+    currentPageIndex.value = -1;
+    currentScrollRatio.value = -1;
+    return;
+  }
+
+  const nextPage = Math.min(Math.max(page, 0), total - 1);
+  pagedPageIndex.value = nextPage;
+  currentPageIndex.value = nextPage;
+  currentScrollRatio.value = total <= 1 ? 1 : nextPage / (total - 1);
+}
+
+const {
+  pagedModeRef,
+  scrollModeRef,
+  comicModeRef,
+  videoModeRef, // bound in template via ref="videoModeRef"
+  onPagedPageChange,
+  onPagedProgress,
+  onScrollProgress,
+  onComicProgress,
+  onVideoProgress,
+  onVideoEnded,
+  getPlaybackTime,
+  flipNext,
+  flipPrev,
+  volumePageNext,
+  volumePagePrev,
+} = useReaderModeBridge({
+  isVideoMode,
+  isComicMode,
+  isScrollMode,
+  hasPrev,
+  hasNext,
+  pagedLoading,
+  currentShelfId,
+  activeChapterIndex,
+  currentPageIndex,
+  currentScrollRatio,
+  pagedPageIndex,
+  shouldIgnorePositionEvents,
+  setPagedPage,
+  getChapter,
+  updateProgress,
+  getSettingsJson,
+  gotoNextChapter,
+  gotoPrevChapter,
+  warnLastPage: () => {
+    message.warning('已经到最后一页了');
+  },
+  warnFirstPage: () => {
+    message.warning('已经到最前了');
+  },
+});
+// videoModeRef is written via template ref="videoModeRef"; the composable reads it internally
+void videoModeRef;
+
+// markRaw plain object so Vue never proxies/unwraps the contained Ref objects
+const contentRefs = markRaw({
+  pagedModeRef,
+  scrollModeRef,
+  comicModeRef,
+  readerBodyRef,
+  measureHostRef,
+  backgroundMeasureHostRef,
+});
+
+const positionMode = computed<ReaderPositionMode>(() => {
+  if (isVideoMode.value) {
+    return 'video';
+  }
+  if (isComicMode.value) {
+    return 'comic';
+  }
+  return isPagedMode.value ? 'paged' : 'scroll';
+});
+
+const { readCurrentPosition, writeSnapshotToRefs, buildProgressPayload } = useReaderPosition({
+  mode: positionMode,
+  currentPageIndex,
+  pagedPageIndex,
+  currentScrollRatio,
+  pagedModeRef,
+  scrollModeRef,
+  comicModeRef,
+  getPlaybackTime,
+  getSettingsJson,
+});
+
+// ── TTS Manager ──────────────────────────────────────────────────────────
+const { ttsProgressText, ttsScrollHighlightIdx, showTtsBar, onTtsToggle } = useReaderTtsManager({
+  activeChapterIndex,
+  content,
+  isPagedMode,
+  isScrollMode,
+  isComicMode,
+  isVideoMode,
+  pagedPageIndex,
+  activePagedPages,
+  hasPrev,
+  hasNext,
+  pagedModeRef,
+  scrollModeRef,
+  blockingLoading,
+  setPagedPage,
+  fetchRawChapterText,
+  gotoNextChapter,
+});
+
+const nativeVolumeKeyPageTurnEnabled = computed(
+  () =>
+    props.show &&
+    settings.volumeKeyPageTurnEnabled &&
+    !isVideoMode.value &&
+    !showTtsBar.value &&
+    !showMenu.value &&
+    !showToc.value &&
+    !settingsVisible.value,
+);
+
+function syncNativeVolumeKeyPageTurn(enabled: boolean) {
+  window.LegadoAndroidInput?.setVolumeKeyPageTurnEnabled?.(enabled);
+}
+
+watch(nativeVolumeKeyPageTurnEnabled, syncNativeVolumeKeyPageTurn, { immediate: true });
+
+// ── Layout Dump ───────────────────────────────────────────────────────────
+const { dumpPaginationLayoutDebug } = useReaderLayoutDump({
+  readerBodyRef,
+  measureHostRef,
+  backgroundMeasureHostRef,
+  legacyPagedMode,
+  isPagedMode,
+  pagedPageIndex,
+  activePagedPages,
+  pagedCache,
+  pagedLoading,
+  activeChapterIndex,
+  hasPrev,
+  hasNext,
+  getChapter,
+  getFallbackChapterName: () => props.chapterName,
+  getFallbackChapterUrl: () => props.chapterUrl,
+  getChaptersLength: () => props.chapters.length,
+  settings,
+  appendDebugLog,
+  message,
+});
+
+function shouldIgnorePositionEvents(): boolean {
+  return openingChapter.value || restoringPosition.value;
+}
+
+function clearRepaginateWork() {
+  // 取消 openChapter 执行期间被 settings watcher 调度的冗余重排定时器
+  // （典型场景：activateBookSettings 修改排版参数触发 watcher，但 openChapter
+  //   已经使用最新设置完成分页，再次重排是多余的且会导致页面闪烁）
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer);
+    resizeDebounceTimer = null;
+  }
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = 0;
+}
+
+const { openChapter, openLinearChapter, openPagedChapter } = useReaderChapterOpen({
+  getShow: () => props.show,
+  getChapterCount: () => props.chapters.length,
+  getShelfDataReady: () => shelfDataReady,
+  getChapter,
+  isPagedMode,
+  isComicMode,
+  isScrollMode,
+  isVideoMode,
+  activeChapterIndex,
+  content,
+  error,
+  loading,
+  pagedLoading,
+  currentPageIndex,
+  currentScrollRatio,
+  pendingRestorePageIndex,
+  pendingRestoreScrollRatio,
+  pendingResumePlaybackTime,
+  openingChapter,
+  restoringPosition,
+  navDirection,
+  currentShelfId,
+  pagedCache,
+  scrollModeRef,
+  comicModeRef,
+  fetchProcessedChapterText,
+  setPagedPage,
+  markChapterRead,
+  updateReaderSession,
+  buildReaderSessionSnapshot,
+  getPositionMode: () => positionMode.value,
+  writePositionSnapshot: writeSnapshotToRefs,
+  buildProgressPayload,
+  updateProgress,
+  reportLoadError: (loadError) => {
+    message.error(`加载正文失败: ${loadError}`);
+  },
+  clearRepaginateWork,
+});
+
+const readerPrefetch = createReaderPrefetchController({
+  currentShelfId,
+  fileName: props.fileName,
+  message,
+  getBookUrl: () => props.bookInfo?.bookUrl ?? '',
+  getBookName: () => props.bookInfo?.name ?? '',
+  getSourceType: () => props.sourceType ?? 'novel',
+  getChapters: () => props.chapters,
+  getActiveChapterIndex: () => activeChapterIndex.value,
+  markCached: (chapterIndex) => {
+    cachedIndices.value.add(chapterIndex);
+  },
+});
+
+const {
+  resetProgressSyncState,
+  saveDetailedProgress,
+  reportReaderSession,
+  triggerReaderProgressSync,
+  setupReadingConflictListener,
+  cleanupReadingConflictListener,
+  startAutoSave,
+  stopAutoSave,
+  onVisibilityChange,
+  onBeforeUnloadSave,
+} = useReaderProgressSync({
+  getShow: () => props.show,
+  config,
+  dialog,
+  sync,
+  currentShelfId,
+  activeChapterIndex,
+  shouldIgnorePositionEvents,
+  getChapter,
+  fallbackChapterName: props.chapterName,
+  fallbackChapterUrl: props.chapterUrl,
+  readCurrentPosition,
+  buildProgressPayload,
+  updateProgress,
+  updateSessionVisibility,
+  openChapter,
+});
+
+readerNavigation = createReaderNavigationController({
+  activeChapterIndex,
+  navDirection,
+  hasPrev,
+  hasNext,
+  saveDetailedProgress,
+  openChapter,
+});
+
+async function gotoPrevChapter() {
+  await readerNavigation?.gotoPrevChapter();
+}
+
+async function gotoNextChapter() {
+  await readerNavigation?.gotoNextChapter();
+}
+
+async function gotoPrevBoundary() {
+  await readerNavigation?.gotoPrevBoundary();
+}
+
+async function gotoNextBoundary() {
+  await readerNavigation?.gotoNextBoundary();
+}
+
+async function gotoChapter(index: number) {
+  await readerNavigation?.gotoChapter(index);
+}
+
+/**
+ * 将当前书籍加入书架，并保存当前阅读进度与章节列表。
+ * 可在阅读器内（菜单按钮）或关闭时（弹窗确认）调用。
+ */
+async function handleAddToShelf(): Promise<boolean> {
+  if (!props.bookInfo || isOnShelf.value || addingToShelf.value) {
+    return false;
+  }
+  addingToShelf.value = true;
+  try {
+    await ensureShelfLoaded();
+    const info = props.bookInfo;
+    const result = await addToShelf(
+      {
+        name: info.name,
+        author: info.author,
+        coverUrl: getCoverImageUrl(info.coverUrl),
+        intro: info.intro,
+        kind: info.kind,
+        bookUrl: info.bookUrl ?? '',
+        lastChapter: info.lastChapter,
+        sourceType: props.sourceType ?? 'novel',
+      },
+      props.fileName,
+      info.sourceName ?? '',
+    );
+
+    // 同时保存章节目录
+    if (props.chapters.length) {
+      const cached: CachedChapter[] = props.chapters.map((ch, i) => ({
+        index: i,
+        name: ch.name,
+        url: ch.url,
+      }));
+      await saveChapters(result.id, cached).catch(() => {});
+    }
+
+    // 记录已加载的书架 ID，后续进度保存使用
+    localAddedShelfId.value = result.id;
+
+    // 立即保存当前阅读进度
+    const chapter = getChapter(activeChapterIndex.value);
+    if (chapter) {
+      await updateProgress(result.id, activeChapterIndex.value, chapter.url, {
+        ...buildProgressPayload(),
+      }).catch(() => {});
+    }
+
+    message.success('已加入书架');
+    emit('added-to-shelf', result.id);
+    return true;
+  } catch (e: unknown) {
+    message.error(`加入书架失败: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  } finally {
+    addingToShelf.value = false;
   }
 }
 
 function close() {
-  saveDetailedProgress()
-  emit('update:show', false)
+  saveDetailedProgress();
+  // 如果书籍尚未加入书架且有书籍信息，提示用户是否加入书架
+  if (!isOnShelf.value && props.bookInfo && !isVideoMode.value) {
+    dialog.create({
+      title: '加入书架',
+      content: `《${props.bookInfo.name}》还未加入书架，是否加入？`,
+      positiveText: '加入',
+      negativeText: '不用了',
+      closeOnEsc: false,
+      maskClosable: false,
+      onPositiveClick: () => {
+        handleAddToShelf().finally(() => {
+          emit('update:show', false);
+        });
+      },
+      onNegativeClick: () => {
+        emit('update:show', false);
+      },
+    });
+    return;
+  }
+  emit('update:show', false);
 }
 
-/**
- * 根据设置决定返回行为：
- * - 'bookshelf'（默认）：关闭阅读器，留在书架页
- * - 'desktop'：最小化应用，回到手机桌面（Tauri 环境）；非 Tauri 则同 bookshelf
- */
 async function closeWithBackBehavior() {
-  close()
+  close();
   if (settings.backBehavior === 'desktop') {
     try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      await getCurrentWindow().minimize()
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().minimize();
     } catch {
-      // 非 Tauri 环境或获取窗口失败，保持默认行为（已 close）
+      // 非 Tauri 环境忽略
     }
   }
 }
 
-/* ---- 点击区域 ---- */
-/** 遮罩打开的时间戳，用于防止触摸的合成 click 事件立刻又关掉菜单 */
-let menuOpenTime = 0
+useOverlayBackstack(
+  () => props.show,
+  () => {
+    void closeWithBackBehavior();
+  },
+);
+
+useOverlayBackstack(
+  () => props.show && showMenu.value,
+  () => {
+    settingsVisible.value = false;
+    closeMenuLayerSettings();
+    showMenu.value = false;
+  },
+);
+
+useOverlayBackstack(
+  () => props.show && showToc.value,
+  () => {
+    showToc.value = false;
+  },
+);
+
+useOverlayBackstack(
+  () => props.show && settingsVisible.value,
+  () => {
+    settingsVisible.value = false;
+    closeMenuLayerSettings();
+  },
+);
+
+useOverlayBackstack(
+  () => props.show && showSourceSwitchDialog.value,
+  () => {
+    showSourceSwitchDialog.value = false;
+  },
+);
+
+function onMenuOverlayClick() {
+  if (Date.now() - menuOpenTime.value > 200) {
+    settingsVisible.value = false;
+    showMenu.value = false;
+  }
+}
 
 function onTap(zone: 'left' | 'center' | 'right') {
   if (zone === 'center') {
     if (showToc.value) {
-      showToc.value = false
+      showToc.value = false;
     } else {
-      showMenu.value = !showMenu.value
-      if (showMenu.value) menuOpenTime = Date.now()
+      if (!showMenu.value) {
+        readerUiStore.openMenu();
+      } else {
+        settingsVisible.value = false;
+        showMenu.value = false;
+      }
     }
-  } else if (zone === 'left') {
-    gotoPrev()
-  } else {
-    gotoNext()
+    return;
   }
+
+  if (zone === 'left') {
+    void gotoPrevBoundary();
+    return;
+  }
+
+  void gotoNextBoundary();
+}
+
+function onSettingsVisibleChange(val: boolean) {
+  settingsVisible.value = val;
 }
 
 function openToc() {
-  showToc.value = true
-  showMenu.value = false
+  if (settingsVisible.value) {
+    settingsVisible.value = false;
+    closeMenuLayerSettings();
+  }
+  readerUiStore.openToc();
 }
 
-/* ---- 阅读位置追踪 ---- */
-/** 分页模式 progress 回调：记录页码 */
-function onPageProgress(ratio: number) {
-  // 从 mode 组件获取实际页码
-  const mode = modeRef.value as { currentPage?: number } | null
-  if (mode && typeof mode.currentPage === 'number') {
-    currentPageIndex.value = mode.currentPage
+function onKeyDown(event: KeyboardEvent) {
+  if (!props.show) {
+    return;
   }
-  currentScrollRatio.value = ratio
-}
-
-/** 滚动模式 progress 回调：记录滚动比例 */
-function onScrollProgress(ratio: number) {
-  currentScrollRatio.value = ratio
-  currentPageIndex.value = -1
-}
-
-/**
- * 漫画模式 progress 回调：记录当前可见图片索引（0-based）。
- * 漫画恢复用 goToPage(pageIndex) 而非 scrollRatio，避免受图片高度影响。
- */
-function onComicProgress(_ratio: number) {
-  const page = comicModeRef.value?.currentPage
-  if (typeof page === 'number') {
-    currentPageIndex.value = page
-  }
-  currentScrollRatio.value = -1 // 漫画不用 scrollRatio
-}
-
-/** 保存详细阅读进度到书架 */
-function saveDetailedProgress() {
-  if (!props.shelfBookId) return
-  const idx = props.currentIndex
-  const ch = props.chapters[idx]
-  if (!ch) return
-  if (idx === lastSavedChapterIndex
-    && currentPageIndex.value === -1
-    && currentScrollRatio.value === -1) return
-  lastSavedChapterIndex = idx
-  updateProgress(props.shelfBookId, idx, ch.url, {
-    pageIndex: currentPageIndex.value >= 0 ? currentPageIndex.value : undefined,
-    scrollRatio: currentScrollRatio.value >= 0 ? currentScrollRatio.value : undefined,
-    readerSettings: getSettingsJson(),
-  }).catch(() => {})
-}
-
-/* ---- 切换翻页模式时保留页码 ---- */
-/**
- * 监听 flipMode 变化：切换前记录当前页码，切换后恢复到同一页。
- * 仅处理分页模式之间的互切（slide/cover/simulation/none 相互切换），
- * 滚动模式和漫画模式暂不处理。
- */
-watch(
-  () => settings.flipMode,
-  (newMode, oldMode) => {
-    // 滚动模式 / 漫画模式切换：不处理
-    const pagedModes = new Set(['slide', 'cover', 'simulation', 'none'])
-    if (!pagedModes.has(oldMode) || !pagedModes.has(newMode)) return
-
-    // 切换前快照当前页码
-    const savedPage = modeRef.value?.currentPage ?? -1
-    if (savedPage < 0) return
-
-    // 等新模式组件挂载并排版出足够页面后恢复
-    const restore = async () => {
-      const MAX = 60
-      for (let i = 0; i < MAX; i++) {
-        await new Promise(r => requestAnimationFrame(r))
-        if (!modeRef.value?.goToPage) continue
-        const total = modeRef.value?.totalPages ?? 0
-        if (total > savedPage) {
-          modeRef.value.goToPage(savedPage)
-          return
-        }
-        if (total > 0 && i === MAX - 1) {
-          // 新模式排版后总页数更少（字体/排版参数变化），跳末页
-          modeRef.value.goToPage(total - 1)
-        }
-      }
-    }
-    restore()
-  },
-)
-
-/* ---- 模式组件引用 & 翻页控制 ---- */
-const modeRef = ref<{
-  nextPage?: () => boolean
-  prevPage?: () => boolean
-  goToPage?: (page: number) => void
-  currentPage?: number
-  totalPages?: number
-} | null>(null)
-
-/** 滚动模式引用（用于恢复滚动位置） */
-const scrollModeRef = ref<{ scrollToRatio?: (ratio: number) => void } | null>(null)
-
-/** 漫画模式引用（goToPage + 页码） */
-const comicModeRef = ref<{
-  goToPage?: (idx: number) => void
-  scrollToRatio?: (ratio: number) => void
-  currentPage?: number
-  totalPages?: number
-} | null>(null)
-
-/**
- * 内容加载完后恢复阅读位置。
- * 分页模式：等待后台排版产生足够页面后再 goToPage。
- * 滚动模式：等 DOM 渲染后 scrollToRatio。
- */
-async function tryRestorePosition() {
-  // 等待书架数据加载完毕（解决 loadContent 与 getShelfBook 的竞态）
-  if (shelfDataReady) {
-    await shelfDataReady
+  if (event.defaultPrevented) {
+    return;
   }
 
-  // 仅在首次打开（而非切章）时恢复
-  const pageIdx = pendingRestorePageIndex.value
-  const scrollR = pendingRestoreScrollRatio.value
-  pendingRestorePageIndex.value = -1
-  pendingRestoreScrollRatio.value = -1
-
-  if (pageIdx < 0 && scrollR < 0) return
-
-  // 分页模式 / 漫画模式（按图片索引跳转）
-  if (pageIdx >= 0) {
-    // 漫画：直接 goToPage，轮询等待图片元素渲染（最多 ~1s）
-    if (comicModeRef.value?.goToPage) {
-      const MAX = 60
-      for (let i = 0; i < MAX; i++) {
-        await new Promise(r => requestAnimationFrame(r))
-        const total = comicModeRef.value?.totalPages ?? 0
-        if (total > pageIdx) {
-          comicModeRef.value.goToPage(pageIdx)
-          return
-        }
-      }
-      // 内容变短则跳末页
-      const total = comicModeRef.value?.totalPages ?? 0
-      if (total > 0) comicModeRef.value?.goToPage(total - 1)
-      return
-    }
-    // 普通分页模式：等后台排版产生足够页面（最多 ~60 帧 ≈ 1s）
-    if (modeRef.value?.goToPage) {
-      const MAX = 60
-      for (let i = 0; i < MAX; i++) {
-        await new Promise(r => requestAnimationFrame(r))
-        const total = modeRef.value?.totalPages ?? 0
-        if (total > pageIdx) {
-          modeRef.value.goToPage(pageIdx)
-          return
-        }
-      }
-      const total = modeRef.value?.totalPages ?? 0
-      if (total > 0) modeRef.value.goToPage(total - 1)
-      return
-    }
-  }
-
-  // 滚动模式：等一帧让 DOM 渲染完成
-  if (scrollR >= 0 && scrollModeRef.value?.scrollToRatio) {
-    await new Promise(r => requestAnimationFrame(r))
-    scrollModeRef.value.scrollToRatio(scrollR)
-  }
-}
-
-/** 统一翻页：先尝试页内翻，失败则跨章节 */
-function flipNext() {
-  if (settings.flipMode === 'scroll') {
-    // 滚动模式由滚动到底触发章节切换，快捷键直接切章
-    if (!hasNext.value) {
-      message.warning('已经到最后一页了')
-      return
-    }
-    gotoNext()
-    return
-  }
-  const ok = modeRef.value?.nextPage?.()
-  if (!ok) {
-    if (!hasNext.value) {
-      message.warning('已经到最后一页了')
-      return
-    }
-    gotoNext()
-  }
-}
-
-function flipPrev() {
-  if (settings.flipMode === 'scroll') {
-    if (!hasPrev.value) {
-      message.warning('已经到最前了')
-      return
-    }
-    gotoPrev()
-    return
-  }
-  const ok = modeRef.value?.prevPage?.()
-  if (!ok) {
-    if (!hasPrev.value) {
-      message.warning('已经到最前了')
-      return
-    }
-    gotoPrev()
-  }
-}
-
-/* ---- 快捷键 ---- */
-function onKeyDown(e: KeyboardEvent) {
-  if (!props.show) return
-
-  // Escape / 安卓返回键（BrowserBack）：按优先级逐层关闭
-  if (e.key === 'Escape' || e.key === 'BrowserBack') {
-    e.preventDefault()
-    if (settingsVisible.value) {
-      // 1. 优先关闭设置面板
-      bottomBarRef.value?.closeSettings()
-    } else if (showToc.value) {
-      // 2. 关闭目录
-      showToc.value = false
-    } else if (showMenu.value) {
-      // 3. 关闭菜单栏
-      showMenu.value = false
-    } else {
-      // 4. 退出阅读器（行为由设置决定）
-      closeWithBackBehavior()
-    }
-    return
-  }
-
-  // 空格/回车：切换菜单（任何时候可用）
-  if (e.key === ' ' || e.key === 'Enter') {
-    e.preventDefault()
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
     if (showToc.value) {
-      showToc.value = false
+      showToc.value = false;
+    } else if (showMenu.value) {
+      settingsVisible.value = false;
+      showMenu.value = false;
     } else {
-      showMenu.value = !showMenu.value
+      readerUiStore.openMenu();
     }
-    return
+    return;
   }
 
-  // 菜单/目录打开时不处理翻页快捷键
-  if (showMenu.value || showToc.value) return
+  if (showMenu.value || showToc.value) {
+    return;
+  }
 
-  switch (e.key) {
+  switch (event.key) {
     case 'ArrowRight':
     case 'd':
     case 'D':
-    case 'AudioVolumeDown':
-      e.preventDefault()
-      flipNext()
-      break
+      event.preventDefault();
+      flipNext();
+      break;
     case 'ArrowLeft':
     case 'a':
     case 'A':
+      event.preventDefault();
+      flipPrev();
+      break;
+    case 'AudioVolumeDown':
+      if (settings.volumeKeyPageTurnEnabled && !isVideoMode.value && !showTtsBar.value) {
+        event.preventDefault();
+        volumePageNext();
+      }
+      break;
     case 'AudioVolumeUp':
-      e.preventDefault()
-      flipPrev()
-      break
-  }
-}
-
-/* ---- Android 返回键拦截（popstate） ---- */
-/**
- * 当阅读器弹窗打开时，推入一条浏览器历史记录。
- * Android 返回键（或 WebView 后退手势）会触发 popstate 而不是 keydown BrowserBack。
- * 每次"消费"一次 popstate 后需要再次推入，保持守卫状态。
- */
-function pushHistoryGuard() {
-  history.pushState({ legadoReader: true }, '')
-}
-
-function onPopState() {
-  if (!props.show) return
-  if (settingsVisible.value) {
-    bottomBarRef.value?.closeSettings()
-    pushHistoryGuard()
-  } else if (showToc.value) {
-    showToc.value = false
-    pushHistoryGuard()
-  } else if (showMenu.value) {
-    showMenu.value = false
-    pushHistoryGuard()
-  } else {
-    closeWithBackBehavior()
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', onKeyDown))
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('popstate', onPopState)
-})
-
-/* ---- 内容加载 ---- */
-async function loadContent(url: string, index: number) {
-  error.value = ''
-
-  // 快速路径：预取缓存（内存）命中时直接切换内容，跳过 loading 状态
-  // 确保翻页切章时体验与章内翻页一样流畅（无闪烁、无 loading 转圈）
-  const prefetched = prefetchCache.get(url)
-  if (prefetched) {
-    prefetchCache.delete(url)
-    content.value = prefetched
-    loading.value = false
-    // 重置本章位置追踪
-    currentPageIndex.value = -1
-    currentScrollRatio.value = -1
-    if (props.shelfBookId) {
-      updateProgress(props.shelfBookId, index, url).catch(() => {})
-      saveContent(props.shelfBookId, index, prefetched).catch(() => {})
-    }
-    readIndices.value.add(index)
-    cachedIndices.value.add(index)
-    prefetchNext(index)
-    tryRestorePosition()
-    return
-  }
-
-  // 慢路径：书架缓存或网络请求，需显示 loading
-  loading.value = true
-  content.value = ''
-  try {
-    let text: string | null = null
-
-    // 1. 检查书架离线缓存
-    if (props.shelfBookId) {
-      try {
-        text = await getContent(props.shelfBookId, index)
-      } catch { /* fallback 到网络 */ }
-    }
-
-    // 2. 网络拉取
-    if (!text) {
-      const raw = await runChapterContent(props.fileName, url)
-      text = typeof raw === 'string' ? raw : String(raw ?? '')
-      if (props.shelfBookId && text) {
-        saveContent(props.shelfBookId, index, text).catch(() => {})
+      if (settings.volumeKeyPageTurnEnabled && !isVideoMode.value && !showTtsBar.value) {
+        event.preventDefault();
+        volumePagePrev();
       }
-    }
-
-    content.value = text ?? ''
-
-    // 重置本章位置追踪
-    currentPageIndex.value = -1
-    currentScrollRatio.value = -1
-
-    if (props.shelfBookId) {
-      updateProgress(props.shelfBookId, index, url).catch(() => {})
-    }
-
-    // 标记当前章节已阅读、已下载
-    readIndices.value.add(index)
-    cachedIndices.value.add(index)
-
-    // 3. 加载成功后触发下一章预取
-    prefetchNext(index)
-    tryRestorePosition()
-  } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
-    message.error(`加载正文失败: ${error.value}`)
-  } finally {
-    loading.value = false
+      break;
   }
 }
 
-/**
- * 后台预取下一章正文。
- * - 优先检查书架离线缓存，已有则跳过（无需预取）
- * - 已在预取中或已在内存缓存中则跳过（避免重复）
- */
-async function prefetchNext(currentIndex: number) {
-  const nextIdx = currentIndex + 1
-  if (nextIdx >= props.chapters.length) return
-
-  const nextChapter = props.chapters[nextIdx]
-  if (!nextChapter) return
-
-  const url = nextChapter.url
-  if (prefetchCache.has(url) || prefetching.has(url)) return
-
-  // 若书架缓存已有，跳过预取
-  if (props.shelfBookId) {
-    try {
-      const cached = await getContent(props.shelfBookId, nextIdx)
-      if (cached) return
-    } catch { /* 忽略，继续预取 */ }
-  }
-
-  prefetching.add(url)
-  try {
-    const raw = await runChapterContent(props.fileName, url)
-    const text = typeof raw === 'string' ? raw : String(raw ?? '')
-    if (text) {
-      setPrefetch(url, text)
-      // 同时写入书架缓存并标记为已下载
-      if (props.shelfBookId) {
-        saveContent(props.shelfBookId, nextIdx, text).catch(() => {})
-      }
-      cachedIndices.value.add(nextIdx)
-    }
-  } catch {
-    // 预取失败静默处理，不影响当前章节阅读
-  } finally {
-    prefetching.delete(url)
-  }
+function clearChapterRuntimeCache(index: number) {
+  clearChapterRuntimeTextCache(runtimeTextCache, index);
+  pagedCache.dropChapter(index);
 }
 
-/**
- * 核心 watcher：监听 currentIndex 变化，自动从 chapters 中
- * 取 URL 并加载。这使组件自洽，不再依赖父组件同步 chapterUrl。
- */
-watch(
-  () => [props.show, props.currentIndex] as const,
-  ([visible, idx]) => {
-    if (!visible) return
-    const ch = props.chapters[idx]
-    if (ch) {
-      loadContent(ch.url, idx)
+const {
+  openWholeBookSourceSwitch,
+  openTemporaryChapterSwitch,
+  clearTemporaryChapterSwitch,
+  handleTemporaryChapterSourceSwitched,
+  handleWholeBookSourceSwitched,
+} = createReaderSourceSwitchController({
+  currentShelfId,
+  activeChapterIndex,
+  temporaryChapterOverrides,
+  currentChapterOverride,
+  sourceSwitchMode,
+  showSourceSwitchDialog,
+  message,
+  clearChapterRuntimeCache,
+  clearAllRuntimeCache: () => clearAllRuntimeTextCache(runtimeTextCache),
+  invalidatePages: () => pagedCache.invalidatePages(),
+  openChapter,
+  emitSourceSwitched: (payload) => emit('source-switched', payload),
+});
+
+const {
+  forceRefreshChapter,
+  clearChapterCache: handleClearChapterCache,
+  clearAllCache: handleClearAllCache,
+} = createReaderCacheController({
+  currentShelfId,
+  fileName: props.fileName,
+  message,
+  activeChapterIndex,
+  cachedIndices,
+  currentPageIndex,
+  currentScrollRatio,
+  pagedPageIndex,
+  pendingRestorePageIndex,
+  pendingRestoreScrollRatio,
+  isPagedMode,
+  isComicMode,
+  getBookUrl: () => props.bookInfo?.bookUrl ?? '',
+  getBookName: () => props.bookInfo?.name ?? '',
+  getChapter,
+  buildAnchorForChapterPage: (chapterIndex, pageIndex) =>
+    pagedCache.buildAnchorForChapterPage(chapterIndex, pageIndex),
+  clearChapterRuntimeCache,
+  clearAllRuntimeCache: () => clearAllRuntimeTextCache(runtimeTextCache),
+  invalidatePages: () => pagedCache.invalidatePages(),
+  deleteContent,
+  openChapter,
+});
+
+const readerLifecycle = createReaderLifecycleController({
+  getShelfBookId: () => props.shelfBookId,
+  getCurrentIndex: () => props.currentIndex,
+  getTrackingPayload: () => ({
+    book_name: props.bookInfo?.name,
+    author_name: props.bookInfo?.author,
+    source_file: props.fileName,
+    source_type: props.sourceType ?? 'novel',
+    chapter_name: props.chapterName,
+    chapter_index: props.currentIndex,
+    shelf_book_id: props.shelfBookId || localAddedShelfId.value,
+  }),
+  readerBodyRef,
+  activeChapterIndex,
+  pendingRestorePageIndex,
+  pendingRestoreScrollRatio,
+  pendingResumePlaybackTime,
+  isPagedMode,
+  ensureFrontendPlugins,
+  getShelfBook,
+  activateBookSettings,
+  deactivateBookSettings,
+  clearLocalAddedShelfId: () => {
+    localAddedShelfId.value = '';
+  },
+  setShelfDataReady: (ready) => {
+    shelfDataReady = ready;
+  },
+  getShelfDataReady: () => shelfDataReady,
+  observeReaderBody: () => {
+    if (resizeObserver && readerBodyRef.value) {
+      resizeObserver.observe(readerBodyRef.value);
     }
   },
-  { immediate: true },
-)
+  unobserveReaderBody: () => {
+    if (resizeObserver && readerBodyRef.value) {
+      resizeObserver.unobserve(readerBodyRef.value);
+    }
+  },
+  resetReaderSessionForOpen: readerSessionStore.resetForOpen,
+  resetReaderSessionForClose: readerSessionStore.resetForClose,
+  resetReaderUiLayers: readerUiStore.resetLayers,
+  resetProgressSyncState,
+  openSession,
+  closeSession,
+  loadShelfStatus,
+  openChapter,
+  reportReaderSession,
+  triggerReaderProgressSync,
+  startAutoSave,
+  stopAutoSave,
+  saveDetailedProgress,
+  clearAllRuntimeCache: () => clearAllRuntimeTextCache(runtimeTextCache),
+  invalidatePages: () => pagedCache.invalidatePages(),
+  trackSessionOpen: (payload) => {
+  },
+});
 
-/* 打开时重置 UI 状态并加载书架状态 + 激活书籍独立设置；关闭时保存进度并清理 */
-/** 首次打开时需要恢复的页码 / 滚动比例 */
-const pendingRestorePageIndex = ref(-1)
-const pendingRestoreScrollRatio = ref(-1)
-/** 书架数据加载 Promise，供 tryRestorePosition 等待以避免竞态 */
-let shelfDataReady: Promise<void> | null = null
+function schedulePagedRepaginate() {
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer);
+  }
+
+  resizeDebounceTimer = setTimeout(() => {
+    resizeDebounceTimer = null;
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      if (!props.show || openingChapter.value || restoringPosition.value) {
+        return;
+      }
+
+      void syncSessionSnapshot();
+
+      if (isPagedMode.value) {
+        const total = activePagedPages.value.length;
+        if (total <= 0 || pagedLoading.value) {
+          return;
+        }
+        // 构建精确阅读锚点（字符偏移 + 段落级 + 比例多级回退）
+        const anchor = pagedCache.buildAnchorForChapterPage(
+          activeChapterIndex.value,
+          pagedPageIndex.value,
+        );
+        pagedCache.invalidatePages();
+        void openChapter(activeChapterIndex.value, {
+          position: 'resume',
+          anchor,
+        });
+        return;
+      }
+
+      if (isScrollMode.value) {
+        const ratio = currentScrollRatio.value;
+        if (ratio >= 0) {
+          void nextTick(() => {
+            requestAnimationFrame(() => {
+              scrollModeRef.value?.scrollToRatio?.(ratio);
+            });
+          });
+        }
+        return;
+      }
+
+      if (isComicMode.value) {
+        // 漫画模式按滚动比例恢复位置，避免 visibleImages 尚未就绪时 currentPage=0 导致误跳顶部
+        const ratio = currentScrollRatio.value;
+        if (ratio > 0) {
+          void nextTick(() => {
+            requestAnimationFrame(() => {
+              comicModeRef.value?.scrollToRatio?.(ratio);
+            });
+          });
+        }
+      }
+    });
+  }, REPAGINATE_DEBOUNCE_MS);
+}
+
+watch(
+  () => settings.flipMode,
+  (nextMode, prevMode) => {
+    // 跳过初始化阶段（content 为空表示章节内容尚未加载）和无意义的同值变更
+    if (
+      !props.show ||
+      isComicMode.value ||
+      isVideoMode.value ||
+      nextMode === prevMode ||
+      !content.value
+    ) {
+      return;
+    }
+
+    if (nextMode === 'scroll') {
+      // 分页切换为滚动：使用当前页面比例恢复等效滚动位置
+      if (currentScrollRatio.value >= 0) {
+        pendingRestoreScrollRatio.value = currentScrollRatio.value;
+      }
+      void openLinearChapter(activeChapterIndex.value);
+      return;
+    }
+
+    if (prevMode === 'scroll') {
+      // 滚动切换为分页：用滚动比例恢复等效页面（比页码更鲁棒）
+      void openPagedChapter(activeChapterIndex.value, {
+        position: currentScrollRatio.value >= 0 ? 'resume' : 'first',
+        pageRatio: currentScrollRatio.value >= 0 ? currentScrollRatio.value : undefined,
+      });
+    }
+  },
+);
+
+watch(
+  () => [settings.typography, settings.pagePadding, settings.paginationEngine] as const,
+  () => {
+    schedulePagedRepaginate();
+  },
+  { deep: true },
+);
 
 watch(
   () => props.show,
-  async (v) => {
-    if (v) {
-      showMenu.value = false
-      showToc.value = false
-      lastSavedChapterIndex = -1
-      currentPageIndex.value = -1
-      currentScrollRatio.value = -1
-      pendingRestorePageIndex.value = -1
-      pendingRestoreScrollRatio.value = -1
+  (visible) => readerLifecycle.handleVisibilityChange(visible),
+);
 
-      // 激活每本书独立设置 + 恢复阅读位置（异步，与 loadContent 并发）
-      if (props.shelfBookId) {
-        shelfDataReady = (async () => {
-          try {
-            const book = await getShelfBook(props.shelfBookId!)
-            // 激活此书的独立设置
-            activateBookSettings(props.shelfBookId!, book.readerSettings)
-            // 记录待恢复的位置（仅当打开的章节与上次相同时才恢复页内位置）
-            if (book.readChapterIndex === props.currentIndex) {
-              pendingRestorePageIndex.value = book.readPageIndex ?? -1
-              pendingRestoreScrollRatio.value = book.readScrollRatio ?? -1
-            }
-          } catch {
-            // 获取失败则沿用全局设置
-          }
-        })()
-      } else {
-        shelfDataReady = null
-      }
-
-      loadShelfStatus()
-      // 推入历史守卫，使 Android 返回键可被 popstate 拦截
-      pushHistoryGuard()
-      window.addEventListener('popstate', onPopState)
-    } else {
-      // 关闭前保存进度
-      saveDetailedProgress()
-      // 停用书籍独立设置，恢复全局
-      deactivateBookSettings()
-      prefetchCache.clear()
-      prefetching.clear()
-      readIndices.value = new Set()
-      cachedIndices.value = new Set()
-      window.removeEventListener('popstate', onPopState)
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('resize', schedulePagedRepaginate);
+  window.addEventListener('orientationchange', schedulePagedRepaginate);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('beforeunload', onBeforeUnloadSave);
+  resizeObserver = new ResizeObserver(() => {
+    schedulePagedRepaginate();
+  });
+  if (readerBodyRef.value) {
+    resizeObserver.observe(readerBodyRef.value);
+  }
+  setupReadingConflictListener();
+  unlistenPluginToast = eventListenSync<{
+    pluginId?: string;
+    message?: string;
+    type?: 'info' | 'success' | 'warning' | 'error';
+  }>(FRONTEND_PLUGIN_TOAST_EVENT, (event) => {
+    const text = event.payload.message?.trim();
+    if (!text) {
+      return;
     }
-  },
-)
+    const prefix = event.payload.pluginId ? `[${event.payload.pluginId}] ` : '';
+    switch (event.payload.type) {
+      case 'success':
+        message.success(prefix + text);
+        break;
+      case 'warning':
+        message.warning(prefix + text);
+        break;
+      case 'error':
+        message.error(prefix + text);
+        break;
+      default:
+        message.info(prefix + text);
+        break;
+    }
+  });
+});
+
+onBeforeUnmount(() => {
+  syncNativeVolumeKeyPageTurn(false);
+  window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('resize', schedulePagedRepaginate);
+  window.removeEventListener('orientationchange', schedulePagedRepaginate);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('beforeunload', onBeforeUnloadSave);
+  stopAutoSave();
+  // 组件卸载前最后一次保存机会
+  saveDetailedProgress();
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer);
+  }
+  cancelAnimationFrame(resizeRaf);
+  resizeObserver?.disconnect();
+  reportReaderSession(false);
+  void closeSession();
+  cleanupReadingConflictListener();
+  unlistenPluginToast?.();
+});
 </script>
 
 <template>
-  <n-modal
-    :show="show"
-    @update:show="emit('update:show', $event)"
-    :mask-closable="false"
-    :auto-focus="false"
-    :trap-focus="false"
-    transform-origin="center"
-  >
-    <div class="reader-modal" :style="effectiveStyle">
-      <!-- 正文区（全屏） -->
-      <div class="reader-modal__body">
-        <n-spin v-if="loading" :show="true" class="reader-modal__spin" />
-        <n-alert v-else-if="error" type="error" :title="error" style="margin:24px" />
+  <ReaderModal :show="show" @update:show="emit('update:show', $event)">
+    <!-- ── 视频模式：YouTube 风格独立布局 ── -->
+    <VideoPlayerPage
+      v-if="isVideoMode"
+      ref="videoModeRef"
+      :content="content"
+      :chapters="chapters"
+      :active-chapter-index="activeChapterIndex"
+      :book-info="bookInfo"
+      :loading="blockingLoading"
+      :error="error"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
+      :file-name="fileName"
+      :resume-time="pendingResumePlaybackTime"
+      :chapter-groups="chapterGroups"
+      :initial-group-index="initialGroupIndex"
+      @close="close"
+      @goto-chapter="gotoChapter"
+      @prev-chapter="gotoPrevChapter"
+      @next-chapter="gotoNextChapter"
+      @progress="onVideoProgress"
+      @ended="onVideoEnded"
+    />
 
-        <!-- 漫画模式 -->
-        <ComicMode
-          v-else-if="sourceType === 'comic'"
-          ref="comicModeRef"
-          :content="content"
-          :file-name="fileName"
-          :chapter-url="chapters[currentIndex]?.url ?? chapterUrl"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          @tap="onTap"
-          @progress="onComicProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
+    <!-- ── 小说 / 漫画模式：沉浸全屏阅读器 ── -->
+    <ReaderShell v-else :style-value="effectiveStyle" :skin-preset-id="settings.skinPresetId">
+      <ReaderPluginLayer background />
+      <ReaderContentArea
+        :content="content"
+        :is-comic-mode="isComicMode"
+        :is-paged-mode="isPagedMode"
+        :paged-mode="pagedMode"
+        :legacy-paged-mode="legacyPagedMode"
+        :pages="activePagedPages"
+        :paged-page-index="pagedPageIndex"
+        :prev-boundary-page="prevBoundaryPage"
+        :next-boundary-page="nextBoundaryPage"
+        :has-prev="hasPrev"
+        :has-next="hasNext"
+        :blocking-loading="blockingLoading"
+        :blocking-error="blockingError"
+        :error="error"
+        :paged-loading="pagedLoading"
+        :current-chapter-name="currentChapterName"
+        :current-chapter-url="currentChapterUrl"
+        :chapter-index="activeChapterIndex"
+        :file-name="fileName"
+        :source-type="sourceType ?? 'novel'"
+        :book-url="bookInfo?.bookUrl ?? ''"
+        :book-name="bookInfo?.name ?? ''"
+        :tts-scroll-highlight-idx="ttsScrollHighlightIdx"
+        :tap-zone-left="settings.tapZoneLeft"
+        :tap-zone-right="settings.tapZoneRight"
+        :tap-left-action="settings.tapLeftAction"
+        :tap-right-action="settings.tapRightAction"
+        :layout-debug-mode="settings.layoutDebugMode"
+        :tap-zone-debug="tapZoneDebugPreviewVisible"
+        :paragraph-spacing="settings.typography.paragraphSpacing"
+        :text-indent="settings.typography.textIndent"
+        :content-refs="contentRefs"
+        @tap="onTap"
+        @paged-page-change="onPagedPageChange"
+        @paged-progress="onPagedProgress"
+        @scroll-progress="onScrollProgress"
+        @comic-progress="onComicProgress"
+        @prev-chapter="gotoPrevChapter"
+        @next-chapter="gotoNextChapter"
+        @prev-boundary="gotoPrevBoundary"
+        @next-boundary="gotoNextBoundary"
+      />
 
-        <!-- 覆盖模式 -->
-        <CoverMode
-          v-else-if="settings.flipMode === 'cover'"
-          ref="modeRef"
-          :content="content"
-          :chapter-title="currentChapterName"
-          :typography="settings.typography"
-          :padding="settings.padding"
-          :start-from-end="navDirection === 'backward'"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          :tap-zone-left="settings.tapZoneLeft"
-          :tap-zone-right="settings.tapZoneRight"
-          @tap="onTap"
-          @progress="onPageProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
+      <ReaderPluginLayer />
 
-        <!-- 仿真翻页模式 -->
-        <SimulationMode
-          v-else-if="settings.flipMode === 'simulation'"
-          ref="modeRef"
-          :content="content"
-          :chapter-title="currentChapterName"
-          :typography="settings.typography"
-          :padding="settings.padding"
-          :start-from-end="navDirection === 'backward'"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          :tap-zone-left="settings.tapZoneLeft"
-          :tap-zone-right="settings.tapZoneRight"
-          @tap="onTap"
-          @progress="onPageProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
-
-        <!-- 无动画模式（电子墨水屏） -->
-        <NoneMode
-          v-else-if="settings.flipMode === 'none'"
-          ref="modeRef"
-          :content="content"
-          :chapter-title="currentChapterName"
-          :typography="settings.typography"
-          :padding="settings.padding"
-          :start-from-end="navDirection === 'backward'"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          :tap-zone-left="settings.tapZoneLeft"
-          :tap-zone-right="settings.tapZoneRight"
-          @tap="onTap"
-          @progress="onPageProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
-
-        <!-- 平移模式 -->
-        <SlideMode
-          v-else-if="settings.flipMode === 'slide'"
-          ref="modeRef"
-          :content="content"
-          :chapter-title="currentChapterName"
-          :typography="settings.typography"
-          :padding="settings.padding"
-          :start-from-end="navDirection === 'backward'"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          :tap-zone-left="settings.tapZoneLeft"
-          :tap-zone-right="settings.tapZoneRight"
-          @tap="onTap"
-          @progress="onPageProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
-
-        <!-- 滚动模式（默认） -->
-        <ScrollMode
-          v-else
-          ref="scrollModeRef"
-          :content="content"
-          :chapter-title="currentChapterName"
-          :paragraph-spacing="settings.typography.paragraphSpacing"
-          :text-indent="settings.typography.textIndent"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          @tap="onTap"
-          @progress="onScrollProgress"
-          @prev-chapter="gotoPrev"
-          @next-chapter="gotoNext"
-        />
-      </div>
-
-      <!-- 遮罩 -->
-      <Transition name="reader-fade">
-        <div v-if="showMenu" class="reader-modal__overlay" @click="Date.now() - menuOpenTime > 200 && (showMenu = false)" />
-      </Transition>
-
-      <!-- 顶部栏（设置面板展开时隐藏） -->
-      <Transition name="reader-slide-top">
-        <ReaderTopBar
-          v-if="showMenu && !settingsVisible"
-          :chapter-name="currentChapterName"
-          :current-index="currentIndex"
-          :total-chapters="chapters.length"
-          :chapter-url="chapters[currentIndex]?.url"
-          @close="close"
-        />
-      </Transition>
-
-      <!-- 底部栏 -->
-      <Transition name="reader-slide-bottom">
-        <ReaderBottomBar
-          v-if="showMenu"
-          ref="bottomBarRef"
-          :chapters="chapters"
-          :current-index="currentIndex"
-          :has-prev="hasPrev"
-          :has-next="hasNext"
-          :source-type="sourceType"
-          @prev="gotoPrev"
-          @next="gotoNext"
-          @goto="gotoChapter"
-          @open-toc="openToc"
-          @settings-visible="settingsVisible = $event"
-        />
-      </Transition>
-
-      <!-- 目录面板 -->
-      <ReaderTocPanel
-        v-model:show="showToc"
+      <component
+        :is="ReaderMenuLayerComponent"
+        ref="menuLayerRef"
+        :show-menu="showMenu"
+        :show-toc="showToc"
+        :settings-visible="settingsVisible"
+        :show-tts-bar="showTtsBar"
+        :tts-progress-text="ttsProgressText"
+        :show-source-switch-dialog="showSourceSwitchDialog"
+        :source-switch-mode="sourceSwitchMode"
         :chapters="chapters"
-        :current-index="currentIndex"
+        :active-chapter-index="activeChapterIndex"
         :book-info="bookInfo"
+        :source-type="sourceType"
+        :has-prev="hasPrev"
+        :has-next="hasNext"
+        :current-chapter-name="currentChapterName"
+        :current-chapter-url="currentChapterUrl"
+        :is-video-mode="isVideoMode"
+        :is-on-shelf="isOnShelf"
+        :adding-to-shelf="addingToShelf"
+        :current-chapter-override="currentChapterOverride"
+        :current-shelf-id="currentShelfId"
+        :file-name="fileName"
         :read-indices="readIndices"
         :cached-indices="cachedIndices"
         :refreshing-toc="props.refreshingToc"
-        @select="gotoChapter"
+        :menu-open-time="menuOpenTime"
+        @update:show-menu="showMenu = $event"
+        @update:show-toc="showToc = $event"
+        @update:settings-visible="settingsVisible = $event"
+        @update:show-tts-bar="showTtsBar = $event"
+        @update:show-source-switch-dialog="showSourceSwitchDialog = $event"
+        @overlay-click="onMenuOverlayClick"
+        @prev="gotoPrevChapter"
+        @next="gotoNextChapter"
+        @goto="gotoChapter"
+        @open-toc="openToc"
+        @settings-visible="onSettingsVisibleChange"
+        @dump-pagination-layout="dumpPaginationLayoutDebug"
+        @tts-toggle="onTtsToggle"
+        @close="close"
+        @refresh-chapter="forceRefreshChapter"
+        @cache-chapters="readerPrefetch.prefetchChapters"
+        @whole-book-switch="openWholeBookSourceSwitch"
+        @temporary-switch="openTemporaryChapterSwitch"
+        @clear-temporary-switch="clearTemporaryChapterSwitch"
+        @add-to-shelf="handleAddToShelf"
+        @select-toc="gotoChapter"
         @refresh-toc="emit('refresh-toc')"
+        @clear-chapter-cache="handleClearChapterCache"
+        @clear-all-cache="handleClearAllCache"
+        @chapter-temp-switched="handleTemporaryChapterSourceSwitched"
+        @whole-book-switched="handleWholeBookSourceSwitched"
       />
-    </div>
-  </n-modal>
+    </ReaderShell>
+  </ReaderModal>
 </template>
 
 <style scoped>
 .reader-modal {
+  --reader-body-top: 0px;
+  --reader-body-right: 0px;
+  --reader-body-bottom: 0px;
+  --reader-body-left: 0px;
+  --reader-body-max-width: none;
+  --reader-body-margin: 0;
+  --reader-body-surface: transparent;
+  --reader-body-border: none;
+  --reader-body-shadow: none;
+  --reader-body-radius: 0px;
+  --reader-body-backdrop-filter: none;
+  --reader-top-left: 0px;
+  --reader-top-right: 0px;
+  --reader-top-top: 0px;
+  --reader-top-max-width: none;
+  --reader-top-margin: 0;
+  --reader-top-radius: 0px;
+  --reader-top-border: none;
+  --reader-top-shadow: none;
+  --reader-bottom-left: 0px;
+  --reader-bottom-right: 0px;
+  --reader-bottom-bottom: 0px;
+  --reader-bottom-max-width: none;
+  --reader-bottom-margin: 0;
+  --reader-bottom-radius: 0px;
+  --reader-bottom-border: none;
+  --reader-bottom-shadow: none;
+  --reader-menu-overlay-bg: rgba(0, 0, 0, 0.35);
+  --reader-shell-title-display: none;
+  --reader-shell-title-text: '';
+  --reader-shell-title-height: 0px;
+  --reader-shell-title-bg: transparent;
+  --reader-shell-title-color: inherit;
+  --reader-shell-title-padding: 0;
+  --reader-shell-title-border: none;
+  --reader-shell-title-font: inherit;
+  --reader-shell-title-z-index: 9;
+  --reader-shell-winctrls-display: none;
+  --reader-shell-winctrls-text: '';
+  --reader-shell-winctrls-height: 0px;
+  --reader-shell-winctrls-bg: transparent;
+  --reader-shell-winctrls-color: inherit;
+  --reader-shell-winctrls-font: inherit;
+  --reader-shell-winctrls-z-index: 9;
+  --reader-plugin-top-left-top: calc(
+    var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 14px
+  );
+  --reader-plugin-top-left-left: 14px;
+  --reader-plugin-top-right-top: calc(
+    var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + 14px
+  );
+  --reader-plugin-top-right-right: 14px;
+  --reader-plugin-bottom-left-left: 14px;
+  --reader-plugin-bottom-left-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  --reader-plugin-bottom-right-right: 14px;
+  --reader-plugin-bottom-right-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
   position: relative;
   overflow: hidden;
-  background: var(--reader-bg-image, none), var(--reader-bg-color, var(--color-surface));
+  background-color: var(--reader-bg-color, var(--color-surface));
+  background-image: var(--reader-bg-image, none);
+  background-size: var(--reader-bg-size, auto);
+  background-position: var(--reader-bg-position, 0 0);
+  background-repeat: var(--reader-bg-repeat, repeat);
+  background-attachment: var(--reader-bg-attachment, scroll);
+  background-blend-mode: var(--reader-bg-blend-mode, normal);
   color: var(--reader-text-color, var(--color-text-primary));
-  /* 整体字体渲染优化：覆盖 :root 的 font-synthesis:none，允许合成粗/斜体 */
   font-synthesis: weight style;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  /* 禁用双击缩放，确保安卓上单击稳定触发 */
   touch-action: manipulation;
-  /* 安卓状态栏安全区 */
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+.reader-modal::before {
+  content: var(--reader-shell-title-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--reader-shell-title-z-index);
+  display: var(--reader-shell-title-display);
+  align-items: center;
+  height: var(--reader-shell-title-height);
+  box-sizing: border-box;
+  padding: var(--reader-shell-title-padding);
+  border: var(--reader-shell-title-border);
+  background: var(--reader-shell-title-bg);
+  color: var(--reader-shell-title-color);
+  font: var(--reader-shell-title-font);
+  pointer-events: none;
+  white-space: pre;
+}
+
+/* 右侧窗口控制按钮（最小化 / 最大化 / 关闭），皮肤可通过 --reader-shell-winctrls-* 启用 */
+.reader-modal::after {
+  content: var(--reader-shell-winctrls-text);
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: var(--reader-shell-winctrls-z-index);
+  display: var(--reader-shell-winctrls-display);
+  align-items: center;
+  height: var(--reader-shell-winctrls-height);
+  box-sizing: border-box;
+  background: var(--reader-shell-winctrls-bg);
+  color: var(--reader-shell-winctrls-color);
+  font: var(--reader-shell-winctrls-font);
+  pointer-events: none;
+  white-space: pre;
+  letter-spacing: 0.04em;
 }
 
 .reader-modal__body {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  top: var(--reader-body-top);
+  right: var(--reader-body-right);
+  bottom: var(--reader-body-bottom);
+  left: var(--reader-body-left);
+  z-index: 1;
+  width: auto;
+  height: auto;
+  max-width: var(--reader-body-max-width);
+  margin: var(--reader-body-margin);
+  overflow: hidden;
+  background: var(--reader-body-surface);
+  border: var(--reader-body-border);
+  border-radius: var(--reader-body-radius);
+  box-shadow: var(--reader-body-shadow);
+  backdrop-filter: var(--reader-body-backdrop-filter);
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad'] :deep(.scroll-mode__body),
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad-light'] :deep(.scroll-mode__body) {
+  padding: var(--reader-padding, 8px 10px 8px);
+}
+
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad'] :deep(.scroll-mode__para),
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad-light'] :deep(.scroll-mode__para) {
+  margin-bottom: 0 !important;
+  text-indent: 0 !important;
+  white-space: pre-wrap;
+}
+
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad'] :deep(.reader-chapter-title),
+.reader-modal[data-reader-skin='reader-disguise-skins:notepad-light'] :deep(.reader-chapter-title) {
+  display: none;
 }
 
 .reader-modal__spin {
@@ -901,38 +1672,17 @@ watch(
   justify-content: center;
 }
 
-.reader-modal__overlay {
+.reader-modal__measure-host {
   position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  z-index: 10;
-}
-
-/* 过渡动画 */
-.reader-fade-enter-active,
-.reader-fade-leave-active {
-  transition: opacity 0.25s ease;
-}
-.reader-fade-enter-from,
-.reader-fade-leave-to {
-  opacity: 0;
-}
-
-.reader-slide-top-enter-active,
-.reader-slide-top-leave-active {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.reader-slide-top-enter-from,
-.reader-slide-top-leave-to {
-  transform: translateY(-100%);
-}
-
-.reader-slide-bottom-enter-active,
-.reader-slide-bottom-leave-active {
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.reader-slide-bottom-enter-from,
-.reader-slide-bottom-leave-to {
-  transform: translateY(100%);
+  top: var(--reader-body-top);
+  right: var(--reader-body-right);
+  bottom: var(--reader-body-bottom);
+  left: var(--reader-body-left);
+  max-width: var(--reader-body-max-width);
+  margin: var(--reader-body-margin);
+  border-radius: var(--reader-body-radius);
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
 }
 </style>

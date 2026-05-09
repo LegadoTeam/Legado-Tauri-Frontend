@@ -1,274 +1,326 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useReaderSettings } from './composables/useReaderSettings'
-import { PRESET_THEMES, type FlipMode } from './types'
+import { ChevronLeft } from 'lucide-vue-next';
+import { toRef } from 'vue';
+import { isMobile } from '@/composables/useEnv';
+import { useReaderSettingsPanelModel } from '@/features/reader/settings/useReaderSettingsPanelModel';
+import ReaderSettingsCustomFontPage from '@/features/reader/settings/components/ReaderSettingsCustomFontPage.vue';
+import ReaderSettingsFontPage from '@/features/reader/settings/components/ReaderSettingsFontPage.vue';
+import ReaderSettingsMorePage from '@/features/reader/settings/components/ReaderSettingsMorePage.vue';
+import ReaderSettingsPagePaddingPage from '@/features/reader/settings/components/ReaderSettingsPagePaddingPage.vue';
+import ReaderSettingsShortcutsPage from '@/features/reader/settings/components/ReaderSettingsShortcutsPage.vue';
+import ReaderSettingsSpacingPage from '@/features/reader/settings/components/ReaderSettingsSpacingPage.vue';
+import ReaderSettingsTypographyPage from '@/features/reader/settings/components/ReaderSettingsTypographyPage.vue';
 
 const props = defineProps<{
-  sourceType?: string
-}>()
+  sourceType?: string;
+}>();
 
-const { settings, updateTypography, setTheme, setFlipMode } = useReaderSettings()
+const emit = defineEmits<{
+  (e: 'dump-pagination-layout'): void;
+}>();
 
-/* ---- L2 子页面导航 ---- */
-type SubPage = 'none' | 'spacing' | 'font' | 'shortcuts' | 'typography' | 'more'
-const subPage = ref<SubPage>('none')
-const prevPage = ref<SubPage>('none')
+const {
+  settings,
+  updateTypography,
+  updatePagePadding,
+  setFlipMode,
+  resetSettings,
+  hideTapZoneDebugPreview,
+  subPage,
+  navigateTo,
+  goBack,
+  isNight,
+  toggleDayNight,
+  decreaseFontSize,
+  increaseFontSize,
+  isComic,
+  isVideo,
+  canDumpPaginationLayout,
+  activeFlipOptions,
+  EXPERIMENTAL_FLIP_MODE_HINT,
+  showExperimentalFlipModeHint,
+  themeOptions,
+  selectedThemeId,
+  selectThemeOption,
+  THEME_ELEGANT_NAMES,
+  TAP_ACTION_OPTIONS,
+  tapActionLabel,
+  tapActionIcon,
+  setTapAction,
+  toggleTapAction,
+  dumpPaginationLayout,
+  systemFonts,
+  systemFontsLoading,
+  systemFontsError,
+  fontSearchQuery,
+  showAllFonts,
+  loadSystemFonts,
+  filteredSystemFonts,
+  copyFontList,
+  FONT_PRESETS,
+  currentFontLabel,
+  FONT_WEIGHT_PRESETS,
+  TEXT_ALIGN_OPTIONS,
+  TEXT_SHADOW_PRESETS,
+  backgroundOptions,
+  selectedBackgroundId,
+  selectBackground,
+  skinOptions,
+  selectedSkinId,
+  selectSkin,
+  tapZoneBarRef,
+  onDividerPointerDown,
+  onTapZoneBarPointerMove,
+  onTapZoneBarPointerUp,
+} = useReaderSettingsPanelModel({
+  sourceType: toRef(props, 'sourceType'),
+  onDumpPaginationLayout: () => emit('dump-pagination-layout'),
+});
 
-function navigateTo(page: SubPage) {
-  prevPage.value = subPage.value
-  subPage.value = page
-}
-function goBack() {
-  subPage.value = prevPage.value
-  prevPage.value = 'none'
-}
-
-/* ---- 主题 & 日夜 ---- */
-const DAY_THEME = PRESET_THEMES[0]
-const NIGHT_THEME = PRESET_THEMES[4]
-const isNight = computed(() => settings.theme.name === NIGHT_THEME.name)
-
-/* ---- 主题雅称映射 ---- */
-const THEME_ELEGANT_NAMES: Record<string, string> = {
-  '默认白': '霜白',
-  '护眼绿': '碧荫',
-  '羊皮纸': '书香',
-  '暮光蓝': '暮蓝',
-  '纯黑夜': '子夜',
-  '柔粉色': '桃粉',
-}
-
-function toggleDayNight() {
-  setTheme(isNight.value ? DAY_THEME : NIGHT_THEME)
-}
-
-/* ---- 字号 ---- */
-function decreaseFontSize() {
-  if (settings.typography.fontSize > 12) updateTypography({ fontSize: settings.typography.fontSize - 1 })
-}
-function increaseFontSize() {
-  if (settings.typography.fontSize < 40) updateTypography({ fontSize: settings.typography.fontSize + 1 })
-}
-
-/* ---- 翻页模式 ---- */
-const isComic = computed(() => props.sourceType === 'comic')
-
-const FLIP_OPTIONS: { label: string; value: FlipMode }[] = [
-  { label: '仿真', value: 'simulation' },
-  { label: '覆盖', value: 'cover' },
-  { label: '平移', value: 'slide' },
-  { label: '上下', value: 'scroll' },
-  { label: '无动画', value: 'none' },
-]
-
-const COMIC_FLIP_OPTIONS: { label: string; value: FlipMode }[] = [
-  { label: '上下', value: 'scroll' },
-]
-
-const activeFlipOptions = computed(() => isComic.value ? COMIC_FLIP_OPTIONS : FLIP_OPTIONS)
-
-/** 漫画模式只允许选白色 */
-const activeThemes = computed(() => isComic.value ? PRESET_THEMES.slice(0, 1) : PRESET_THEMES)
-
-/* ---- 字体预设 ---- */
-const FONT_PRESETS = [
-  { label: '系统默认', value: 'system-ui, -apple-system, sans-serif' },
-  { label: '衬线体', value: '"Noto Serif SC", "Source Han Serif CN", "SimSun", serif' },
-  { label: '宋体', value: '"SimSun", "宋体", serif' },
-  { label: '楷体', value: '"KaiTi", "楷体", serif' },
-  { label: '黑体', value: '"SimHei", "黑体", sans-serif' },
-  { label: '仿宋', value: '"FangSong", "仿宋", serif' },
-]
-
-const currentFontLabel = computed(() => {
-  return FONT_PRESETS.find(f => f.value === settings.typography.fontFamily)?.label ?? '自定义'
-})
-
-/* ---- 字重预设（仅保留字体普遍支持的三档）---- */
-const FONT_WEIGHT_PRESETS = [
-  { label: '细', value: 300 },
-  { label: '正常', value: 400 },
-  { label: '粗', value: 700 },
-]
-
-/* ---- 对齐方式 ---- */
-const TEXT_ALIGN_OPTIONS: { label: string; value: 'left' | 'center' | 'right' | 'justify' }[] = [
-  { label: '左', value: 'left' },
-  { label: '居中', value: 'center' },
-  { label: '右', value: 'right' },
-  { label: '两端', value: 'justify' },
-]
-
-/* ---- 文字阴影预设 ---- */
-const TEXT_SHADOW_PRESETS = [
-  { label: '无', value: 'none' },
-  { label: '轻描', value: '0 1px 3px rgba(0,0,0,0.35)' },
-  { label: '浮雕', value: '1px 1px 0 rgba(0,0,0,0.45), -1px -1px 0 rgba(255,255,255,0.08)' },
-  { label: '发光', value: '0 0 8px rgba(255,255,255,0.5)' },
-]
-
-/* ---- 背景纹理预设 ---- */
-interface BgPreset {
-  name: string
-  value: string
-  thumb: string
-}
-
-const BG_PRESETS: BgPreset[] = [
-  { name: '纯色', value: '', thumb: '' },
-  {
-    name: '纸纹',
-    value: 'repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(0,0,0,0.04) 28px, rgba(0,0,0,0.04) 29px)',
-    thumb: 'repeating-linear-gradient(0deg, transparent, transparent 6px, rgba(0,0,0,0.08) 6px, rgba(0,0,0,0.08) 7px)',
-  },
-  {
-    name: '牛皮纸',
-    value: 'radial-gradient(ellipse at 20% 80%, rgba(180,140,100,0.12) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(180,140,100,0.08) 0%, transparent 50%)',
-    thumb: 'radial-gradient(ellipse at 30% 70%, rgba(180,140,100,0.25) 0%, transparent 60%)',
-  },
-  {
-    name: '织物',
-    value: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.02) 2px, rgba(0,0,0,0.02) 4px), repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.02) 2px, rgba(0,0,0,0.02) 4px)',
-    thumb: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px), repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px)',
-  },
-  {
-    name: '星点',
-    value: 'radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.12) 1px, transparent 0), radial-gradient(1px 1px at 40% 60%, rgba(255,255,255,0.09) 1px, transparent 0), radial-gradient(1px 1px at 70% 15%, rgba(255,255,255,0.1) 1px, transparent 0), radial-gradient(1px 1px at 90% 80%, rgba(255,255,255,0.08) 1px, transparent 0)',
-    thumb: 'radial-gradient(1px 1px at 25% 35%, rgba(255,255,255,0.3) 1px, transparent 0), radial-gradient(1px 1px at 65% 55%, rgba(255,255,255,0.2) 1px, transparent 0)',
-  },
-]
-
-/* ---- 点击区域拖拽调整 ---- */
-const tapZoneBarRef = ref<HTMLElement | null>(null)
-let _draggingDivider: 'left' | 'right' | null = null
-
-function onDividerPointerDown(e: PointerEvent, which: 'left' | 'right') {
-  e.preventDefault()
-  _draggingDivider = which
-  tapZoneBarRef.value?.setPointerCapture(e.pointerId)
-}
-
-function onTapZoneBarPointerMove(e: PointerEvent) {
-  if (!_draggingDivider || !tapZoneBarRef.value) return
-  const rect = tapZoneBarRef.value.getBoundingClientRect()
-  const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  // 吸附到 5% 格
-  const snapped = Math.round(relX * 20) / 20
-  if (_draggingDivider === 'left') {
-    settings.tapZoneLeft = Math.max(0.10, Math.min(settings.tapZoneRight - 0.15, snapped))
-  } else {
-    settings.tapZoneRight = Math.max(settings.tapZoneLeft + 0.15, Math.min(0.90, snapped))
-  }
-}
-
-function onTapZoneBarPointerUp() {
-  _draggingDivider = null
-}
-
-defineExpose({ isNight, toggleDayNight })
+defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
 </script>
 
 <template>
   <div class="reader-settings" @click.stop>
     <!-- ============ L1 主设置 ============ -->
     <template v-if="subPage === 'none'">
-      <!-- 亮度 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">亮度</span>
-        <n-slider :value="settings.brightness" @update:value="(v: number) => { settings.brightness = v }" :min="20"
-          :max="100" :step="5" style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.brightness }}%</span>
-      </div>
-
-      <!-- 字号 + 字体 + 更多 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">字号</span>
-        <div class="reader-settings__font-ctl">
-          <button class="reader-settings__pill reader-settings__pill--sm"
-            @click="decreaseFontSize">A<sup>-</sup></button>
-          <span class="reader-settings__val reader-settings__val--sm">{{ settings.typography.fontSize }}</span>
-          <button class="reader-settings__pill reader-settings__pill--sm"
-            @click="increaseFontSize">A<sup>+</sup></button>
+      <!-- 视频模式下提示使用播放器自带控件 -->
+      <template v-if="isVideo">
+        <div class="reader-settings__row">
+          <span class="reader-settings__hint">视频模式：请使用播放器控件调节播放设置</span>
         </div>
-        <button class="reader-settings__pill reader-settings__pill--nav" @click="navigateTo('font')">
-          {{ currentFontLabel }} ›
-        </button>
-        <button class="reader-settings__pill" @click="navigateTo('more')">
-          更多 ›
-        </button>
-      </div>
+      </template>
 
-      <!-- 颜色 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">颜色</span>
-        <div class="reader-settings__themes">
-          <button v-for="t in activeThemes" :key="t.name" class="reader-settings__swatch"
-            :class="{ 'reader-settings__swatch--active': settings.theme.name === t.name }"
-            :style="{ background: t.backgroundColor, borderColor: settings.theme.name === t.name ? t.textColor : 'transparent' }"
-            :title="t.name" @click="setTheme(t)">
-            <span class="reader-settings__swatch-inner" :style="{ color: t.textColor }">
-              {{ THEME_ELEGANT_NAMES[t.name] ?? t.name }}
-            </span>
-          </button>
+      <template v-else>
+        <!-- 亮度 -->
+        <div class="reader-settings__row">
+          <span class="reader-settings__label">亮度</span>
+          <n-slider
+            :value="settings.brightness"
+            @update:value="
+              (v: number) => {
+                settings.brightness = v;
+              }
+            "
+            :min="20"
+            :max="100"
+            :step="5"
+            style="flex: 1"
+          />
+          <span class="reader-settings__val" style="width: 36px">{{ settings.brightness }}%</span>
         </div>
-      </div>
 
-      <!-- 背景 -->
-      <div class="reader-settings__row reader-settings__row--top">
-        <span class="reader-settings__label">背景</span>
-        <div class="reader-settings__bg-list">
-          <div v-for="bg in BG_PRESETS" :key="bg.name" class="reader-settings__bg-wrap">
-            <button class="reader-settings__bg-thumb"
-              :class="{ 'reader-settings__bg-thumb--active': settings.backgroundImage === bg.value }"
-              :style="{ backgroundImage: bg.thumb || 'none', backgroundColor: settings.theme.backgroundColor }"
-              :title="bg.name" @click="settings.backgroundImage = bg.value">
-              <span class="reader-settings__bg-name">{{ bg.name }}</span>
+        <!-- 字号 + 字体 + 更多 -->
+        <div class="reader-settings__row">
+          <span class="reader-settings__label">字号</span>
+          <div class="reader-settings__font-ctl">
+            <button
+              class="reader-settings__pill reader-settings__pill--sm"
+              @click="decreaseFontSize"
+            >
+              A<sup>-</sup>
             </button>
+            <span class="reader-settings__val reader-settings__val--sm">{{
+              settings.typography.fontSize
+            }}</span>
+            <button
+              class="reader-settings__pill reader-settings__pill--sm"
+              @click="increaseFontSize"
+            >
+              A<sup>+</sup>
+            </button>
+          </div>
+          <button
+            class="reader-settings__pill reader-settings__pill--nav"
+            @click="navigateTo('font')"
+          >
+            {{ currentFontLabel }} ›
+          </button>
+          <button class="reader-settings__pill" @click="navigateTo('more')">更多 ›</button>
+        </div>
 
-            <!-- 他应该在背景图内部  跟颜色一样  浮动在内部居中位置 -->
+        <!-- 颜色 -->
+        <div class="reader-settings__row">
+          <span class="reader-settings__label">颜色</span>
+          <div class="reader-settings__themes">
+            <button
+              v-for="t in themeOptions"
+              :key="t.id"
+              class="reader-settings__swatch"
+              :class="{ 'reader-settings__swatch--active': selectedThemeId === t.id }"
+              :style="{
+                background: t.preview.backgroundColor,
+                borderColor: selectedThemeId === t.id ? t.preview.textColor : 'transparent',
+              }"
+              :title="t.description || t.name"
+              @click="selectThemeOption(t)"
+            >
+              <span class="reader-settings__swatch-inner" :style="{ color: t.preview.textColor }">
+                {{ THEME_ELEGANT_NAMES[t.name] ?? t.name }}
+              </span>
+            </button>
           </div>
         </div>
+
+        <!-- 背景 -->
+        <div class="reader-settings__row reader-settings__row--top">
+          <span class="reader-settings__label">背景</span>
+          <div class="reader-settings__bg-list">
+            <div v-for="bg in backgroundOptions" :key="bg.id" class="reader-settings__bg-wrap">
+              <button
+                class="reader-settings__bg-thumb"
+                :class="{
+                  'reader-settings__bg-thumb--active': selectedBackgroundId === bg.id,
+                }"
+                :style="{
+                  backgroundColor: bg.preview.backgroundColor || '#fff',
+                  backgroundImage: bg.preview.backgroundImage || 'none',
+                  backgroundSize: bg.preview.backgroundSize || 'cover',
+                  backgroundPosition: bg.preview.backgroundPosition || 'center',
+                  backgroundRepeat: bg.preview.backgroundRepeat || 'no-repeat',
+                  backgroundBlendMode: bg.preview.backgroundBlendMode || 'normal',
+                }"
+                :title="bg.description || bg.name"
+                @click="selectBackground(bg)"
+              >
+                <span
+                  class="reader-settings__bg-name"
+                  :style="{ color: bg.preview.textColor || 'rgba(0, 0, 0, 0.78)' }"
+                >
+                  {{ bg.name }}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="reader-settings__row reader-settings__row--top">
+          <span class="reader-settings__label">皮肤</span>
+          <div class="reader-settings__skin-list">
+            <button
+              v-for="skin in skinOptions"
+              :key="skin.id"
+              class="reader-settings__skin-card"
+              :class="{ 'reader-settings__skin-card--active': selectedSkinId === skin.id }"
+              :title="skin.description || skin.name"
+              @click="selectSkin(skin)"
+            >
+              <span
+                class="reader-settings__skin-preview"
+                :style="{
+                  background:
+                    skin.preview.styleVars?.['--reader-body-surface'] ||
+                    skin.preview.backgroundColor ||
+                    '#f5f5f5',
+                }"
+              >
+                <span
+                  class="reader-settings__skin-preview-bar"
+                  :style="{
+                    background:
+                      skin.preview.styleVars?.['--reader-top-bar-bg'] || 'rgba(0, 0, 0, 0.18)',
+                  }"
+                />
+                <span
+                  class="reader-settings__skin-preview-paper"
+                  :style="{ color: skin.preview.textColor || '#1f2937' }"
+                >
+                  Aa
+                </span>
+              </span>
+              <span class="reader-settings__skin-name">{{ skin.name }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 翻页 -->
+        <div class="reader-settings__row">
+          <span class="reader-settings__label">{{ isComic ? '漫画翻页' : '翻页' }}</span>
+          <div class="reader-settings__flip-mode-block">
+            <div class="reader-settings__pill-group">
+              <button
+                v-for="opt in activeFlipOptions"
+                :key="opt.value"
+                class="reader-settings__pill"
+                :class="{ 'reader-settings__pill--active': settings.flipMode === opt.value }"
+                @click="setFlipMode(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+            <div v-if="showExperimentalFlipModeHint" class="reader-settings__flip-mode-hint">
+              {{ EXPERIMENTAL_FLIP_MODE_HINT }}
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+
+    <!-- ============ L2 更多设置 ============ -->
+    <ReaderSettingsMorePage
+      v-else-if="subPage === 'more'"
+      :settings="settings"
+      :font-weight-presets="FONT_WEIGHT_PRESETS"
+      :is-comic="isComic"
+      :is-video="isVideo"
+      :is-mobile="isMobile"
+      :can-dump-pagination-layout="canDumpPaginationLayout"
+      @back="goBack"
+      @reset="resetSettings"
+      @update-typography="updateTypography"
+      @set-layout-debug="settings.layoutDebugMode = $event"
+      @set-volume-key-page-turn="settings.volumeKeyPageTurnEnabled = $event"
+      @set-hide-top-bar-on-mobile="settings.hideTopBarOnMobile = $event"
+      @dump-pagination-layout="dumpPaginationLayout"
+      @navigate="navigateTo"
+    />
+
+    <!-- ============ L2 点击控制 ============ -->
+    <template v-else-if="subPage === 'tapControls'">
+      <div class="reader-settings__sub-header">
+        <button class="reader-settings__back" @click="goBack()">
+          <ChevronLeft :size="16" />
+        </button>
+        <span class="reader-settings__sub-title">点击控制</span>
       </div>
 
-      <!-- 翻页 -->
       <div class="reader-settings__row">
-        <span class="reader-settings__label">{{ isComic ? '漫画翻页' : '翻页' }}</span>
+        <span class="reader-settings__label">左区</span>
         <div class="reader-settings__pill-group">
-          <button v-for="opt in activeFlipOptions" :key="opt.value" class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.flipMode === opt.value }"
-            @click="setFlipMode(opt.value)">
+          <button
+            v-for="opt in TAP_ACTION_OPTIONS"
+            :key="`left-${opt.value}`"
+            class="reader-settings__pill"
+            :class="{ 'reader-settings__pill--active': settings.tapLeftAction === opt.value }"
+            @click="setTapAction('left', opt.value)"
+          >
             {{ opt.label }}
           </button>
         </div>
       </div>
 
-
-    </template>
-
-    <!-- ============ L2 更多设置 ============ -->
-    <template v-else-if="subPage === 'more'">
-      <div class="reader-settings__sub-header">
-        <button class="reader-settings__back" @click="goBack()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="reader-settings__sub-title">更多设置</span>
-      </div>
-
-      <!-- 粗细 -->
       <div class="reader-settings__row">
-        <span class="reader-settings__label">粗细</span>
+        <span class="reader-settings__label">右区</span>
         <div class="reader-settings__pill-group">
-          <button v-for="w in FONT_WEIGHT_PRESETS" :key="w.value" class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.fontWeight === w.value }"
-            :style="{ fontWeight: w.value }" @click="updateTypography({ fontWeight: w.value })">{{ w.label }}</button>
+          <button
+            v-for="opt in TAP_ACTION_OPTIONS"
+            :key="`right-${opt.value}`"
+            class="reader-settings__pill"
+            :class="{ 'reader-settings__pill--active': settings.tapRightAction === opt.value }"
+            @click="setTapAction('right', opt.value)"
+          >
+            {{ opt.label }}
+          </button>
         </div>
       </div>
 
+      <div class="reader-settings__row">
+        <span class="reader-settings__label">中区</span>
+        <span class="reader-settings__hint">固定打开或关闭阅读菜单</span>
+      </div>
+
       <!-- 点击区域 -->
-      <div v-if="!isComic" class="reader-settings__row reader-settings__row--top">
+      <div class="reader-settings__row reader-settings__row--top">
         <span class="reader-settings__label">点击区</span>
         <div
           class="reader-settings__tap-zone-bar"
@@ -277,15 +329,19 @@ defineExpose({ isNight, toggleDayNight })
           @pointerup="onTapZoneBarPointerUp"
           @pointercancel="onTapZoneBarPointerUp"
         >
-          <!-- 左区（上一页） -->
-          <div
+          <button
+            type="button"
             class="reader-settings__tap-region reader-settings__tap-region--left"
-            :style="{ width: (settings.tapZoneLeft * 100) + '%' }"
+            :style="{ width: settings.tapZoneLeft * 100 + '%' }"
+            title="点击切换左区动作，拖动分界调整宽度"
+            @click="toggleTapAction('left')"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            <span class="reader-settings__tap-action-icon">{{
+              tapActionIcon(settings.tapLeftAction)
+            }}</span>
+            <span>{{ tapActionLabel(settings.tapLeftAction) }}</span>
             <span>{{ Math.round(settings.tapZoneLeft * 100) }}%</span>
-          </div>
-          <!-- 左分界拖柄 -->
+          </button>
           <div
             class="reader-settings__tap-divider"
             @pointerdown="onDividerPointerDown($event, 'left')"
@@ -293,12 +349,14 @@ defineExpose({ isNight, toggleDayNight })
           >
             <span class="reader-settings__tap-divider-grip">⋮</span>
           </div>
-          <!-- 中区（菜单） -->
-          <div class="reader-settings__tap-region reader-settings__tap-region--center" style="flex:1">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <div
+            class="reader-settings__tap-region reader-settings__tap-region--center"
+            style="flex: 1"
+          >
+            <span class="reader-settings__tap-action-icon">☰</span>
+            <span>菜单</span>
             <span>{{ Math.round((settings.tapZoneRight - settings.tapZoneLeft) * 100) }}%</span>
           </div>
-          <!-- 右分界拖柄 -->
           <div
             class="reader-settings__tap-divider"
             @pointerdown="onDividerPointerDown($event, 'right')"
@@ -306,269 +364,85 @@ defineExpose({ isNight, toggleDayNight })
           >
             <span class="reader-settings__tap-divider-grip">⋮</span>
           </div>
-          <!-- 右区（下一页） -->
-          <div
+          <button
+            type="button"
             class="reader-settings__tap-region reader-settings__tap-region--right"
-            :style="{ width: ((1 - settings.tapZoneRight) * 100) + '%' }"
+            :style="{ width: (1 - settings.tapZoneRight) * 100 + '%' }"
+            title="点击切换右区动作，拖动分界调整宽度"
+            @click="toggleTapAction('right')"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <span class="reader-settings__tap-action-icon">{{
+              tapActionIcon(settings.tapRightAction)
+            }}</span>
+            <span>{{ tapActionLabel(settings.tapRightAction) }}</span>
             <span>{{ Math.round((1 - settings.tapZoneRight) * 100) }}%</span>
-          </div>
+          </button>
         </div>
       </div>
 
-      <!-- 导航列表 -->
-      <div class="reader-settings__more-list">
-        <button class="reader-settings__more-item" @click="navigateTo('spacing')">
-          <span>间距设置</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
-        <button class="reader-settings__more-item" @click="navigateTo('typography')">
-          <span>字体样式</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
-        <button class="reader-settings__more-item" @click="navigateTo('shortcuts')">
-          <span>快捷键说明</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
+      <div class="reader-settings__tap-debug-note">
+        点击左右色块可切换动作；拖动分界可调整点击区宽度。调整时会在阅读页短暂显示预览。
       </div>
     </template>
 
     <!-- ============ L2 间距设置 ============ -->
-    <template v-else-if="subPage === 'spacing'">
-      <div class="reader-settings__sub-header">
-        <button class="reader-settings__back" @click="goBack()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="reader-settings__sub-title">间距设置</span>
-      </div>
+    <ReaderSettingsSpacingPage
+      v-else-if="subPage === 'spacing'"
+      :settings="settings"
+      @back="goBack"
+      @update-typography="updateTypography"
+    />
 
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">行距</span>
-        <n-slider :value="settings.typography.lineHeight"
-          @update:value="(v: number) => updateTypography({ lineHeight: v })" :min="1.0" :max="3.0" :step="0.1"
-          :format-tooltip="(v: number) => v.toFixed(1)" style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.typography.lineHeight.toFixed(1) }}</span>
-      </div>
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">段距</span>
-        <n-slider :value="settings.typography.paragraphSpacing"
-          @update:value="(v: number) => updateTypography({ paragraphSpacing: v })" :min="0" :max="40" :step="2"
-          style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.typography.paragraphSpacing }}px</span>
-      </div>
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">缩进</span>
-        <n-slider :value="settings.typography.textIndent"
-          @update:value="(v: number) => updateTypography({ textIndent: v })" :min="0" :max="4" :step="0.5"
-          :format-tooltip="(v: number) => v.toFixed(1) + 'em'" style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.typography.textIndent }}em</span>
-      </div>
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">字距</span>
-        <n-slider :value="settings.typography.letterSpacing"
-          @update:value="(v: number) => updateTypography({ letterSpacing: v })" :min="0" :max="6" :step="0.5"
-          :format-tooltip="(v: number) => v.toFixed(1) + 'px'" style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.typography.letterSpacing }}px</span>
-      </div>
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">边距</span>
-        <n-slider :value="settings.padding" @update:value="(v: number) => { settings.padding = v }" :min="4" :max="64"
-          :step="4" style="flex:1" />
-        <span class="reader-settings__val" style="width:36px">{{ settings.padding }}px</span>
-      </div>
-    </template>
+    <!-- ============ L2 页边距设置 ============ -->
+    <ReaderSettingsPagePaddingPage
+      v-else-if="subPage === 'pagePadding'"
+      :settings="settings"
+      @back="goBack"
+      @update-page-padding="updatePagePadding"
+    />
 
     <!-- ============ L2 字体选择 ============ -->
-    <template v-else-if="subPage === 'font'">
-      <div class="reader-settings__sub-header">
-        <button class="reader-settings__back" @click="goBack()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="reader-settings__sub-title">字体选择</span>
-      </div>
-
-      <div class="reader-settings__font-list">
-        <button v-for="fp in FONT_PRESETS" :key="fp.label" class="reader-settings__font-item"
-          :class="{ 'reader-settings__font-item--active': settings.typography.fontFamily === fp.value }"
-          :style="{ fontFamily: fp.value }" @click="updateTypography({ fontFamily: fp.value })">
-          <span>{{ fp.label }}</span>
-          <svg v-if="settings.typography.fontFamily === fp.value" width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="#63e2b7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </button>
-      </div>
-    </template>
+    <ReaderSettingsFontPage
+      v-else-if="subPage === 'font'"
+      :settings="settings"
+      :font-presets="FONT_PRESETS"
+      @back="goBack"
+      @update-typography="updateTypography"
+      @navigate="navigateTo"
+      @load-system-fonts="loadSystemFonts"
+    />
 
     <!-- ============ L2 字体样式 ============ -->
-    <template v-else-if="subPage === 'typography'">
-      <div class="reader-settings__sub-header">
-        <button class="reader-settings__back" @click="goBack()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="reader-settings__sub-title">字体样式</span>
-      </div>
-
-      <!-- 斜体 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">斜体</span>
-        <div class="reader-settings__pill-group">
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.fontStyle === 'normal' }"
-            @click="updateTypography({ fontStyle: 'normal' })">正常</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.fontStyle === 'italic' }"
-            style="font-style:italic" @click="updateTypography({ fontStyle: 'italic' })">斜体</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.fontStyle === 'oblique' }"
-            style="font-style:oblique" @click="updateTypography({ fontStyle: 'oblique' })">倾斜</button>
-        </div>
-      </div>
-
-      <!-- 对齐 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">对齐</span>
-        <div class="reader-settings__pill-group">
-          <button v-for="a in TEXT_ALIGN_OPTIONS" :key="a.value" class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textAlign === a.value }"
-            @click="updateTypography({ textAlign: a.value })">{{ a.label }}</button>
-        </div>
-      </div>
-
-      <!-- 文字装饰 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">装饰</span>
-        <div class="reader-settings__pill-group">
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textDecoration === 'none' }"
-            @click="updateTypography({ textDecoration: 'none' })">无</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textDecoration === 'underline' }"
-            style="text-decoration:underline" @click="updateTypography({ textDecoration: 'underline' })">下划线</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textDecoration === 'line-through' }"
-            style="text-decoration:line-through"
-            @click="updateTypography({ textDecoration: 'line-through' })">删除线</button>
-        </div>
-      </div>
-
-      <!-- 书写模式 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">书写</span>
-        <div class="reader-settings__pill-group">
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.writingMode === 'horizontal-tb' }"
-            @click="updateTypography({ writingMode: 'horizontal-tb' })">横排</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.writingMode === 'vertical-rl' }"
-            @click="updateTypography({ writingMode: 'vertical-rl' })">竖排↷</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.writingMode === 'vertical-lr' }"
-            @click="updateTypography({ writingMode: 'vertical-lr' })">竖排↶</button>
-        </div>
-      </div>
-
-      <!-- 文字转换 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">转换</span>
-        <div class="reader-settings__pill-group">
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textTransform === 'none' }"
-            @click="updateTypography({ textTransform: 'none' })">无</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textTransform === 'uppercase' }"
-            @click="updateTypography({ textTransform: 'uppercase' })">大写</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textTransform === 'lowercase' }"
-            @click="updateTypography({ textTransform: 'lowercase' })">小写</button>
-          <button class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textTransform === 'capitalize' }"
-            @click="updateTypography({ textTransform: 'capitalize' })">首字母</button>
-        </div>
-      </div>
-
-      <!-- 文字描边 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">描边</span>
-        <n-slider :value="settings.typography.textStrokeWidth"
-          @update:value="(v: number) => updateTypography({ textStrokeWidth: v })" :min="0" :max="3" :step="0.5"
-          :format-tooltip="(v: number) => v + 'px'" style="flex:1" />
-        <span class="reader-settings__val" style="width:40px">{{ settings.typography.textStrokeWidth }}px</span>
-        <label class="reader-settings__color-swatch" title="描边颜色">
-          <input ref="strokeColorInputRef" type="color"
-            :value="settings.typography.textStrokeColor === 'transparent' ? '#000000' : settings.typography.textStrokeColor"
-            @input="(e) => updateTypography({ textStrokeColor: (e.target as HTMLInputElement).value })" />
-          <span
-            :style="{ background: settings.typography.textStrokeColor === 'transparent' ? '#555' : settings.typography.textStrokeColor }" />
-        </label>
-      </div>
-
-      <!-- 文字阴影 -->
-      <div class="reader-settings__row">
-        <span class="reader-settings__label">阴影</span>
-        <div class="reader-settings__pill-group">
-          <button v-for="sh in TEXT_SHADOW_PRESETS" :key="sh.label" class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.typography.textShadow === sh.value }"
-            @click="updateTypography({ textShadow: sh.value })">{{ sh.label }}</button>
-        </div>
-      </div>
-    </template>
+    <ReaderSettingsTypographyPage
+      v-else-if="subPage === 'typography'"
+      :settings="settings"
+      :text-align-options="TEXT_ALIGN_OPTIONS"
+      :text-shadow-presets="TEXT_SHADOW_PRESETS"
+      @back="goBack"
+      @update-typography="updateTypography"
+    />
 
     <!-- ============ L2 快捷键说明 ============ -->
-    <template v-else-if="subPage === 'shortcuts'">
-      <div class="reader-settings__sub-header">
-        <button class="reader-settings__back" @click="goBack()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="reader-settings__sub-title">快捷键说明</span>
-      </div>
+    <ReaderSettingsShortcutsPage
+      v-else-if="subPage === 'shortcuts'"
+      :volume-key-page-turn-enabled="settings.volumeKeyPageTurnEnabled"
+      @back="goBack"
+    />
 
-      <div class="reader-settings__shortcuts">
-        <div class="reader-settings__shortcut-row">
-          <span class="reader-settings__shortcut-keys">
-            <kbd>←</kbd> <kbd>A</kbd> <kbd>音量+</kbd>
-          </span>
-          <span class="reader-settings__shortcut-desc">上一页 / 上一章</span>
-        </div>
-        <div class="reader-settings__shortcut-row">
-          <span class="reader-settings__shortcut-keys">
-            <kbd>→</kbd> <kbd>D</kbd> <kbd>音量-</kbd>
-          </span>
-          <span class="reader-settings__shortcut-desc">下一页 / 下一章</span>
-        </div>
-        <div class="reader-settings__shortcut-row">
-          <span class="reader-settings__shortcut-keys">
-            <kbd>Space</kbd> <kbd>Enter</kbd>
-          </span>
-          <span class="reader-settings__shortcut-desc">打开 / 关闭菜单</span>
-        </div>
-        <div class="reader-settings__shortcut-note">
-          翻页快捷键在菜单关闭时生效。滚动模式仅支持快捷键切换章节。
-        </div>
-      </div>
-    </template>
+    <!-- ============ L2 自定义系统字体 ============ -->
+    <ReaderSettingsCustomFontPage
+      v-else-if="subPage === 'customFont'"
+      v-model:show-all-fonts="showAllFonts"
+      v-model:font-search-query="fontSearchQuery"
+      :settings="settings"
+      :system-fonts="systemFonts"
+      :system-fonts-loading="systemFontsLoading"
+      :system-fonts-error="systemFontsError"
+      :filtered-system-fonts="filteredSystemFonts"
+      @back="goBack"
+      @copy-font-list="copyFontList"
+      @update-typography="updateTypography"
+    />
   </div>
 </template>
 
@@ -587,6 +461,42 @@ defineExpose({ isNight, toggleDayNight })
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.reader-settings__switch-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reader-settings__flip-mode-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.reader-settings__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.reader-settings__flip-mode-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 196, 105, 0.88);
+}
+
+.reader-settings__tap-debug-note {
+  margin-top: -4px;
+  margin-left: 48px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.48);
 }
 
 .reader-settings__row--top {
@@ -642,7 +552,9 @@ defineExpose({ isNight, toggleDayNight })
   align-items: center;
   justify-content: center;
   gap: 2px;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -690,7 +602,10 @@ defineExpose({ isNight, toggleDayNight })
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
   padding: 0;
 }
 
@@ -736,7 +651,10 @@ defineExpose({ isNight, toggleDayNight })
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
   padding: 0;
 }
 
@@ -757,6 +675,73 @@ defineExpose({ isNight, toggleDayNight })
   letter-spacing: 0.05em;
   pointer-events: none;
   line-height: 1;
+}
+
+.reader-settings__skin-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.reader-settings__skin-card {
+  width: 72px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.reader-settings__skin-card:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.reader-settings__skin-card--active {
+  border-color: #63e2b7;
+  background: rgba(99, 226, 183, 0.12);
+}
+
+.reader-settings__skin-preview {
+  position: relative;
+  display: block;
+  height: 46px;
+  padding: 8px 8px 7px;
+}
+
+.reader-settings__skin-preview-bar {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+
+.reader-settings__skin-preview-paper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100% - 14px);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.reader-settings__skin-name {
+  display: block;
+  padding: 0 6px 8px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
 }
 
 /* ---- L2 子页面头部 ---- */
@@ -819,78 +804,6 @@ defineExpose({ isNight, toggleDayNight })
   color: #63e2b7;
 }
 
-/* ---- L2 快捷键说明 ---- */
-.reader-settings__shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.reader-settings__shortcut-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.reader-settings__shortcut-keys {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.reader-settings__shortcut-keys kbd {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 0.75rem;
-  font-family: inherit;
-  line-height: 1.6;
-}
-
-.reader-settings__shortcut-desc {
-  font-size: 0.8125rem;
-  opacity: 0.7;
-  text-align: right;
-}
-
-.reader-settings__shortcut-note {
-  font-size: 0.75rem;
-  opacity: 0.45;
-  line-height: 1.5;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-/* ---- 更多设置导航列表 ---- */
-.reader-settings__more-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.reader-settings__more-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(255, 255, 255, 0.04);
-  color: inherit;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.reader-settings__more-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* ---- 颜色选择器色块 ---- */
 .reader-settings__color-swatch {
   position: relative;
@@ -899,7 +812,7 @@ defineExpose({ isNight, toggleDayNight })
   flex-shrink: 0;
 }
 
-.reader-settings__color-swatch input[type="color"] {
+.reader-settings__color-swatch input[type='color'] {
   position: absolute;
   inset: 0;
   opacity: 0;
@@ -947,12 +860,17 @@ defineExpose({ isNight, toggleDayNight })
   min-width: 0;
   overflow: hidden;
   transition: background 0.15s;
+  border: none;
+  padding: 0 2px;
+  font-family: inherit;
+  white-space: nowrap;
 }
 
 .reader-settings__tap-region--left {
   background: rgba(99, 226, 183, 0.08);
   color: rgba(99, 226, 183, 0.85);
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .reader-settings__tap-region--center {
@@ -964,6 +882,18 @@ defineExpose({ isNight, toggleDayNight })
   background: rgba(99, 226, 183, 0.08);
   color: rgba(99, 226, 183, 0.85);
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.reader-settings__tap-region--left:hover,
+.reader-settings__tap-region--right:hover {
+  background: rgba(99, 226, 183, 0.16);
+}
+
+.reader-settings__tap-action-icon {
+  font-size: 0.875rem;
+  line-height: 1;
+  font-weight: 700;
 }
 
 .reader-settings__tap-divider {
@@ -989,4 +919,24 @@ defineExpose({ isNight, toggleDayNight })
   letter-spacing: -2px;
   pointer-events: none;
 }
+
+/* ---- 字体列表补充样式 ---- */
+.reader-settings__font-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.reader-settings__font-item--nav {
+  justify-content: space-between;
+}
+
+.reader-settings__font-custom-badge {
+  font-size: 0.625rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(99, 226, 183, 0.2);
+  color: #63e2b7;
+}
+
 </style>

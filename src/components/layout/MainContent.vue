@@ -12,9 +12,22 @@
 .main-content {
   grid-area: main;
   overflow: hidden;
-  background: var(--color-surface);
+  background-color: var(--color-content-bg, var(--color-surface));
+  background-image: var(--content-bg-texture);
+  /* background-color: #00000094; */
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border-radius: 0;
+  position: relative;
+  /* 加入外阴用试试 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* margin-right: 2px; */
+}
+
+@media (min-width: 768px) {
+  .main-content {
+    border-radius: 20px;
+  }
 }
 </style>

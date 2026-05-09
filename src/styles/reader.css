@@ -1,0 +1,62 @@
+.reader-page {
+  min-height: 100dvh;
+  background: var(--reader-bg);
+  color: var(--reader-text);
+}
+
+.reader-content {
+  width: 100%;
+  max-width: var(--reader-measure);
+  margin-inline: auto;
+
+  padding-inline: max(var(--reader-inline-padding), var(--safe-left))
+    max(var(--reader-inline-padding), var(--safe-right));
+
+  padding-top: max(var(--reader-block-padding), var(--safe-top));
+  padding-bottom: max(calc(var(--reader-block-padding) * 2), var(--safe-bottom));
+
+  font-family: var(--reader-font-family, var(--font-reader-sans));
+  font-size: var(--reader-font-size, var(--reader-font-size-default));
+  line-height: var(--reader-line-height, var(--lh-reader));
+  letter-spacing: var(--reader-letter-spacing);
+}
+
+.reader-content p {
+  margin: 0 0 var(--reader-paragraph-gap);
+  text-indent: 2em;
+  text-align: justify;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.reader-progress {
+  height: 3px;
+  background: var(--reader-border);
+}
+
+.reader-progress__bar {
+  height: 100%;
+  width: var(--progress, 0%);
+  background: var(--color-accent);
+  transition: width var(--dur-fast) var(--ease-standard);
+}
+
+@media (min-width: 600px) {
+  .reader-content {
+    --reader-inline-padding: 2rem;
+  }
+}
+
+@media (min-width: 840px) {
+  .reader-content {
+    --reader-measure: 47.5rem;
+    --reader-inline-padding: 3rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .reader-content {
+    --reader-measure: 51.25rem;
+    --reader-inline-padding: 4rem;
+  }
+}

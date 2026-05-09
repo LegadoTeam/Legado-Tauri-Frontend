@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import type { DropdownOption } from 'naive-ui';
 /**
  * MobileToolbarMenu — 移动端工具栏三点菜单
  *
  * 桌面端：渲染默认 slot（完整工具栏按钮）
- * 移动端：收起为竖三点下拉菜单
+ * 移动端：收起为竖三点下拉菜单（AppSheet + AppListItem）
  *
  * 用法：
  *   <MobileToolbarMenu :options="menuOptions" @select="handleSelect">
@@ -11,21 +12,28 @@
  *     <n-button .../>
  *   </MobileToolbarMenu>
  */
-import { isMobile } from '../../composables/useEnv'
+import { MoreVertical } from 'lucide-vue-next';
+import { ref } from 'vue';
+import { isMobile } from '../../composables/useEnv';
+import AppListItem from '../base/AppListItem.vue';
+import AppSheet from '../base/AppSheet.vue';
 
-export interface MenuOption {
-  label: string
-  key: string
-  disabled?: boolean
-}
+export type MenuOption = DropdownOption;
 
 defineProps<{
-  options: MenuOption[]
-}>()
+  options: MenuOption[];
+}>();
 
 const emit = defineEmits<{
-  (e: 'select', key: string): void
-}>()
+  (e: 'select', key: string): void;
+}>();
+
+const sheetOpen = ref(false);
+
+function onSelect(key: string) {
+  sheetOpen.value = false;
+  emit('select', key);
+}
 </script>
 
 <template>
@@ -33,18 +41,32 @@ const emit = defineEmits<{
   <template v-if="!isMobile">
     <slot />
   </template>
-  <!-- 移动端：三点下拉菜单 -->
-  <n-dropdown
-    v-else
-    trigger="click"
-    :options="options"
-    placement="bottom-end"
-    @select="(key: string) => emit('select', key)"
-  >
-    <n-button size="small" quaternary>
+  <!-- 移动端：三点菜单触发 AppSheet 底部抽屉 -->
+  <template v-else>
+    <n-button size="small" quaternary aria-label="更多操作" @click="sheetOpen = true">
       <template #icon>
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        <MoreVertical :size="16" />
       </template>
     </n-button>
-  </n-dropdown>
+    <AppSheet v-model="sheetOpen">
+      <div class="mtm-sheet" role="menu">
+        <AppListItem
+          v-for="opt in options"
+          :key="String(opt.key)"
+          :title="String(opt.label ?? opt.key)"
+          :disabled="!!opt.disabled"
+          role="menuitem"
+          @click="onSelect(String(opt.key))"
+        />
+      </div>
+    </AppSheet>
+  </template>
 </template>
+
+<style scoped>
+.mtm-sheet {
+  padding: var(--space-2) var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+}
+</style>

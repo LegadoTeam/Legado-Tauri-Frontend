@@ -17,91 +17,92 @@
  *   2. 拖拽距离 > 30% 视口宽度
  *   3. 点击左侧 30% / 右侧 30%
  */
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { usePagination } from '../composables/usePagination'
-import type { ReaderTypography } from '../types'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import type { ReaderTypography } from '../types';
+import { usePagination } from '../composables/usePagination';
 
 const props = defineProps<{
-  content: string
-  chapterTitle?: string
-  typography: ReaderTypography
-  padding: number
-  startFromEnd?: boolean
-  hasPrev?: boolean
-  hasNext?: boolean
+  content: string;
+  chapterTitle?: string;
+  typography: ReaderTypography;
+  padding: number;
+  startFromEnd?: boolean;
+  hasPrev?: boolean;
+  hasNext?: boolean;
   /** 点击左区占比 0-1 */
-  tapZoneLeft?: number
+  tapZoneLeft?: number;
   /** 点击右区开始占比 0-1 */
-  tapZoneRight?: number
-}>()
+  tapZoneRight?: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'tap', zone: 'left' | 'center' | 'right'): void
-  (e: 'prev-chapter'): void
-  (e: 'next-chapter'): void
-  (e: 'progress', ratio: number): void
-}>()
+  (e: 'tap', zone: 'left' | 'center' | 'right'): void;
+  (e: 'prev-chapter'): void;
+  (e: 'next-chapter'): void;
+  (e: 'progress', ratio: number): void;
+}>();
 
 /* ============================================================
    分页引擎
    ============================================================ */
-const {
-  pages, currentPage, totalPages,
-  paginate, nextPage, prevPage, goToPage,
-} = usePagination()
+const { pages, currentPage, totalPages, paginate, nextPage, prevPage, goToPage } = usePagination();
 
-const containerRef = ref<HTMLElement | null>(null)
+const containerRef = ref<HTMLElement | null>(null);
 
 // 仅在内容变化时应用 startFromEnd，避免 resize/排版调整时误跳末页
-let pendingInitialPage: 'first' | 'last' = props.startFromEnd ? 'last' : 'first'
+let pendingInitialPage: 'first' | 'last' = props.startFromEnd ? 'last' : 'first';
 
 function makeTitleHtml(title: string): string {
-  return `<p class="reader-chapter-title">${title}</p>`
+  return `<p class="reader-chapter-title">${title}</p>`;
 }
 
 async function doPaginate() {
-  const el = containerRef.value
-  if (!el || !props.content) return
-  const ip = pendingInitialPage
-  pendingInitialPage = 'first'
-  const prefix = props.chapterTitle ? makeTitleHtml(props.chapterTitle) : ''
-  await paginate(props.content, el, props.typography, props.padding, ip, prefix)
+  const el = containerRef.value;
+  if (!el || !props.content) {
+    return;
+  }
+  const ip = pendingInitialPage;
+  pendingInitialPage = 'first';
+  const prefix = props.chapterTitle ? makeTitleHtml(props.chapterTitle) : '';
+  await paginate(props.content, el, props.typography, props.padding, ip, prefix);
 }
 
 watch(
   () => props.content,
-  () => { pendingInitialPage = props.startFromEnd ? 'last' : 'first' },
-)
+  () => {
+    pendingInitialPage = props.startFromEnd ? 'last' : 'first';
+  },
+);
 
 watch(
   () => [props.content, props.typography, props.padding] as const,
   () => nextTick(doPaginate),
   { immediate: true, deep: true },
-)
+);
 
-let resizeOb: ResizeObserver | null = null
-let resizeTimer = 0
+let resizeOb: ResizeObserver | null = null;
+let resizeTimer = 0;
 onMounted(() => {
   // 等待一帧确保容器布局完成再分页
-  requestAnimationFrame(() => nextTick(doPaginate))
+  requestAnimationFrame(() => nextTick(doPaginate));
   if (containerRef.value) {
     resizeOb = new ResizeObserver(() => {
       // 去抖：避免过渡动画中多次触发
-      cancelAnimationFrame(resizeTimer)
-      resizeTimer = requestAnimationFrame(() => doPaginate())
-    })
-    resizeOb.observe(containerRef.value)
+      cancelAnimationFrame(resizeTimer);
+      resizeTimer = requestAnimationFrame(() => doPaginate());
+    });
+    resizeOb.observe(containerRef.value);
   }
-})
-onUnmounted(() => resizeOb?.disconnect())
+});
+onUnmounted(() => resizeOb?.disconnect());
 
 /* ============================================================
    3 页内容（prev / current / next）
    ============================================================ */
-const prevPageHTML = computed(() => pages.value[currentPage.value - 1] ?? '')
-const currentPageHTML = computed(() => pages.value[currentPage.value] ?? '')
-const nextPageHTML = computed(() => pages.value[currentPage.value + 1] ?? '')
-const pageInfo = computed(() => `${currentPage.value + 1}/${totalPages.value}`)
+const prevPageHTML = computed(() => pages.value[currentPage.value - 1] ?? '');
+const currentPageHTML = computed(() => pages.value[currentPage.value] ?? '');
+const nextPageHTML = computed(() => pages.value[currentPage.value + 1] ?? '');
+const pageInfo = computed(() => `${currentPage.value + 1}/${totalPages.value}`);
 
 /* ============================================================
    track 位置 & 动画
@@ -113,182 +114,240 @@ const pageInfo = computed(() => `${currentPage.value + 1}/${totalPages.value}`)
  * 基线 = -containerWidth（展示 track 里的第 2 个页面）
  * 实际 translateX = -containerWidth + dragOffset
  */
-const dragOffset = ref(0)
-const isSnapping = ref(false)
+const dragOffset = ref(0);
+const isSnapping = ref(false);
 /** snap 动画的目标偏移（相对于基线） */
-const snapTargetOffset = ref(0)
+const snapTargetOffset = ref(0);
 
 function getContainerWidth(): number {
-  return containerRef.value?.clientWidth ?? window.innerWidth
+  return containerRef.value?.clientWidth ?? window.innerWidth;
 }
 
 const trackTranslateX = computed(() => {
-  const w = getContainerWidth()
-  const base = -w
+  const w = getContainerWidth();
+  const base = -w;
   if (isSnapping.value) {
-    return base + snapTargetOffset.value
+    return base + snapTargetOffset.value;
   }
-  return base + dragOffset.value
-})
+  return base + dragOffset.value;
+});
 
 /* ============================================================
    手势处理
    ============================================================ */
-let dragging = false
-let startX = 0
-let startY = 0
-let startTime = 0
-let hasMoved = false
-let directionLocked = false
-let isHorizontal = false
+let dragging = false;
+let startX = 0;
+let startY = 0;
+let startTime = 0;
+let hasMoved = false;
+let directionLocked = false;
+let isHorizontal = false;
 
-const VELOCITY_THRESHOLD = 0.3   // px/ms
-const DISTANCE_RATIO = 0.30      // 30% 视口宽
+const VELOCITY_THRESHOLD = 0.3; // px/ms
+const DISTANCE_RATIO = 0.3; // 30% 视口宽
+
+/** 翻章锁：发出翻章事件后到新内容到来之前阻止再次触发 */
+let chapterChanging = false;
+/**
+ * 记录最近 touchstart 的时间戳。
+ * 移动端在 touchend 后约 300~600ms 会生成合成 mousedown/mouseup，
+ * 导致 onPointerDown/Up 被重复执行引发连续翻页。
+ */
+let lastTouchTime = 0;
 
 /* ── 边界提示 ── */
-const boundaryMsg = ref('')
-let boundaryTimer = 0
+const boundaryMsg = ref('');
+let boundaryTimer = 0;
 function showBoundary(msg: string) {
-  boundaryMsg.value = msg
-  clearTimeout(boundaryTimer)
-  boundaryTimer = window.setTimeout(() => { boundaryMsg.value = '' }, 1500)
+  boundaryMsg.value = msg;
+  clearTimeout(boundaryTimer);
+  boundaryTimer = window.setTimeout(() => {
+    boundaryMsg.value = '';
+  }, 1500);
 }
 
 function onPointerDown(e: MouseEvent | TouchEvent) {
-  if (isSnapping.value) return
-  dragging = true
-  hasMoved = false
-  directionLocked = false
-  isHorizontal = false
-  startX = 'touches' in e ? e.touches[0].clientX : e.clientX
-  startY = 'touches' in e ? e.touches[0].clientY : e.clientY
-  startTime = Date.now()
-  dragOffset.value = 0
+  if (isSnapping.value) {
+    return;
+  }
+  // 过滤移动端触摸后浏览器自动生成的合成 mousedown（ghost click 问题）
+  const isTouch =
+    'touches' in e || ('pointerType' in e && (e as PointerEvent).pointerType === 'touch');
+  if (isTouch) {
+    lastTouchTime = Date.now();
+  } else if (Date.now() - lastTouchTime < 600) {
+    return;
+  }
+  if (chapterChanging) {
+    return;
+  }
+  dragging = true;
+  hasMoved = false;
+  directionLocked = false;
+  isHorizontal = false;
+  startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+  startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+  startTime = Date.now();
+  dragOffset.value = 0;
 }
 
 function onPointerMove(e: MouseEvent | TouchEvent) {
-  if (!dragging) return
-  const x = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX
-  const y = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY
-  const dx = x - startX
-  const dy = y - startY
+  if (!dragging) {
+    return;
+  }
+  const x = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+  const y = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+  const dx = x - startX;
+  const dy = y - startY;
 
   if (!directionLocked && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-    directionLocked = true
-    isHorizontal = Math.abs(dx) > Math.abs(dy)
+    directionLocked = true;
+    isHorizontal = Math.abs(dx) > Math.abs(dy);
   }
-  if (!isHorizontal) return
+  if (!isHorizontal) {
+    return;
+  }
 
-  if ('cancelable' in e && e.cancelable) e.preventDefault()
-  hasMoved = true
+  if ('cancelable' in e && e.cancelable) {
+    e.preventDefault();
+  }
+  hasMoved = true;
 
-  const w = getContainerWidth()
+  const w = getContainerWidth();
   // 边界阻尼：首页右拉 / 末页左拉
-  const atStart = currentPage.value === 0 && dx > 0
-  const atEnd = currentPage.value >= totalPages.value - 1 && dx < 0
+  const atStart = currentPage.value === 0 && dx > 0;
+  const atEnd = currentPage.value >= totalPages.value - 1 && dx < 0;
   if (atStart || atEnd) {
-    dragOffset.value = dx * 0.2
+    dragOffset.value = dx * 0.2;
   } else {
-    dragOffset.value = Math.max(-w, Math.min(w, dx))
+    dragOffset.value = Math.max(-w, Math.min(w, dx));
   }
 }
 
 function onPointerUp(e: MouseEvent | TouchEvent) {
-  if (!dragging) return
-  dragging = false
+  if (!dragging) {
+    return;
+  }
+  dragging = false;
 
   if (!hasMoved) {
-    handleClick(e)
-    return
+    handleClick(e);
+    return;
   }
   if (!isHorizontal) {
-    dragOffset.value = 0
-    return
+    dragOffset.value = 0;
+    return;
   }
 
-  const w = getContainerWidth()
-  const dx = dragOffset.value
-  const dt = Date.now() - startTime
-  const velocity = Math.abs(dx) / Math.max(dt, 1)
-  const shouldFlip = velocity > VELOCITY_THRESHOLD || Math.abs(dx) > w * DISTANCE_RATIO
+  const w = getContainerWidth();
+  const dx = dragOffset.value;
+  const dt = Date.now() - startTime;
+  const velocity = Math.abs(dx) / Math.max(dt, 1);
+  const shouldFlip = velocity > VELOCITY_THRESHOLD || Math.abs(dx) > w * DISTANCE_RATIO;
 
   if (shouldFlip && dx < 0) {
     // 左滑 → 下一页
     if (currentPage.value < totalPages.value - 1) {
-      snapTo(-w, () => { nextPage(); finishSnap() })
+      snapTo(-w, () => {
+        nextPage();
+        finishSnap();
+      });
     } else if (props.hasNext) {
-      emit('next-chapter')
-      snapTo(0, finishSnap)
+      chapterChanging = true;
+      emit('next-chapter');
+      snapTo(0, finishSnap);
     } else {
-      showBoundary('已经到最后一页了')
-      snapTo(0, finishSnap)
+      showBoundary('已经到最后一页了');
+      snapTo(0, finishSnap);
     }
   } else if (shouldFlip && dx > 0) {
     // 右滑 → 上一页
     if (currentPage.value > 0) {
-      snapTo(w, () => { prevPage(); finishSnap() })
+      snapTo(w, () => {
+        prevPage();
+        finishSnap();
+      });
     } else if (props.hasPrev) {
-      emit('prev-chapter')
-      snapTo(0, finishSnap)
+      chapterChanging = true;
+      emit('prev-chapter');
+      snapTo(0, finishSnap);
     } else {
-      showBoundary('已经到最前了')
-      snapTo(0, finishSnap)
+      showBoundary('已经到最前了');
+      snapTo(0, finishSnap);
     }
   } else {
     // 回弹
-    snapTo(0, finishSnap)
+    snapTo(0, finishSnap);
   }
 }
 
 function handleClick(e: MouseEvent | TouchEvent) {
-  const el = containerRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const cx = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as MouseEvent).clientX
-  const relX = (cx - rect.left) / rect.width
+  const el = containerRef.value;
+  if (!el) {
+    return;
+  }
+  const rect = el.getBoundingClientRect();
+  const cx = 'changedTouches' in e ? e.changedTouches[0].clientX : (e as MouseEvent).clientX;
+  const relX = (cx - rect.left) / rect.width;
 
-  const leftRatio = props.tapZoneLeft ?? 0.3
-  const rightRatio = props.tapZoneRight ?? 0.7
+  const leftRatio = props.tapZoneLeft ?? 0.3;
+  const rightRatio = props.tapZoneRight ?? 0.7;
   if (relX < leftRatio) {
     if (currentPage.value > 0) {
-      snapTo(getContainerWidth(), () => { prevPage(); finishSnap() })
+      snapTo(getContainerWidth(), () => {
+        prevPage();
+        finishSnap();
+      });
     } else if (props.hasPrev) {
-      emit('prev-chapter')
+      chapterChanging = true;
+      emit('prev-chapter');
     } else {
-      showBoundary('已经到最前了')
+      showBoundary('已经到最前了');
     }
   } else if (relX > rightRatio) {
     if (currentPage.value < totalPages.value - 1) {
-      snapTo(-getContainerWidth(), () => { nextPage(); finishSnap() })
+      snapTo(-getContainerWidth(), () => {
+        nextPage();
+        finishSnap();
+      });
     } else if (props.hasNext) {
-      emit('next-chapter')
+      chapterChanging = true;
+      emit('next-chapter');
     } else {
-      showBoundary('已经到最后一页了')
+      showBoundary('已经到最后一页了');
     }
   } else {
-    emit('tap', 'center')
+    emit('tap', 'center');
   }
 }
 
 /** 启动 snap 动画到 targetOffset */
 function snapTo(targetOffset: number, onDone: () => void) {
-  snapTargetOffset.value = targetOffset
-  isSnapping.value = true
-  setTimeout(onDone, 260)
+  snapTargetOffset.value = targetOffset;
+  isSnapping.value = true;
+  setTimeout(onDone, 260);
 }
 
 /** snap 结束，瞬间重置 track 到基线 */
 function finishSnap() {
-  isSnapping.value = false
-  dragOffset.value = 0
-  snapTargetOffset.value = 0
+  isSnapping.value = false;
+  dragOffset.value = 0;
+  snapTargetOffset.value = 0;
 }
+
+// 内容变化时解除翻章锁
+watch(
+  () => props.content,
+  () => {
+    chapterChanging = false;
+  },
+);
 
 // 进度上报
 watch(currentPage, (p) => {
-  const ratio = totalPages.value <= 1 ? 1 : p / (totalPages.value - 1)
-  emit('progress', Math.min(1, Math.max(0, ratio)))
-})
+  const ratio = totalPages.value <= 1 ? 1 : p / (totalPages.value - 1);
+  emit('progress', Math.min(1, Math.max(0, ratio)));
+});
 
 defineExpose({
   goToPage,
@@ -296,16 +355,51 @@ defineExpose({
   prevPage,
   goToFirst: () => goToPage(0),
   goToLast: () => goToPage(totalPages.value - 1),
-  get currentPage() { return currentPage.value },
-  get totalPages() { return totalPages.value },
-})
+  /**
+   * 尝试页内翻到下一页。
+   * @returns true 表示页内翻页成功；false 表示已到末页，由父组件处理连章逻辑
+   */
+  flipNext(): boolean {
+    if (isSnapping.value) {
+      return false;
+    } // 动画进行中，拒绝新翻页，防止双重触发
+    if (currentPage.value < totalPages.value - 1) {
+      snapTo(-getContainerWidth(), () => {
+        nextPage();
+        finishSnap();
+      });
+      return true;
+    }
+    return false;
+  },
+  /**
+   * 尝试页内翻到上一页。
+   * @returns true 表示页内翻页成功；false 表示已到首页，由父组件处理连章逻辑
+   */
+  flipPrev(): boolean {
+    if (isSnapping.value) {
+      return false;
+    } // 动画进行中，拒绝新翻页，防止双重触发
+    if (currentPage.value > 0) {
+      snapTo(getContainerWidth(), () => {
+        prevPage();
+        finishSnap();
+      });
+      return true;
+    }
+    return false;
+  },
+  get currentPage() {
+    return currentPage.value;
+  },
+  get totalPages() {
+    return totalPages.value;
+  },
+});
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    class="slide-mode"
-  >
+  <div ref="containerRef" class="slide-mode">
     <!-- 手势捕获层：置于所有内容层之上，避免翻页时 DOM 重建导致触摸序列中断 -->
     <div
       class="slide-mode__gesture"
@@ -394,9 +488,7 @@ defineExpose({
   font-style: var(--reader-font-style);
   text-align: var(--reader-text-align);
   text-decoration: var(--reader-text-decoration);
-  text-transform: var(--reader-text-transform);
   font-variant: var(--reader-font-variant);
-  writing-mode: var(--reader-writing-mode);
   -webkit-text-stroke-width: var(--reader-text-stroke-width);
   -webkit-text-stroke-color: var(--reader-text-stroke-color);
   text-shadow: var(--reader-text-shadow);

@@ -1,350 +1,1056 @@
-/**
+﻿/**
  * usePagination — 文本分页引擎
  *
- * 快速首屏策略：
- *  1. 测量单字行高 → 估算每页可容纳段落数（estLinesPerPage）
- *  2. 立即排版前 estLinesPerPage 段 → 首页瞬间可见，isPaginating 提前置 false
- *  3. 后台按批次排版剩余段落，每批完成后 yield 主线程保持 UI 流畅
- *  4. 每批结果追加到 pages，totalPages 实时更新
+ * 默认使用真实 DOM 渲染测量（dom 引擎）：
+ *   将文本注入隐藏 DOM 容器，通过 Range.getClientRects() 获取精确行高与行字符边界。
+ *   天然支持系统字体缩放、WebView 字体自适应、所有 CSS 排版属性，无需任何补偿系数。
+ *
+ * 可选 Pretext 引擎（pretext）：
+ *   使用 Canvas measureText + Pretext 库做逐行布局。
+ *   在大多数现代设备上表现良好，但部分旧版 Android WebView 的 Canvas 测量存在偏差。
+ *
+ * 连续标点保护（Pretext 引擎）：连续的 `……`、`——` 等在传入 Pretext 前先插入 U+2060
+ * WORD JOINER，阻止在其间产生换行机会；渲染输出前自动剥离。
  *
  * 取消机制（cancelToken）：
  *   每次调用 paginate 递增 cancelToken；
  *   后台任务在每个 await 点检查令牌，不一致则安全退出。
  */
-import { ref, nextTick } from 'vue'
-import type { ReaderTypography } from '../types'
+import { layoutNextLine, prepareWithSegments, type LayoutCursor } from '@chenglou/pretext';
+import { ref, nextTick } from 'vue';
+import type { PaginationEngine, ReaderPagePadding, ReaderTypography } from '../types';
 
 export interface PaginationResult {
-  pages: string[]
-  currentPage: number
+  pages: string[];
+  currentPage: number;
+}
+
+/**
+ * 阅读位置锚点 — 用于跨重排恢复阅读位置。
+ * 优先级：charOffset > paragraphIndex + paragraphCharOffset > ratio > 0
+ */
+export interface ReadingAnchor {
+  /** 当前页首字在章节全文（splitParagraphs 前原始文本）中的字符偏移 */
+  charOffset: number;
+  /** 当前页首字所属段落索引（基于 splitParagraphs 结果） */
+  paragraphIndex: number;
+  /** 当前页首字在段落内的字符偏移 */
+  paragraphCharOffset: number;
+  /** 阅读进度比例 0-1，作为最终兜底 */
+  ratio: number;
+}
+
+/** 每页的元数据，用于锚点定位 */
+export interface PageMeta {
+  /** 该页首字在全文中的字符偏移 */
+  charOffset: number;
+  /** 该页首字所属段落索引 */
+  paragraphIndex: number;
+  /** 该页首字在段落内的字符偏移 */
+  paragraphCharOffset: number;
+}
+
+type PaginationBlockKind = 'title' | 'paragraph';
+
+interface PaginationBlockInput {
+  kind: PaginationBlockKind;
+  text: string;
+  font: string;
+  lineHeightPx: number;
+  leadingGapPx: number;
+  trailingGapPx: number;
+  firstLineIndentPx: number;
+  textAlign: ReaderTypography['textAlign'];
+  /** 该 block 在原始全文中的字符偏移起始 */
+  charOffsetInContent: number;
+  /** 该 block 在段落列表中的索引（title = -1） */
+  paragraphIndex: number;
+}
+
+interface PaginationResolvedLine {
+  text: string;
+  indentPx: number;
+  lineHeightPx: number;
+  textAlign: 'left' | 'center' | 'right' | 'justify';
+  justify: boolean;
+  isTerminal: boolean;
+  /** 该行首字在 block 原始文本中的字符偏移 */
+  charOffsetInBlock: number;
+}
+
+interface PaginationResolvedBlock {
+  kind: PaginationBlockKind;
+  lines: PaginationResolvedLine[];
+  leadingGapPx: number;
+  trailingGapPx: number;
+}
+
+interface PaginationPageGapItem {
+  kind: 'gap';
+  sizePx: number;
+}
+
+interface PaginationPageBlockItem {
+  kind: 'block';
+  blockKind: PaginationBlockKind;
+  lines: PaginationResolvedLine[];
+}
+
+type PaginationPageItem = PaginationPageGapItem | PaginationPageBlockItem;
+
+interface PaginationPageState {
+  items: PaginationPageItem[];
+  usedPx: number;
+  hasVisibleContent: boolean;
+}
+
+// ─── 工具函数 ──────────────────────────────────────────────────────────────
+
+function normalizePadding(padding: number | ReaderPagePadding): ReaderPagePadding {
+  if (typeof padding === 'number') {
+    return {
+      top: padding,
+      right: padding,
+      bottom: padding,
+      left: padding,
+    };
+  }
+  return padding;
+}
+
+function formatPx(value: number): string {
+  const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+  return `${safe}px`;
+}
+
+function buildCanvasFont(
+  typography: ReaderTypography,
+  overrides: Partial<
+    Pick<ReaderTypography, 'fontSize' | 'fontWeight' | 'fontStyle' | 'fontVariant'>
+  > = {},
+): string {
+  const fontStyle = overrides.fontStyle ?? typography.fontStyle;
+  const fontVariant = overrides.fontVariant ?? typography.fontVariant;
+  const fontWeight = overrides.fontWeight ?? typography.fontWeight;
+  const fontSize = overrides.fontSize ?? typography.fontSize;
+  return `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}px ${typography.fontFamily}`;
+}
+
+/**
+ * 将排版属性应用到 DOM 元素。
+ * 全量覆写，确保测量时不受容器继承样式影响。
+ */
+function applyTypographyToEl(
+  el: HTMLElement,
+  typography: ReaderTypography,
+  overrides: { fontSize?: number; fontWeight?: number } = {},
+) {
+  const fontSize = overrides.fontSize ?? typography.fontSize;
+  const fontWeight = overrides.fontWeight ?? typography.fontWeight;
+  el.style.fontFamily = typography.fontFamily;
+  el.style.fontSize = `${fontSize}px`;
+  el.style.lineHeight = `${typography.lineHeight}`;
+  el.style.letterSpacing = `${typography.letterSpacing}px`;
+  el.style.wordSpacing = `${typography.wordSpacing}px`;
+  el.style.fontWeight = `${fontWeight}`;
+  el.style.fontStyle = typography.fontStyle;
+  el.style.fontVariant = typography.fontVariant;
+  el.style.textDecoration = typography.textDecoration;
+  el.style.textShadow = typography.textShadow;
+  el.style.cssText += `;-webkit-text-stroke-width:${typography.textStrokeWidth}px;-webkit-text-stroke-color:${typography.textStrokeColor}`;
+  el.style.textRendering = 'optimizeLegibility';
+  el.style.cssText += `;-webkit-font-smoothing:antialiased`;
+}
+function extractPrefixText(prefixHtml: string): string {
+  if (!prefixHtml.trim()) {
+    return '';
+  }
+
+  const probe = document.createElement('div');
+  probe.innerHTML = prefixHtml;
+  return probe.textContent?.trim() ?? '';
+}
+
+/**
+ * 在连续的同类"粘性"标点（`……`、`——`）之间插入 U+2060 WORD JOINER，
+ * 阻止 Pretext 在其间产生换行机会。U+2060 零宽，渲染输出前统一剥离。
+ * 仅用于 Pretext 引擎路径。
+ */
+function protectStickyPunct(text: string): string {
+  return text.replace(/(…{2,}|—{2,})/g, (match) => [...match].join('\u2060'));
+}
+
+function splitParagraphs(content: string): string[] {
+  return content
+    .split(/\r?\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length > 0);
+}
+
+function wrapRawPageHtml(contentHtml: string): string {
+  return `<div class="reader-page-fragments">${contentHtml}</div>`;
+}
+
+function renderManualPage(items: PaginationPageItem[]): string {
+  const body = items
+    .map((item) => {
+      if (item.kind === 'gap') {
+        return `<div class="reader-gap" style="height:${formatPx(item.sizePx)}"></div>`;
+      }
+
+      const blockClass =
+        item.blockKind === 'title'
+          ? 'reader-block reader-block--title reader-chapter-title'
+          : 'reader-block reader-block--paragraph';
+
+      const lines = item.lines
+        .map((line) => {
+          const classes = ['reader-line'];
+          if (line.justify) {
+            classes.push('reader-line--justify');
+          }
+          if (line.isTerminal) {
+            classes.push('reader-line--terminal');
+          }
+
+          const styles = [
+            `min-height:${formatPx(line.lineHeightPx)}`,
+            `line-height:${formatPx(line.lineHeightPx)}`,
+            `text-align:${line.textAlign}`,
+          ];
+          if (line.indentPx > 0) {
+            styles.push(`padding-inline-start:${formatPx(line.indentPx)}`);
+          }
+
+          return `<div class="${classes.join(' ')}" style="${styles.join(';')}">${escapeHtml(line.text.replace(/\u2060/g, ''))}</div>`;
+        })
+        .join('');
+
+      return `<div class="${blockClass}">${lines}</div>`;
+    })
+    .join('');
+
+  return `<div class="reader-page-fragments reader-page-fragments--manual-lines">${body}</div>`;
+}
+
+function createPageState(): PaginationPageState {
+  return {
+    items: [],
+    usedPx: 0,
+    hasVisibleContent: false,
+  };
+}
+
+function pushGapItem(page: PaginationPageState, sizePx: number) {
+  if (sizePx <= 0) {
+    return;
+  }
+
+  const last = page.items[page.items.length - 1];
+  if (last?.kind === 'gap') {
+    last.sizePx += sizePx;
+    return;
+  }
+
+  page.items.push({ kind: 'gap', sizePx });
+}
+
+function pushBlockItem(
+  page: PaginationPageState,
+  blockKind: PaginationBlockKind,
+  lines: PaginationResolvedLine[],
+) {
+  if (lines.length === 0) {
+    return;
+  }
+
+  page.items.push({
+    kind: 'block',
+    blockKind,
+    lines: [...lines],
+  });
+}
+// ─── block 输入构建 ────────────────────────────────────────────────────────
+
+function resolveHorizontalBlocks(
+  content: string,
+  prefixHtml: string,
+  typography: ReaderTypography,
+): PaginationBlockInput[] {
+  const blocks: PaginationBlockInput[] = [];
+  const titleText = extractPrefixText(prefixHtml);
+  const titleBaseFontSize = typography.fontSize + 4;
+
+  if (titleText) {
+    blocks.push({
+      kind: 'title',
+      text: titleText,
+      font: buildCanvasFont(typography, { fontSize: titleBaseFontSize, fontWeight: 700 }),
+      lineHeightPx: titleBaseFontSize * 1.5,
+      leadingGapPx: titleBaseFontSize * 0.5,
+      trailingGapPx: titleBaseFontSize * 1.5,
+      firstLineIndentPx: 0,
+      textAlign: 'left',
+      charOffsetInContent: -1,
+      paragraphIndex: -1,
+    });
+  }
+
+  const paragraphs = splitParagraphs(content);
+  let searchFrom = 0;
+  for (let i = 0; i < paragraphs.length; i++) {
+    const paragraph = paragraphs[i];
+    const pos = content.indexOf(paragraph, searchFrom);
+    const charOffset = pos >= 0 ? pos : searchFrom;
+    blocks.push({
+      kind: 'paragraph',
+      text: paragraph,
+      font: buildCanvasFont(typography),
+      lineHeightPx: typography.fontSize * typography.lineHeight,
+      leadingGapPx: 0,
+      trailingGapPx: Math.max(0, typography.paragraphSpacing),
+      firstLineIndentPx: Math.max(0, typography.textIndent * typography.fontSize),
+      textAlign: typography.textAlign,
+      charOffsetInContent: charOffset,
+      paragraphIndex: i,
+    });
+    searchFrom = charOffset + paragraph.length;
+  }
+
+  return blocks;
+}
+
+/**
+ * 行首禁则：这些字符不应出现在行的开头。
+ * 同时涵盖 `……` 和 `——` 分拆保护：
+ * 当第二个 `…`/`—` 落在行首时，会被吸回上一行，保持双符号同行。
+ */
+const LINE_START_PROHIBITED = new Set<string>([
+  '，',
+  '。',
+  '！',
+  '？',
+  '；',
+  '：',
+  '、',
+  '）',
+  '〕',
+  '】',
+  '〉',
+  '》',
+  '」',
+  '』',
+  '〗',
+  '〙',
+  '\u201D' /* " */,
+  '\u2019' /* ' */,
+  '…',
+  '—',
+  '·',
+  ')',
+  ']',
+  '}',
+]);
+
+/**
+ * 行尾禁则：这些字符不应出现在行的结尾。
+ */
+const LINE_END_PROHIBITED = new Set<string>([
+  '（',
+  '〔',
+  '【',
+  '〈',
+  '《',
+  '「',
+  '『',
+  '〘',
+  '\u201C' /* " */,
+  '\u2018' /* ' */,
+  '(',
+  '[',
+  '{',
+]);
+
+/**
+ * 对已排好的行列表应用中文禁则（行首/行尾禁则）。
+ *
+ * - Pull（吸入）：下一行行首为行首禁则字符 → 将其拼入当前行末尾（允许轻微视觉溢出）。
+ * - Push（推出）：当前行末尾为行尾禁则字符 → 将其移到下一行行首。
+ * - 多轮迭代处理级联禁则（如 `"）` 需要两轮才能同时修正）。
+ * - 因调整导致的空行会被过滤，并修复 isTerminal / justify 标志。
+ */
+function applyKinsoku(
+  lines: PaginationResolvedLine[],
+  textAlign: ReaderTypography['textAlign'],
+): PaginationResolvedLine[] {
+  if (lines.length <= 1) {
+    return lines;
+  }
+
+  const result = lines.map((line) => ({ ...line }));
+
+  // 最多 4 轮，处理级联禁则场景（如同时出现 `……）`）
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+
+    for (let i = 0; i < result.length - 1; i++) {
+      const curr = result[i];
+      const next = result[i + 1];
+
+      // Pull：下一行行首是行首禁则字符 → 吸入当前行末（`……`/`——` 分拆同样由此修复）
+      if (next.text.length > 0 && LINE_START_PROHIBITED.has(next.text[0])) {
+        curr.text += next.text[0];
+        next.text = next.text.slice(1);
+        changed = true;
+      }
+
+      // Push：当前行末是行尾禁则字符 → 推入下一行行首
+      if (curr.text.length > 0 && LINE_END_PROHIBITED.has(curr.text[curr.text.length - 1])) {
+        const lastChar = curr.text[curr.text.length - 1];
+        curr.text = curr.text.slice(0, -1);
+        next.text = lastChar + next.text;
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      break;
+    }
+  }
+
+  // 过滤因禁则调整产生的空行（单字符行被整体吸走时会出现）
+  const filtered = result.filter((line) => line.text.length > 0);
+  if (filtered.length === 0) {
+    return lines;
+  }
+
+  // 修复 isTerminal / justify / textAlign 标志
+  const isJustify = textAlign === 'justify';
+  for (let i = 0; i < filtered.length; i++) {
+    const isLast = i === filtered.length - 1;
+    filtered[i].isTerminal = isLast;
+    filtered[i].justify = isJustify && !isLast;
+    if (isJustify) {
+      filtered[i].textAlign = isLast ? 'left' : 'justify';
+    }
+  }
+
+  return filtered;
+}
+
+// ─── DOM 排版引擎 ──────────────────────────────────────────────────────────
+
+/**
+ * 在容器内创建不可见的测量层。
+ * 返回该层 DOM 元素，调用方负责在使用完毕后 remove()。
+ */
+function createMeasureLayer(container: HTMLElement): HTMLDivElement {
+  const layer = document.createElement('div');
+  layer.style.position = 'absolute';
+  layer.style.top = '0';
+  layer.style.left = '0';
+  layer.style.visibility = 'hidden';
+  layer.style.pointerEvents = 'none';
+  layer.style.overflow = 'hidden';
+  layer.style.zIndex = '-9999';
+  container.appendChild(layer);
+  return layer;
+}
+
+/**
+ * 通过 Range.getClientRects() 检测文本元素中每行的起始字符偏移。
+ *
+ * 返回 [{ charOffset, top }] 列表。charOffset 为该行在段落文本中的偏移。
+ */
+function extractLineOffsetsFromTextNode(
+  textNode: Text,
+  text: string,
+): { charOffset: number; top: number }[] {
+  if (text.length === 0) {
+    return [];
+  }
+
+  const range = document.createRange();
+  const lineOffsets: { charOffset: number; top: number }[] = [];
+  let lastTop = -Infinity;
+
+  for (let i = 0; i < text.length; i++) {
+    range.setStart(textNode, i);
+    range.setEnd(textNode, i + 1);
+    const rects = range.getClientRects();
+    if (rects.length === 0) {
+      continue;
+    }
+    const top = rects[0].top;
+    if (top > lastTop + 0.5) {
+      lineOffsets.push({ charOffset: i, top });
+      lastTop = top;
+    }
+  }
+
+  return lineOffsets;
+}
+
+/**
+ * 用 DOM 测量对单个 block 进行行拆分，返回 PaginationResolvedBlock。
+ */
+function resolveBlockDOM(
+  block: PaginationBlockInput,
+  measureLayer: HTMLDivElement,
+  availW: number,
+  typography: ReaderTypography,
+): PaginationResolvedBlock {
+  if (!block.text) {
+    return {
+      kind: block.kind,
+      lines: [],
+      leadingGapPx: block.leadingGapPx,
+      trailingGapPx: block.trailingGapPx,
+    };
+  }
+
+  const isTitle = block.kind === 'title';
+  const titleBaseFontSize = typography.fontSize + 4;
+
+  const div = document.createElement('div');
+  div.style.width = availW + 'px';
+  div.style.boxSizing = 'border-box';
+  div.style.whiteSpace = 'normal';
+  div.style.wordBreak = 'break-all';
+  div.style.overflowWrap = 'break-word';
+  div.style.margin = '0';
+  div.style.padding = '0';
+  div.style.border = 'none';
+
+  if (isTitle) {
+    applyTypographyToEl(div, typography, { fontSize: titleBaseFontSize, fontWeight: 700 });
+    div.style.textAlign = 'left';
+    div.style.textIndent = '0';
+  } else {
+    applyTypographyToEl(div, typography);
+    div.style.textAlign = block.textAlign;
+    if (block.firstLineIndentPx > 0) {
+      div.style.textIndent = block.firstLineIndentPx + 'px';
+    }
+  }
+
+  div.textContent = block.text;
+  measureLayer.appendChild(div);
+
+  const textNode = div.firstChild as Text | null;
+  let lineOffsets: { charOffset: number; top: number }[] = [];
+  let lineHeightPx = block.lineHeightPx;
+
+  if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+    lineOffsets = extractLineOffsetsFromTextNode(textNode, block.text);
+    if (lineOffsets.length > 0) {
+      const totalH = div.getBoundingClientRect().height;
+      if (totalH > 0) {
+        lineHeightPx = totalH / lineOffsets.length;
+      }
+    }
+  }
+
+  div.remove();
+
+  if (!Number.isFinite(lineHeightPx) || lineHeightPx <= 0) {
+    lineHeightPx = block.lineHeightPx;
+  }
+
+  const resultLines: PaginationResolvedLine[] = [];
+
+  if (lineOffsets.length === 0) {
+    resultLines.push({
+      text: block.text,
+      indentPx: block.firstLineIndentPx,
+      lineHeightPx,
+      textAlign: block.textAlign === 'justify' ? 'left' : block.textAlign,
+      justify: false,
+      isTerminal: true,
+      charOffsetInBlock: 0,
+    });
+  } else {
+    const isJustify = block.textAlign === 'justify';
+    for (let i = 0; i < lineOffsets.length; i++) {
+      const start = lineOffsets[i].charOffset;
+      const end = i + 1 < lineOffsets.length ? lineOffsets[i + 1].charOffset : block.text.length;
+      const lineText = block.text.slice(start, end);
+      const isTerminal = i === lineOffsets.length - 1;
+      const indentPx = i === 0 ? block.firstLineIndentPx : 0;
+
+      resultLines.push({
+        text: lineText,
+        indentPx,
+        lineHeightPx,
+        textAlign: isJustify ? (isTerminal ? 'left' : 'justify') : block.textAlign,
+        justify: isJustify && !isTerminal,
+        isTerminal,
+        charOffsetInBlock: start,
+      });
+    }
+  }
+
+  return {
+    kind: block.kind,
+    lines: applyKinsoku(resultLines, block.textAlign),
+    leadingGapPx: block.leadingGapPx,
+    trailingGapPx: block.trailingGapPx,
+  };
+}
+
+// ─── Pretext 排版引擎 ──────────────────────────────────────────────────────
+
+function resolveBlockPretext(block: PaginationBlockInput, availW: number): PaginationResolvedBlock {
+  const lines: PaginationResolvedLine[] = [];
+  if (!block.text) {
+    return {
+      kind: block.kind,
+      lines,
+      leadingGapPx: block.leadingGapPx,
+      trailingGapPx: block.trailingGapPx,
+    };
+  }
+
+  const prepared = prepareWithSegments(protectStickyPunct(block.text), block.font);
+  const firstLineIndentPx = Math.min(block.firstLineIndentPx, Math.max(0, availW - 1));
+  let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 };
+  let isFirstLine = true;
+  let charConsumed = 0;
+
+  while (true) {
+    const indentPx = isFirstLine ? firstLineIndentPx : 0;
+    const lineWidth = Math.max(1, availW - indentPx);
+    const line = layoutNextLine(prepared, cursor, lineWidth);
+    if (line === null) {
+      break;
+    }
+
+    lines.push({
+      text: line.text,
+      indentPx,
+      lineHeightPx: block.lineHeightPx,
+      textAlign: block.textAlign === 'justify' ? 'left' : block.textAlign,
+      justify: false,
+      isTerminal: false,
+      charOffsetInBlock: charConsumed,
+    });
+    charConsumed += line.text.replace(/\u2060/g, '').length;
+    cursor = line.end;
+    isFirstLine = false;
+  }
+
+  for (let index = 0; index < lines.length; index++) {
+    const isTerminal = index === lines.length - 1;
+    lines[index].isTerminal = isTerminal;
+    lines[index].justify = block.textAlign === 'justify' && !isTerminal;
+    if (block.textAlign === 'justify' && !isTerminal) {
+      lines[index].textAlign = 'justify';
+    }
+  }
+
+  return {
+    kind: block.kind,
+    lines: applyKinsoku(lines, block.textAlign),
+    leadingGapPx: block.leadingGapPx,
+    trailingGapPx: block.trailingGapPx,
+  };
 }
 
 export function usePagination() {
-  const pages = ref<string[]>([])
-  const currentPage = ref(0)
-  const totalPages = ref(0)
-  const isPaginating = ref(false)
+  const pages = ref<string[]>([]);
+  const currentPage = ref(0);
+  const totalPages = ref(0);
+  const isPaginating = ref(false);
+  /** 每页的元数据（与 pages 一一对应），用于锚点定位 */
+  const pageMetas = ref<PageMeta[]>([]);
 
   /** 每次 paginate 调用递增，旧后台任务据此终止 */
-  let cancelToken = 0
+  let cancelToken = 0;
+
+  /**
+   * 从锚点查找最匹配的页面索引。
+   * 多级回退：charOffset → paragraphIndex+offset → ratio → 0
+   */
+  function findPageByAnchor(anchor: ReadingAnchor, metas: PageMeta[], total: number): number {
+    if (total <= 0) {
+      return 0;
+    }
+    if (total === 1) {
+      return 0;
+    }
+
+    // 1. 精确字符偏移匹配：找到 charOffset <= anchor.charOffset 的最后一页
+    if (anchor.charOffset >= 0) {
+      let best = 0;
+      for (let i = 0; i < metas.length; i++) {
+        if (metas[i].charOffset <= anchor.charOffset) {
+          best = i;
+        } else {
+          break;
+        }
+      }
+      return Math.min(best, total - 1);
+    }
+
+    // 2. 段落级匹配
+    if (anchor.paragraphIndex >= 0) {
+      let best = 0;
+      for (let i = 0; i < metas.length; i++) {
+        const m = metas[i];
+        if (
+          m.paragraphIndex < anchor.paragraphIndex ||
+          (m.paragraphIndex === anchor.paragraphIndex &&
+            m.paragraphCharOffset <= anchor.paragraphCharOffset)
+        ) {
+          best = i;
+        } else if (m.paragraphIndex > anchor.paragraphIndex) {
+          break;
+        }
+      }
+      return Math.min(best, total - 1);
+    }
+
+    // 3. 比例回退
+    if (anchor.ratio >= 0) {
+      return Math.min(Math.round(anchor.ratio * (total - 1)), total - 1);
+    }
+
+    return 0;
+  }
+
+  /**
+   * 为指定页面构建锚点。
+   */
+  function buildAnchorForPage(pageIndex: number): ReadingAnchor {
+    const metas = pageMetas.value;
+    const total = totalPages.value;
+    if (pageIndex < 0 || pageIndex >= metas.length || total <= 0) {
+      return { charOffset: -1, paragraphIndex: -1, paragraphCharOffset: -1, ratio: 0 };
+    }
+    const meta = metas[pageIndex];
+    return {
+      charOffset: meta.charOffset,
+      paragraphIndex: meta.paragraphIndex,
+      paragraphCharOffset: meta.paragraphCharOffset,
+      ratio: total > 1 ? pageIndex / (total - 1) : 0,
+    };
+  }
 
   async function paginate(
     content: string,
     container: HTMLElement,
     typography: ReaderTypography,
-    padding: number,
+    padding: number | ReaderPagePadding,
     initialPage: 'first' | 'last' = 'first',
     prefixHtml = '',
+    /** 用于恢复阅读位置的锚点，优先于 initialPage */
+    anchor?: ReadingAnchor,
+    /**
+     * 排版引擎选择：
+     * - 'dom'     真实 DOM 渲染测量（默认），天然支持系统缩放，兼容性最佳
+     * - 'pretext' Canvas + Pretext 精确排版，部分旧版 Android WebView 可能字间距异常
+     * 旧值 'auto'/'simple' 向后兼容，均视为 'dom'
+     */
+    paginationEngine: PaginationEngine = 'dom',
   ) {
-    const myToken = ++cancelToken
-    isPaginating.value = true
+    const myToken = ++cancelToken;
+    isPaginating.value = true;
 
-    await nextTick()
+    await nextTick();
 
-    // 用 clientWidth/clientHeight 而非 getBoundingClientRect()：
-    // 前者是 CSS 布局尺寸，不受父元素 scale 动画影响；
-    // getBoundingClientRect 在 n-modal 入场缩放时会返回视觉缩小的错误值。
-    const cW = container.clientWidth
-    const cH = container.clientHeight
+    const cW = container.clientWidth;
+    const cH = container.clientHeight;
     if (cW <= 0 || cH <= 0) {
-      isPaginating.value = false
-      return
+      isPaginating.value = false;
+      return;
     }
 
-    const isVertical = typography.writingMode.startsWith('vertical')
-    const availW = cW - padding * 2
-    const availH = cH - padding * 2
-
-    // 创建隐藏测量容器
-    const measurer = document.createElement('div')
-    measurer.style.cssText = buildMeasurerStyle(typography, availW, availH, isVertical)
-    container.appendChild(measurer)
-
-    // ── 1. 测量单字行高，估算每页能容纳的段落数 ─────────────────────
-    measurer.innerHTML = '<p style="margin:0;padding:0;text-indent:0;">单</p>'
-    const rawSize = isVertical ? measurer.scrollWidth : measurer.scrollHeight
-    const singleLineSize = rawSize || Math.ceil(typography.fontSize * 1.5)
-    const pageMainSize = isVertical ? availW : availH
-    const estLinesPerPage = Math.max(3, Math.floor(pageMainSize / singleLineSize))
-
-    // ── 2. 按换行符拆分段落 ──────────────────────────────────────────
-    const paragraphs = content.split(/\n+/).filter(p => p.trim())
-
-    if (paragraphs.length === 0) {
-      pages.value = ['<p></p>']
-      totalPages.value = 1
-      currentPage.value = 0
-      isPaginating.value = false
-      container.removeChild(measurer)
-      return
+    const resolvedPadding = normalizePadding(padding);
+    const availW = cW - resolvedPadding.left - resolvedPadding.right;
+    const availH = cH - resolvedPadding.top - resolvedPadding.bottom;
+    if (availW <= 0 || availH <= 0) {
+      pages.value = [wrapRawPageHtml('')];
+      totalPages.value = 1;
+      currentPage.value = 0;
+      isPaginating.value = false;
+      return;
     }
 
-    // ── 3. 立即排版首批（≈ 1~2 页），确保首屏快速呈现 ────────────────
-    const firstSize = Math.min(paragraphs.length, estLinesPerPage)
-    const { completedPages: firstPages, leftover: firstLeft } = paginateChunk(
-      paragraphs.slice(0, firstSize),
-      measurer, typography, isVertical, availW, availH, prefixHtml,
-    )
+    // 向后兼容旧存储值 'auto'/'simple'
+    const effectiveEngine: 'dom' | 'pretext' = paginationEngine === 'pretext' ? 'pretext' : 'dom';
 
-    if (myToken !== cancelToken) { container.removeChild(measurer); return }
+    const blocks = resolveHorizontalBlocks(content, prefixHtml, typography);
 
-    const visible: string[] = [...firstPages]
-    let carryOver = firstLeft
-    const allDone = paragraphs.length <= firstSize
-
-    if (allDone) {
-      // 全文已排完
-      if (carryOver) visible.push(carryOver)
-      carryOver = ''
-    } else if (visible.length === 0 && carryOver) {
-      // 首批段落都很短，未产生完整页 → 把 leftover 先作为第 1 页显示
-      visible.push(carryOver)
-      carryOver = ''
+    // DOM 引擎：创建复用的测量层，所有 block 共享，最后统一清理
+    let measureLayer: HTMLDivElement | null = null;
+    if (effectiveEngine === 'dom') {
+      measureLayer = createMeasureLayer(container);
+    }
+    if (blocks.length === 0) {
+      pages.value = [wrapRawPageHtml('')];
+      pageMetas.value = [{ charOffset: 0, paragraphIndex: 0, paragraphCharOffset: 0 }];
+      totalPages.value = 1;
+      currentPage.value = 0;
+      isPaginating.value = false;
+      return;
     }
 
-    pages.value = visible.length > 0 ? visible : ['<p></p>']
-    totalPages.value = pages.value.length
-    // initialPage === 'last' 且尚未排完全文：
-    //   不立即展示首批页面（否则用户会短暂看到第一页），
-    //   而是在后台全量排版完成后一次性赋值 + 跳末页。
-    //   将已排好的首批暂存到 pendingPages，后续批次追加其中。
-    const deferForLast = initialPage === 'last' && !allDone
-    let pendingPages: string[] | null = null
-    if (deferForLast) {
-      pendingPages = [...pages.value]
-      pages.value = []          // 清空，模式组件显示空白而非错误的第一页
-      totalPages.value = 0
-      currentPage.value = 0
-      // isPaginating 保持 true，外部可据此显示 loading
-    } else {
-      currentPage.value = (allDone && initialPage === 'last')
-        ? Math.max(0, totalPages.value - 1)
-        : 0
-      isPaginating.value = false // ✓ 首屏 ready
-    }
+    const builtPages: string[] = [];
+    const builtMetas: PageMeta[] = [];
+    let page = createPageState();
+    /** 当前页首个可见内容行对应的 block 信息（用于生成 PageMeta） */
+    let pageFirstBlockInfo: {
+      charOffsetInContent: number;
+      paragraphIndex: number;
+      charOffsetInBlock: number;
+    } | null = null;
+    let publishedCount = 0;
+    const useAnchor = anchor !== undefined;
+    const deferForLast = !useAnchor && initialPage === 'last';
+    let firstVisiblePublished = false;
 
-    if (allDone) { container.removeChild(measurer); return }
+    // ── 锚点强制断页 ──────────────────────────────────────────────
+    // 当 anchor 提供了有效 charOffset 时，在分页过程中到达该偏移的行时
+    // 强制插入一次断页，使锚点所在行成为新页的首行，保证首字不变。
+    const anchorBreakOffset = useAnchor && anchor.charOffset > 0 ? anchor.charOffset : -1;
+    let anchorBreakDone = false;
+    /** 锚点断页后产生的页面索引（用于最终 currentPage 定位） */
+    let anchorPageIndex = -1;
 
-    // ── 4. 后台分批排版剩余段落 ──────────────────────────────────────
-    const BATCH_SIZE = estLinesPerPage * 4   // 每批约 4 页，平衡吞吐与响应
-    let offset = firstSize
-
-    while (offset < paragraphs.length) {
-      if (myToken !== cancelToken) { container.removeChild(measurer); return }
-
-      // 让出主线程，允许浏览器绘制
-      await yieldToMain()
-
-      if (myToken !== cancelToken) { container.removeChild(measurer); return }
-
-      const end = Math.min(offset + BATCH_SIZE, paragraphs.length)
-      const isLast = end >= paragraphs.length
-
-      const { completedPages: batch, leftover: bLeft } = paginateChunk(
-        paragraphs.slice(offset, end),
-        measurer, typography, isVertical, availW, availH, carryOver,
-      )
-
-      carryOver = bLeft
-
-      // 最后一批：把剩余内容作为最终页
-      if (isLast && carryOver) {
-        batch.push(carryOver)
-        carryOver = ''
+    const publishPendingPages = (force = false) => {
+      if ((deferForLast && !force) || builtPages.length === 0) {
+        return;
       }
 
-      if (batch.length > 0) {
-        if (pendingPages) {
-          // 延迟模式：暂存到临时数组，不触发 UI 更新
-          pendingPages.push(...batch)
+      if (!firstVisiblePublished) {
+        pages.value = builtPages.slice();
+        pageMetas.value = builtMetas.slice();
+        totalPages.value = pages.value.length;
+        if (useAnchor) {
+          // 锚点断页完成时直接用记录的索引，否则用搜索兜底
+          currentPage.value =
+            anchorPageIndex >= 0
+              ? anchorPageIndex
+              : findPageByAnchor(anchor, builtMetas, builtPages.length);
         } else {
-          // 正常模式：实时追加，用户边看边排
-          pages.value.push(...batch)
-          totalPages.value = pages.value.length
+          currentPage.value = 0;
+        }
+        isPaginating.value = false;
+        publishedCount = pages.value.length;
+        firstVisiblePublished = true;
+        return;
+      }
+
+      if (publishedCount < builtPages.length) {
+        pages.value.push(...builtPages.slice(publishedCount));
+        pageMetas.value.push(...builtMetas.slice(publishedCount));
+        totalPages.value = pages.value.length;
+        if (useAnchor && anchorPageIndex >= 0) {
+          currentPage.value = anchorPageIndex;
+        }
+        publishedCount = pages.value.length;
+      }
+    };
+
+    const finalizePage = () => {
+      if (!page.hasVisibleContent && page.items.length === 0) {
+        return;
+      }
+      builtPages.push(renderManualPage(page.items));
+      // 记录本页的元数据
+      if (pageFirstBlockInfo) {
+        const charOffset =
+          pageFirstBlockInfo.charOffsetInContent >= 0
+            ? pageFirstBlockInfo.charOffsetInContent + pageFirstBlockInfo.charOffsetInBlock
+            : -1;
+        builtMetas.push({
+          charOffset,
+          paragraphIndex: pageFirstBlockInfo.paragraphIndex,
+          paragraphCharOffset: pageFirstBlockInfo.charOffsetInBlock,
+        });
+      } else {
+        // title-only 页或空页
+        builtMetas.push({ charOffset: 0, paragraphIndex: -1, paragraphCharOffset: 0 });
+      }
+      page = createPageState();
+      pageFirstBlockInfo = null;
+    };
+
+    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+      const inputBlock = blocks[blockIndex];
+      const block =
+        effectiveEngine === 'dom'
+          ? resolveBlockDOM(inputBlock, measureLayer!, availW, typography)
+          : resolveBlockPretext(inputBlock, availW);
+      if (block.lines.length === 0) {
+        continue;
+      }
+
+      if (block.leadingGapPx > 0) {
+        if (page.hasVisibleContent && page.usedPx + block.leadingGapPx > availH) {
+          finalizePage();
+          publishPendingPages();
+        }
+        pushGapItem(page, block.leadingGapPx);
+        page.usedPx += block.leadingGapPx;
+      }
+
+      let fragmentLines: PaginationResolvedLine[] = [];
+      const flushFragment = () => {
+        if (fragmentLines.length === 0) {
+          return;
+        }
+        pushBlockItem(page, block.kind, fragmentLines);
+        fragmentLines = [];
+      };
+
+      for (const line of block.lines) {
+        // ── 锚点强制断页：到达锚点字符偏移时立即断页 ──
+        // 保证锚点所在行成为新页首行，维持"首字不变"。
+        if (!anchorBreakDone && anchorBreakOffset > 0 && inputBlock.charOffsetInContent >= 0) {
+          const lineGlobalOffset = inputBlock.charOffsetInContent + line.charOffsetInBlock;
+          if (lineGlobalOffset >= anchorBreakOffset && page.hasVisibleContent) {
+            flushFragment();
+            finalizePage();
+            publishPendingPages();
+            anchorBreakDone = true;
+            anchorPageIndex = builtPages.length; // 下一页（即将创建的页）的索引
+          }
+        }
+
+        const fitsCurrentPage = page.usedPx + line.lineHeightPx <= availH + 0.01;
+        if (!fitsCurrentPage && page.hasVisibleContent) {
+          flushFragment();
+          finalizePage();
+          publishPendingPages();
+        }
+
+        // 记录当前页的首个可见内容行信息
+        if (!pageFirstBlockInfo && !page.hasVisibleContent) {
+          pageFirstBlockInfo = {
+            charOffsetInContent: inputBlock.charOffsetInContent,
+            paragraphIndex: inputBlock.paragraphIndex,
+            charOffsetInBlock: line.charOffsetInBlock,
+          };
+        }
+
+        fragmentLines.push(line);
+        page.usedPx += line.lineHeightPx;
+        page.hasVisibleContent = true;
+      }
+
+      flushFragment();
+
+      const hasNextBlock = blockIndex < blocks.length - 1;
+      if (hasNextBlock && block.trailingGapPx > 0) {
+        if (page.usedPx + block.trailingGapPx <= availH + 0.01) {
+          pushGapItem(page, block.trailingGapPx);
+          page.usedPx += block.trailingGapPx;
+        } else {
+          finalizePage();
+          publishPendingPages();
         }
       }
 
-      offset = end
+      if ((blockIndex + 1) % 8 === 0) {
+        await yieldToMain();
+        if (myToken !== cancelToken) {
+          measureLayer?.remove();
+          return;
+        }
+        publishPendingPages();
+      }
     }
 
-    // 全量分页完成
-    if (pendingPages) {
-      // 延迟模式（initialPage === 'last'）：一次性赋值 + 跳末页
-      pages.value = pendingPages
-      totalPages.value = pendingPages.length
-      currentPage.value = Math.max(0, totalPages.value - 1)
-      isPaginating.value = false
-    } else if (initialPage === 'last') {
-      currentPage.value = Math.max(0, totalPages.value - 1)
-      isPaginating.value = false
+    finalizePage();
+    measureLayer?.remove();
+    if (myToken !== cancelToken) {
+      return;
     }
 
-    container.removeChild(measurer)
+    if (builtPages.length === 0) {
+      builtPages.push(wrapRawPageHtml(''));
+      builtMetas.push({ charOffset: 0, paragraphIndex: 0, paragraphCharOffset: 0 });
+    }
+
+    if (!firstVisiblePublished || deferForLast) {
+      pages.value = builtPages;
+      pageMetas.value = builtMetas;
+      totalPages.value = builtPages.length;
+      if (useAnchor) {
+        currentPage.value =
+          anchorPageIndex >= 0
+            ? Math.min(anchorPageIndex, totalPages.value - 1)
+            : findPageByAnchor(anchor, builtMetas, builtPages.length);
+      } else {
+        currentPage.value = initialPage === 'last' ? Math.max(0, totalPages.value - 1) : 0;
+      }
+      isPaginating.value = false;
+      return;
+    }
+
+    publishPendingPages(true);
+    // 最终定位：锚点断页完成时直接定位，否则搜索兜底
+    if (useAnchor) {
+      currentPage.value =
+        anchorPageIndex >= 0
+          ? Math.min(anchorPageIndex, pages.value.length - 1)
+          : findPageByAnchor(anchor, pageMetas.value, pages.value.length);
+    }
+    totalPages.value = pages.value.length;
+    isPaginating.value = false;
+    return;
   }
 
   function goToPage(page: number) {
-    if (page >= 0 && page < totalPages.value) currentPage.value = page
+    if (page >= 0 && page < totalPages.value) {
+      currentPage.value = page;
+    }
   }
 
   function nextPage(): boolean {
-    if (currentPage.value < totalPages.value - 1) { currentPage.value++; return true }
-    return false
+    if (currentPage.value < totalPages.value - 1) {
+      currentPage.value++;
+      return true;
+    }
+    return false;
   }
 
   function prevPage(): boolean {
-    if (currentPage.value > 0) { currentPage.value--; return true }
-    return false
+    if (currentPage.value > 0) {
+      currentPage.value--;
+      return true;
+    }
+    return false;
   }
 
-  function goToStart() { currentPage.value = 0 }
-  function goToEnd() { currentPage.value = Math.max(0, totalPages.value - 1) }
+  function goToStart() {
+    currentPage.value = 0;
+  }
+
+  function goToEnd() {
+    currentPage.value = Math.max(0, totalPages.value - 1);
+  }
 
   return {
-    pages, currentPage, totalPages, isPaginating,
-    paginate, goToPage, nextPage, prevPage, goToStart, goToEnd,
-  }
+    pages,
+    currentPage,
+    totalPages,
+    isPaginating,
+    pageMetas,
+    paginate,
+    goToPage,
+    nextPage,
+    prevPage,
+    goToStart,
+    goToEnd,
+    buildAnchorForPage,
+    findPageByAnchor,
+  };
 }
 
-// ── 分块排版结果 ──────────────────────────────────────────────────────
-interface ChunkResult {
-  /** 本批已完整填满的页面 HTML 列表 */
-  completedPages: string[]
-  /** 尚未溢出的当前半页内容，传给下一批作为 initialContent 继续填充 */
-  leftover: string
-}
-
-/**
- * 同步排版一批段落。
- *
- * @param paragraphs     - 本批段落文本
- * @param measurer       - 已挂载的隐藏测量 DOM 元素
- * @param initialContent - 上一批结转的半页 HTML（直接从上次 leftover 继续）
- */
-function paginateChunk(
-  paragraphs: string[],
-  measurer: HTMLElement,
-  typography: ReaderTypography,
-  isVertical: boolean,
-  availW: number,
-  availH: number,
-  initialContent: string,
-): ChunkResult {
-  const result: string[] = []
-  let cur = initialContent
-  const { textIndent, paragraphSpacing } = typography
-
-  const pageFits = (el: HTMLElement) =>
-    isVertical ? el.scrollWidth <= availW : el.scrollHeight <= availH
-
-  for (const para of paragraphs) {
-    const paraHTML = makePara(para, textIndent, paragraphSpacing)
-    measurer.innerHTML = cur + paraHTML
-
-    if (pageFits(measurer)) {
-      cur = cur + paraHTML
-    } else {
-      // 整段放不下：逐字/词填充，先尽量填满当前页剩余空间，再开新页继续
-      // 不提前 push(cur)，而是把 cur 作为基底继续追加，直到溢出才翻页
-      const tokens = splitText(para)
-      let buf = ''
-      // paraStarted：段落是否已跨页（续行不缩进，视觉上属于同一段落的延续）
-      let paraStarted = false
-
-      for (const token of tokens) {
-        const testBuf = buf + token
-        // 仅段落第一行（还未提交过任何内容）才缩进
-        const indent = paraStarted ? 0 : textIndent
-        measurer.innerHTML = cur + makePara(testBuf, indent, paragraphSpacing)
-
-        if (pageFits(measurer)) {
-          buf = testBuf
-        } else {
-          if (buf) {
-            // buf 已积累了若干字符且放得下，提交整页并翻到新页
-            result.push(cur + makePara(buf, paraStarted ? 0 : textIndent, paragraphSpacing))
-            cur = ''
-            paraStarted = true  // 段落已有内容提交，续行不再缩进
-            buf = token         // 下溢的 token 作为新页起点，继续循环
-          } else if (cur) {
-            // buf 为空：段落第一个 token 就超出已有内容所在页
-            // → cur 本身已满，先提交 cur（不含此 token），再以 token 开新页
-            result.push(cur)
-            cur = ''
-            paraStarted = true
-            buf = token         // token 在新页上重新尝试
-          } else {
-            // buf 为空且 cur 为空：单个 token 本身高度超过整页（极端情况）
-            // 强制放入避免死循环
-            result.push(makePara(token, paraStarted ? 0 : textIndent, paragraphSpacing))
-            cur = ''
-            paraStarted = true
-            buf = ''
-          }
-        }
-      }
-
-      // 段落末尾剩余内容追加到当前页（不立即提交，等下一段继续填充）
-      if (buf) {
-        cur = cur + makePara(buf, paraStarted ? 0 : textIndent, paragraphSpacing)
-      }
-    }
-  }
-
-  return { completedPages: result, leftover: cur }
-}
-
-// ── 工具函数 ──────────────────────────────────────────────────────────
-
-function makePara(text: string, indent: number, spacing: number): string {
-  return `<p style="text-indent:${indent}em;margin-bottom:${spacing}px;">${escapeHtml(text)}</p>`
-}
-
-function buildMeasurerStyle(
-  t: ReaderTypography,
-  availW: number,
-  availH: number,
-  isVertical: boolean,
-): string {
-  return [
-    'position:absolute', 'visibility:hidden',
-    `width:${isVertical ? 'auto' : availW + 'px'}`,
-    `height:${isVertical ? availH + 'px' : 'auto'}`,
-    `font-family:${t.fontFamily}`,
-    `font-size:${t.fontSize}px`,
-    `line-height:${t.lineHeight}`,
-    `letter-spacing:${t.letterSpacing}px`,
-    `word-spacing:${t.wordSpacing}px`,
-    `font-weight:${t.fontWeight}`,
-    `font-style:${t.fontStyle}`,
-    `text-align:${t.textAlign}`,
-    `writing-mode:${t.writingMode}`,
-    // 与渲染层保持一致：允许合成粗体，确保测量宽高准确
-    'font-synthesis:weight style',
-    'overflow:hidden',
-    'word-break:break-all',
-    'overflow-wrap:break-word',
-  ].join(';')
-}
-
-/** 让出主线程，允许浏览器绘制一帧 */
 function yieldToMain(): Promise<void> {
-  return new Promise(r => setTimeout(r, 0))
-}
-
-/** 汉字逐字拆分，非 CJK（英文/数字/标点）合并为词组 */
-function splitText(text: string): string[] {
-  const out: string[] = []
-  let buf = ''
-  for (const c of text) {
-    if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(c)) {
-      if (buf) { out.push(buf); buf = '' }
-      out.push(c)
-    } else {
-      buf += c
-    }
-  }
-  if (buf) out.push(buf)
-  return out
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function escapeHtml(text: string): string {
@@ -352,5 +1058,5 @@ function escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/"/g, '&quot;');
 }

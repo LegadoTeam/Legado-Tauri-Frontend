@@ -1,136 +1,178 @@
 <script setup lang="ts">
-import { envLabel, platform } from '@/composables/useEnv'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import type { ShellLogLevel } from '@/stores';
 
-withDefaults(defineProps<{
-  statusText?: string
-}>(), {
-  statusText: '就绪'
-})
+withDefaults(
+  defineProps<{
+    latestLogLevel?: ShellLogLevel;
+    latestLogMessage?: string;
+    /** Vue 前端版本号 */
+    vueVersion?: string;
+    /** Tauri 壳版本号（非 Tauri 环境传空字符串） */
+    tauriVersion?: string;
+    platformLabel?: string;
+    /** 是否显示实时日志区域（由设置开关控制） */
+    showLogZone?: boolean;
+  }>(),
+  {
+    latestLogLevel: 'INFO',
+    latestLogMessage: '',
+    vueVersion: '0.0.0',
+    tauriVersion: '',
+    platformLabel: '-',
+    showLogZone: false,
+  },
+);
 
-async function openLogWindow() {
-  const existing = await WebviewWindow.getByLabel('log-viewer')
-  if (existing) {
-    await existing.setFocus()
-    return
-  }
-  new WebviewWindow('log-viewer', {
-    url: '/?view=logs',
-    title: '实时日志',
-    width: 900,
-    height: 600,
-  })
-}
+const emit = defineEmits<{
+  'toggle-log-window': [];
+  'open-about': [];
+}>();
 </script>
 
 <template>
-  <footer class="task-bar">
-    <div class="task-bar__left">
-      <slot name="left" />
-    </div>
-    <div class="task-bar__center">
-      <slot />
-    </div>
-    <div class="task-bar__right">
-      <button class="task-bar__log-btn" title="打开实时日志窗口" @click="openLogWindow">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          <line x1="8" y1="7" x2="16" y2="7" /><line x1="8" y1="11" x2="14" y2="11" /><line x1="8" y1="15" x2="12" y2="15" />
-        </svg>
-      </button>
-      <span class="task-bar__status">{{ statusText }}</span>
-      <span class="task-bar__env-badge" :class="`task-bar__env-badge--${envLabel}`">
-        {{ envLabel }}<template v-if="platform"> · {{ platform }}</template>
-      </span>
-      <slot name="right" />
-    </div>
+  <footer class="task-bar" role="toolbar" aria-label="任务状态栏">
+    <!-- Zone 1: 版本 + 平台 -->
+    <button
+      class="task-bar__meta-zone focusable"
+      title="关于"
+      aria-label="打开关于窗口"
+      @click="emit('open-about')"
+    >
+      <!-- 前端（Vue）版本 -->
+      <span class="task-bar__version">前端 v{{ vueVersion }}</span>
+      <!-- Tauri 壳版本：仅 Tauri 环境显示；鸿蒙版本暂未对接，预留注释 -->
+      <!-- TODO: 鸿蒙环境在此处显示鸿蒙版本号，待后续对接 HarmonyOS 版本 API -->
+      <span v-if="tauriVersion" class="task-bar__version task-bar__version--tauri">壳 v{{ tauriVersion }}</span>
+      <span class="task-bar__platform">{{ platformLabel }}</span>
+    </button>
+
+    <!-- Zone 2: 最新日志（仅设置中启用后显示，默认隐藏） -->
+    <button
+      v-if="showLogZone"
+      class="task-bar__log-zone focusable"
+      title="切换日志窗口"
+      aria-label="切换日志窗口，查看最新日志"
+      @click="emit('toggle-log-window')"
+    >
+      <span
+        class="task-bar__log-level"
+        :class="`task-bar__log-level--${latestLogLevel.toLowerCase()}`"
+        >{{ latestLogLevel }}</span
+      >
+      <span class="task-bar__log-msg">{{ latestLogMessage || '暂无日志' }}</span>
+    </button>
+
   </footer>
 </template>
 
 <style scoped>
 .task-bar {
   grid-area: taskbar;
+  height: var(--bottom-bar-height);
+  padding: 0 var(--space-2);
+  background: transparent;
   display: flex;
   align-items: center;
-  height: var(--taskbar-h);
-  padding: 0 var(--space-md);
-  background: var(--color-surface-raised);
-  border-top: 1px solid var(--color-border);
-  user-select: none;
+  gap: 2px;
+  min-width: 0;
+  /* border-top: 1px solid var(--color-border); */
 }
 
-.task-bar__left,
-.task-bar__right {
+/* ── 通用按钮区域 ── */
+.task-bar__meta-zone,
+.task-bar__log-zone {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  flex: 0 0 auto;
-}
-
-.task-bar__center {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-}
-
-.task-bar__right {
-  margin-left: auto;
-}
-
-.task-bar__status {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.task-bar__status::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-success, #22c55e);
+  gap: var(--space-1);
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--color-text-soft);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  transition: background 100ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
   flex-shrink: 0;
 }
 
-.task-bar__env-badge {
-  font-size: 0.6875rem;
-  padding: 1px 6px;
-  border-radius: var(--radius-xs, 4px);
-  border: 1px solid currentColor;
-  opacity: 0.75;
-  white-space: nowrap;
+.task-bar__meta-zone:hover,
+.task-bar__log-zone:hover {
+  background: var(--color-hover);
 }
 
-.task-bar__env-badge--Tauri {
-  color: #4caf73;
+.task-bar__meta-zone:focus-visible,
+.task-bar__log-zone:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
 }
 
-.task-bar__env-badge--浏览器 {
-  color: #5b9bd5;
+/* ── Zone 1: 版本 + 平台 ── */
+.task-bar__meta-zone {
+  flex-shrink: 0;
+  gap: 6px;
 }
-
-.task-bar__env-badge--移动端浏览器 {
-  color: #f0a030;
+.task-bar__version {
+  font-size: var(--fs-11);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-soft);
+  font-family: var(--font-mono, monospace);
 }
-
-.task-bar__log-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: var(--radius-xs, 4px);
-  background: transparent;
+.task-bar__version--tauri {
   color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
 }
-.task-bar__log-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text-primary);
+.task-bar__platform {
+  font-size: var(--fs-11);
+  color: var(--color-text-muted);
+}
+
+/* ── Zone 3: 最新日志 ── */
+.task-bar__log-zone {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.task-bar__log-level {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+  line-height: 16px;
+}
+.task-bar__log-level--debug {
+  color: #8b8fa3;
+}
+.task-bar__log-level--info {
+  color: #2563eb;
+}
+.task-bar__log-level--warn {
+  color: #d97706;
+}
+.task-bar__log-level--error {
+  color: #dc2626;
+}
+.task-bar__log-msg {
+  font-size: var(--fs-12);
+  color: var(--color-text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── 响应式隐藏 ── */
+@media (max-width: 700px) {
+  .task-bar__meta-zone .task-bar__platform {
+    display: none;
+  }
+}
+@media (max-width: 500px) {
+  .task-bar__meta-zone {
+    display: none;
+  }
 }
 </style>

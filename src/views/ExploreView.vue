@@ -1,208 +1,223 @@
-<script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useMessage } from 'naive-ui'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { SearchOutline, ReloadOutline, ReorderFourOutline } from '@vicons/ionicons5'
+﻿<script setup lang="ts">
 import {
-  type BookItem,
-  type ChapterItem,
-  useScriptBridge,
-} from '../composables/useScriptBridge'
+  Search,
+  RefreshCw,
+  AlignJustify,
+  Image,
+  ImageOff,
+  LayoutGrid,
+} from 'lucide-vue-next';
+import { useDialog, useMessage } from 'naive-ui';
+import { storeToRefs } from 'pinia';
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import type { BookSourceMeta, BookItem } from '@/types';
+import { useBookDetailDrawerState } from '@/composables/useBookDetailDrawerState';
+import { useDynamicConfig } from '@/composables/useDynamicConfig';
+import { eventListen, eventEmit } from '@/composables/useEventBus';
+import { dbgLog } from '@/composables/useFrontendStorage';
+import { deleteBookSource } from '@/composables/useBookSource';
+import { useInlineBookReader } from '@/composables/useInlineBookReader';
+import { useMobileHorizontalSwipe } from '@/composables/useMobileHorizontalSwipe';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { useViewCardDensity, normalizeCardSizeKey } from '@/composables/useViewCardDensity';
+import { getSourceTypeLabel } from '@/utils/bookMeta';
+import SourceTypeBadge from '@/components/base/SourceTypeBadge.vue';
 import {
-  type BookSourceMeta,
-  listBookSources,
-  evalBookSource,
-} from '../composables/useBookSource'
-import { navigateToSearch } from '../composables/useNavigation'
-import { isExploreUserEnabled } from '../composables/useSourceCapabilities'
-import { useBookshelf } from '../composables/useBookshelf'
-import { usePrivacyMode } from '../composables/usePrivacyMode'
-import MobileToolbarMenu from '../components/layout/MobileToolbarMenu.vue'
-import SourceExploreSection from '../components/explore/SourceExploreSection.vue'
-import BookDetailDrawer from '../components/explore/BookDetailDrawer.vue'
-import ChapterReaderModal from '../components/explore/ChapterReaderModal.vue'
-import type { ReaderBookInfo } from '../components/reader/types'
+  useBookSourceStore,
+  useNavigationStore,
+  useBookshelfStore,
+  usePrivacyModeStore,
+  useScriptBridgeStore,
+} from '@/stores';
+import AppEmpty from '../components/base/AppEmpty.vue';
+import BookDetailDrawer from '../components/explore/BookDetailDrawer.vue';
+import ExploreViewSortModal from '../components/explore/ExploreViewSortModal.vue';
+import ChapterReaderModal from '../components/explore/ChapterReaderModal.vue';
+import SourceExploreSection from '../components/explore/SourceExploreSection.vue';
+import AppPageHeader from '../components/layout/AppPageHeader.vue';
+import MobileToolbarMenu from '../components/layout/MobileToolbarMenu.vue';
+import {
+  preloadExploreCategoryCache,
+  preloadExploreBooksCache,
+} from '../composables/useExploreCategoryCache';
 
-const message = useMessage()
-const { runChapterList, cancelTask } = useScriptBridge()
+const bookSourceStore = useBookSourceStore();
+const navigationStore = useNavigationStore();
+const bookshelfStore = useBookshelfStore();
+const privacyModeStore = usePrivacyModeStore();
+const scriptBridgeStore = useScriptBridgeStore();
+const message = useMessage();
+const dialog = useDialog();
+const { sources: sourcesRef } = storeToRefs(bookSourceStore);
+const { runChapterList, cancelTask, clearExploreCache } = scriptBridgeStore;
+const {
+  cardSizes: CARD_SIZES,
+  activeSizeKey,
+  activeSize,
+  style: explorerStyle,
+  setSize,
+} = useViewCardDensity('explore');
 
 // ── 书源列表 & 能力检测 ──────────────────────────────────────────────────
-const sources = ref<BookSourceMeta[]>([])
-const sourceFns = reactive<Record<string, Set<string>>>({})
-const explorableSources = ref<BookSourceMeta[]>([])
+const explorableSources = computed(() => bookSourceStore.explorableSources);
+const initializingSources = ref(true);
+const sourceSystemStarting = computed(
+  () =>
+    initializingSources.value || bookSourceStore.loading || bookSourceStore.capabilityDetecting,
+);
 
-/** 当前选中的书源 tab（fileName） */
-const activeSourceTab = ref('')
+// ── 上次选中的书源 tab 持久化 ────────────────────────────────────────────
+const activeTabStore = useDynamicConfig<{ tab: string }>({
+  namespace: 'explore.activeTab',
+  version: 1,
+  defaults: () => ({ tab: '' }),
+  migrate: () => null,
+  legacyKeys: [],
+});
 
-async function loadSources() {
-  try {
-    sources.value = await listBookSources()
-    const enabled = sources.value.filter(s => s.enabled)
-    for (const src of enabled) {
-      if (sourceFns[src.fileName]) continue
-      try {
-        const fnsStr = await evalBookSource(src.fileName)
-        const fns = new Set(fnsStr.split(',').map(s => s.trim()).filter(Boolean))
-        sourceFns[src.fileName] = fns
-      } catch {
-        sourceFns[src.fileName] = new Set()
-      }
-    }
-    explorableSources.value = enabled.filter(s => sourceFns[s.fileName]?.has('explore'))
-    // 默认选中第一个
-    if (!activeSourceTab.value && explorableSources.value.length) {
-      activeSourceTab.value = explorableSources.value[0].fileName
-    }
-  } catch (e: unknown) {
-    message.error(`加载书源列表失败: ${e instanceof Error ? e.message : String(e)}`)
+/** 当前选中的书源 tab（fileName），持久化到本地存储 */
+const activeSourceTab = computed<string>({
+  get: () => activeTabStore.state.tab,
+  set: (v) => activeTabStore.replace({ tab: v }),
+});
+// ── 免责声明弹窗 ─────────────────────────────────────────────────────────
+const disclaimerStore = useDynamicConfig<{ hidden: boolean }>({
+  namespace: 'explore.disclaimer',
+  version: 1,
+  defaults: () => ({ hidden: false }),
+  migrate: () => null,
+  legacyKeys: [],
+});
+
+const showDisclaimer = ref(false);
+const disclaimerDontShow = ref(false);
+
+async function confirmDisclaimer() {
+  if (disclaimerDontShow.value) {
+    await disclaimerStore.replace({ hidden: true });
+    dbgLog('[Disclaimer] hidden=true 写入后端完成');
   }
+  showDisclaimer.value = false;
 }
 
-// ── Tab 排序（localStorage 持久化） ─────────────────────────────────────
-const LS_ORDER_KEY = 'explore-tab-order'
+const exploreTabOrderStore = useDynamicConfig<{ order: string[] }>({
+  namespace: 'explore.tabOrder',
+  version: 1,
+  defaults: () => ({ order: [] }),
+  migrate: ({ readLegacy }) => {
+    const raw = readLegacy('explore-tab-order');
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        order: Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [],
+      };
+    } catch {
+      return null;
+    }
+  },
+  legacyKeys: ['explore-tab-order'],
+});
 
-function loadTabOrder(): string[] {
-  try {
-    const raw = localStorage.getItem(LS_ORDER_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    return []
-  }
-}
-
-const tabOrder = ref<string[]>(loadTabOrder())
+const tabOrder = computed(() => exploreTabOrderStore.state.order);
 
 /** 按 tabOrder 对书源排序，同时过滤用户禁用的发现源 */
 const sortedSources = computed<BookSourceMeta[]>(() => {
-  const order = tabOrder.value
-  const all = explorableSources.value.filter(s => isExploreUserEnabled(s.fileName))
-  if (!order.length) return all
+  const order = tabOrder.value;
+  const all = explorableSources.value.filter((s) =>
+    bookSourceStore.isExploreUserEnabled(s.fileName),
+  );
+  if (!order.length) {
+    return all;
+  }
   const inOrder = order
-    .map(fn => all.find(s => s.fileName === fn))
-    .filter((s): s is BookSourceMeta => !!s)
-  const rest = all.filter(s => !order.includes(s.fileName))
-  return [...inOrder, ...rest]
-})
+    .map((fn) => all.find((s) => s.fileName === fn))
+    .filter((s): s is BookSourceMeta => !!s);
+  const rest = all.filter((s) => !order.includes(s.fileName));
+  return [...inOrder, ...rest];
+});
+
+// 所有书源都预加载分类列表（GETALL 轻量），切换时再按需加载具体书籍内容
+const prefetchedSourceTabs = computed(() => new Set(sortedSources.value.map((s) => s.fileName)));
 
 function saveTabOrder(order: string[]) {
-  tabOrder.value = order
-  localStorage.setItem(LS_ORDER_KEY, JSON.stringify(order))
+  exploreTabOrderStore.replace({ order: [...order] });
 }
 
 // ── 排序弹窗 ────────────────────────────────────────────────────────────
-const showSortModal = ref(false)
-const sortList = ref<BookSourceMeta[]>([])
+const showSortModal = ref(false);
+
+useOverlayBackstack(
+  () => showDisclaimer.value,
+  () => {
+    showDisclaimer.value = false;
+  },
+);
 
 function openSortModal() {
-  sortList.value = [...sortedSources.value]
-  showSortModal.value = true
-}
-
-function confirmSort() {
-  saveTabOrder(sortList.value.map(s => s.fileName))
-  showSortModal.value = false
-}
-
-// ── 排序列表拖拽（Pointer Events，避免 Tauri/WebView2 DnD 问题） ─────────
-const sortListEl = ref<HTMLElement | null>(null)
-const ptrFrom = ref(-1)
-const ptrOver = ref(-1)
-
-function startSortDrag(e: PointerEvent, idx: number) {
-  e.preventDefault()
-  ptrFrom.value = idx
-  ptrOver.value = idx
-
-  function onMove(ev: PointerEvent) {
-    if (!sortListEl.value) return
-    const items = sortListEl.value.querySelectorAll<HTMLElement>('[data-sidx]')
-    for (const item of items) {
-      const r = item.getBoundingClientRect()
-      if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
-        ptrOver.value = Number(item.dataset.sidx)
-        break
-      }
-    }
-  }
-
-  function onUp() {
-    window.removeEventListener('pointermove', onMove)
-    const from = ptrFrom.value
-    const to = ptrOver.value
-    ptrFrom.value = -1
-    ptrOver.value = -1
-    if (from >= 0 && to >= 0 && from !== to) {
-      const arr = [...sortList.value]
-      const [moved] = arr.splice(from, 1)
-      arr.splice(to, 0, moved)
-      sortList.value = arr
-    }
-  }
-
-  window.addEventListener('pointermove', onMove)
-  window.addEventListener('pointerup', onUp, { once: true })
+  showSortModal.value = true;
 }
 
 // ── 当前书源元信息 ───────────────────────────────────────────────────────
 const currentSource = computed<BookSourceMeta | undefined>(() =>
-  explorableSources.value.find(s => s.fileName === activeSourceTab.value)
-)
+  explorableSources.value.find((s) => s.fileName === activeSourceTab.value),
+);
 
+const activeSourceCanSearch = computed(() => {
+  const fileName = activeSourceTab.value;
+  if (!fileName) return false;
+  const caps = bookSourceStore.getCachedCapabilities(fileName);
+  return !!(caps?.has('search') && bookSourceStore.isSearchUserEnabled(fileName));
+});
 // ── 刷新（触发当前书源 Section 刷新） ───────────────────────────────────
-const refreshTrigger = ref(0)
-const refreshing = ref(false)
+const refreshing = ref(false);
+const reloadingAll = ref(false);
+const sourceRefreshVersion = reactive<Record<string, number>>({});
+
+function bumpSourceRefreshVersion(fileName: string) {
+  sourceRefreshVersion[fileName] = (sourceRefreshVersion[fileName] ?? 0) + 1;
+}
+
+function bumpAllSourceRefreshVersions() {
+  for (const src of bookSourceStore.sources) {
+    bumpSourceRefreshVersion(src.fileName);
+  }
+}
 
 async function handleRefresh() {
-  refreshing.value = true
+  refreshing.value = true;
   try {
-    // 通过递增 trigger 通知 SourceExploreSection 执行刷新
-    refreshTrigger.value++
+    if (activeSourceTab.value) {
+      bumpSourceRefreshVersion(activeSourceTab.value);
+    }
   } finally {
     // refreshing 由 SourceExploreSection 回调重置
-    setTimeout(() => { refreshing.value = false }, 600)
+    setTimeout(() => {
+      refreshing.value = false;
+    }, 600);
   }
 }
 
 function onSectionRefreshing(val: boolean) {
-  refreshing.value = val
+  refreshing.value = val;
 }
 
-// ── 卡片尺寸配置（localStorage 持久化） ─────────────────────────────────
-interface CardSizeConfig {
-  key: string
-  label: string
-  colMin: string
-  coverW: string
-  coverH: string
+async function handleForceReload() {
+  if (reloadingAll.value) {
+    return;
+  }
+  reloadingAll.value = true;
+  try {
+    await refreshAllSources();
+  } finally {
+    reloadingAll.value = false;
+  }
 }
-
-const CARD_SIZES: CardSizeConfig[] = [
-  { key: 'xs',  label: '极小', colMin: '130px', coverW: '32px', coverH: '44px' },
-  { key: 's',   label: '小',   colMin: '170px', coverW: '36px', coverH: '48px' },
-  { key: 'm',   label: '中',   colMin: '210px', coverW: '42px', coverH: '56px' },
-  { key: 'l',   label: '大',   colMin: '270px', coverW: '52px', coverH: '70px' },
-  { key: 'xl',  label: '特大', colMin: '340px', coverW: '64px', coverH: '86px' },
-  { key: 'xxl', label: '超大', colMin: '440px', coverW: '80px', coverH: '108px' },
-]
-const LS_SIZE_KEY = 'explore-card-size'
-const savedSizeKey = localStorage.getItem(LS_SIZE_KEY) ?? 'm'
-const activeSizeKey = ref(savedSizeKey)
-const activeSize = computed(() => CARD_SIZES.find(s => s.key === activeSizeKey.value) ?? CARD_SIZES[2])
-
-function setSize(key: string) {
-  activeSizeKey.value = key
-  localStorage.setItem(LS_SIZE_KEY, key)
-}
-
-// 探索视图CSS变量
-const explorerStyle = computed(() => ({
-  '--explore-col-min': activeSize.value.colMin,
-  '--explore-cover-w': activeSize.value.coverW,
-  '--explore-cover-h': activeSize.value.coverH,
-}))
 
 // 封面显示开关
-const showCovers = ref(true)
+const showCovers = ref(true);
 
 // ── 移动端三点菜单 ──────────────────────────────────────────────────────
 const exploreMobileMenuOptions = computed(() => [
@@ -210,7 +225,7 @@ const exploreMobileMenuOptions = computed(() => [
     label: showCovers.value ? '隐藏封面' : '显示封面',
     key: 'toggle-covers',
   },
-  ...CARD_SIZES.map(s => ({
+  ...CARD_SIZES.map((s) => ({
     label: `卡片大小：${s.label}`,
     key: `size-${s.key}`,
     disabled: activeSizeKey.value === s.key,
@@ -223,232 +238,422 @@ const exploreMobileMenuOptions = computed(() => [
     label: '刷新当前书源',
     key: 'refresh',
   },
-])
+  {
+    label: '全部重载',
+    key: 'reload-all',
+  },
+]);
 
 function handleExploreMobileMenuSelect(key: string) {
   if (key === 'toggle-covers') {
-    showCovers.value = !showCovers.value
+    showCovers.value = !showCovers.value;
   } else if (key.startsWith('size-')) {
-    setSize(key.slice(5))
+    setSize(normalizeCardSizeKey(key.slice(5), activeSizeKey.value));
   } else if (key === 'sort') {
-    openSortModal()
+    openSortModal();
   } else if (key === 'refresh') {
-    handleRefresh()
+    handleRefresh();
+  } else if (key === 'reload-all') {
+    handleForceReload();
   }
 }
 
 // ── 书籍详情 ─────────────────────────────────────────────────────────────
-const showDrawer = ref(false)
-const drawerBookUrl = ref('')
-const drawerFileName = ref('')
+const {
+  showDrawer,
+  drawerBookUrl,
+  drawerFileName,
+  drawerSourceName,
+  drawerSourceType,
+  openDetail,
+  openDetailByUrl,
+} = useBookDetailDrawerState({
+  sources: sourcesRef,
+  onOpenDetail: ({ bookUrl, fileName, book }) => {
+    if (book) {
+      return;
+    }
+  },
+});
 
-function openDetail(book: BookItem, fileName: string) {
-  drawerBookUrl.value = book.bookUrl
-  drawerFileName.value = fileName
-  showDrawer.value = true
+function navigateToActiveSourceSearch() {
+  if (!activeSourceTab.value) {
+    return;
+  }
+  navigationStore.navigateToSearch(activeSourceTab.value);
 }
 
-function openDetailByUrl(bookUrl: string, fileName: string) {
-  drawerBookUrl.value = bookUrl
-  drawerFileName.value = fileName
-  showDrawer.value = true
+function handleOpenBookByUrl(bookUrl: string, fileName: string) {
+  openDetailByUrl(bookUrl, fileName);
 }
 
-const drawerSourceName = computed(() => {
-  const src = sources.value.find(s => s.fileName === drawerFileName.value)
-  return src?.name ?? drawerFileName.value
-})
+// ── Tab 右键 / 长按菜单 ──────────────────────────────────────────────────
+const tabMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  source: null as BookSourceMeta | null,
+});
 
-const drawerSourceType = computed(() => {
-  const src = sources.value.find(s => s.fileName === drawerFileName.value)
-  return src?.sourceType ?? 'novel'
-})
+const tabMenuOptions = computed(() => {
+  const src = tabMenu.source;
+  if (!src) return [];
+  const caps = bookSourceStore.getCachedCapabilities(src.fileName);
+  const hasSearch = caps?.has('search') && bookSourceStore.isSearchUserEnabled(src.fileName);
+  const opts: { label: string; key: string; type?: string }[] = [];
+  if (hasSearch) {
+    opts.push({ label: '使用此书源搜索', key: 'search' });
+  }
+  opts.push(
+    { label: '禁用书源', key: 'disable' },
+    { type: 'divider', key: 'd1', label: '' },
+    { label: '删除书源', key: 'delete' },
+  );
+  return opts;
+});
+
+function openTabMenu(e: MouseEvent, src: BookSourceMeta) {
+  e.preventDefault();
+  tabMenu.source = src;
+  tabMenu.x = e.clientX;
+  tabMenu.y = e.clientY;
+  tabMenu.visible = true;
+}
+
+// 长按检测（移动端）
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressOriginX = 0;
+let longPressOriginY = 0;
+let longPressSrc: BookSourceMeta | null = null;
+
+function onTabPointerDown(e: PointerEvent, src: BookSourceMeta) {
+  longPressSrc = src;
+  longPressOriginX = e.clientX;
+  longPressOriginY = e.clientY;
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    tabMenu.source = longPressSrc;
+    // 在 touch 设备上用触点位置
+    tabMenu.x = longPressOriginX;
+    tabMenu.y = longPressOriginY;
+    tabMenu.visible = true;
+  }, 600);
+}
+
+function onTabPointerMoveCheck(e: PointerEvent) {
+  if (longPressTimer === null) return;
+  const dx = e.clientX - longPressOriginX;
+  const dy = e.clientY - longPressOriginY;
+  if (Math.sqrt(dx * dx + dy * dy) > 8) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function cancelLongPress() {
+  if (longPressTimer !== null) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+async function handleTabMenuSelect(key: string) {
+  tabMenu.visible = false;
+  const src = tabMenu.source;
+  if (!src) return;
+
+  if (key === 'search') {
+    navigationStore.navigateToSearch(src.fileName);
+  } else if (key === 'disable') {
+    try {
+      await bookSourceStore.toggleSource(src.fileName, false, src.sourceDir);
+      message.success(`已禁用「${src.name}」`);
+    } catch (e: unknown) {
+      message.error(`禁用失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  } else if (key === 'delete') {
+    dialog.warning({
+      title: '删除书源',
+      content: `确认删除「${src.name}」？此操作将删除磁盘文件，不可恢复。`,
+      positiveText: '删除',
+      negativeText: '取消',
+      onPositiveClick: async () => {
+        try {
+          await deleteBookSource(src.fileName, src.sourceDir);
+          await eventEmit('app:booksource-reload', { scope: 'single', fileName: src.fileName });
+          message.success('已删除');
+        } catch (e: unknown) {
+          message.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      },
+    });
+  }
+}
+
 
 // ── 章节阅读 ─────────────────────────────────────────────────────────────
-const showReader = ref(false)
-const readerChapterUrl = ref('')
-const readerChapterName = ref('')
-const readerFileName = ref('')
-const readerChapters = ref<ChapterItem[]>([])
-const readerCurrentIndex = ref(0)
-const readerBookInfo = ref<ReaderBookInfo | undefined>()
-const readerSourceType = ref('novel')
-const readerShelfId = ref('')
-const chapterListTaskId = ref<string | null>(null)
-const { getShelfId, ensureLoaded: ensureShelfLoaded, isPrivateShelfBook } = useBookshelf()
-const { privacyExitTick } = usePrivacyMode()
+const { getShelfId, ensureLoaded: ensureShelfLoaded, isPrivateShelfBook } = bookshelfStore;
+const { privacyExitTick } = storeToRefs(privacyModeStore);
+const {
+  showReader,
+  readerChapterUrl,
+  readerChapterName,
+  readerFileName,
+  readerChapters,
+  readerCurrentIndex,
+  readerBookInfo,
+  readerSourceType,
+  readerShelfId,
+  readerChapterGroups,
+  readerActiveGroupIndex,
+  applySourceSwitchToReader,
+  onReadChapter,
+} = useInlineBookReader({
+  showDrawer,
+  drawerBookUrl,
+  drawerFileName,
+  privacyExitTick,
+  runChapterList,
+  cancelTask,
+  ensureShelfLoaded,
+  getShelfId,
+  isPrivateShelfBook,
+  onTrackReaderOpen: (payload) => {
+  },
+});
 
-async function onReadChapter(payload: { chapterUrl: string; chapterName: string; index: number; bookInfo: ReaderBookInfo; sourceType: string }) {
-  readerChapterUrl.value = payload.chapterUrl
-  readerChapterName.value = payload.chapterName
-  readerFileName.value = drawerFileName.value
-  readerCurrentIndex.value = payload.index
-  readerBookInfo.value = payload.bookInfo
-  readerSourceType.value = payload.sourceType
-
-  // 查找书架 ID，用于保存阅读进度
-  try {
-    await ensureShelfLoaded()
-    readerShelfId.value = getShelfId(drawerBookUrl.value, drawerFileName.value) ?? ''
-  } catch {
-    readerShelfId.value = ''
+watch(activeSourceTab, (next, prev) => {
+  if (!next || !prev || next === prev) {
+    return;
   }
-
-  if (!readerChapters.value.length) {
-    const taskId = crypto.randomUUID()
-    chapterListTaskId.value = taskId
-    try {
-      const raw = await runChapterList(drawerFileName.value, drawerBookUrl.value, taskId)
-      readerChapters.value = Array.isArray(raw) ? (raw as ChapterItem[]) : []
-    } catch {
-      // 加载失败不阻塞阅读
-    } finally {
-      chapterListTaskId.value = null
-    }
-  }
-  showReader.value = true
-}
-
-function onReaderClose() {
-  if (chapterListTaskId.value) {
-    cancelTask(chapterListTaskId.value)
-    chapterListTaskId.value = null
-  }
-}
-
-watch(readerCurrentIndex, (idx) => {
-  if (idx >= 0 && idx < readerChapters.value.length) {
-    const ch = readerChapters.value[idx]
-    readerChapterUrl.value = ch.url
-    readerChapterName.value = ch.name
-  }
-})
-
-watch(privacyExitTick, () => {
-  if (!showReader.value || !readerShelfId.value) return
-  if (!isPrivateShelfBook(readerShelfId.value)) return
-  showReader.value = false
-})
-watch(showReader, (v) => { if (!v) onReaderClose() })
-watch(showDrawer, (v) => { if (!v) onReaderClose() })
+});
 
 // ── 生命周期 ─────────────────────────────────────────────────────────────
-const unlisteners: UnlistenFn[] = []
+const unlisteners: (() => void)[] = [];
+
+/**
+ * 针对单个书源的精准刷新：
+ * - 删除该书源的函数缓存，清理发现缓存
+ * - 重载书源列表
+ * - 仅当该书源在刷新前后都可供发现时才 bump 版本（内容变化场景）；
+ *   enable/disable 切换时 SourceExploreSection 会由 v-for 重新挂载/卸载，无需手动 bump。
+ */
+async function refreshSingleSource(fileName: string) {
+  const wasExplorable = bookSourceStore.explorableSources.some((s) => s.fileName === fileName);
+  bookSourceStore.invalidateCapability(fileName);
+  await clearExploreCache(fileName);
+  await bookSourceStore.loadSources();
+  // 只有"内容变更但仍可发现"时才 bump（新挂载的 Section 会在 onMounted 中自动加载）
+  const isStillExplorable = bookSourceStore.explorableSources.some((s) => s.fileName === fileName);
+  if (wasExplorable && isStillExplorable) {
+    bumpSourceRefreshVersion(fileName);
+  }
+}
+
+/** 全量重置（用于"重载全部"或无法确定具体文件的场景） */
+async function refreshAllSources() {
+  bookSourceStore.invalidateAllCapabilities();
+  bumpAllSourceRefreshVersions();
+  await clearExploreCache();
+  await bookSourceStore.loadSources();
+}
 
 onMounted(async () => {
-  await loadSources()
-  if (evTabsRef.value) {
-    cleanupWheelScroll = setupTabsWheelScroll(evTabsRef.value)
-  }
-  unlisteners.push(await listen<{ fileName: string }>('booksource:changed', (event) => {
-    const changed = event.payload?.fileName
-    if (changed) delete sourceFns[changed]
-    loadSources()
-  }))
-  unlisteners.push(await listen<{ scope: string; fileName?: string }>('app:booksource-reload', (event) => {
-    if (event.payload.scope === 'all') {
-      Object.keys(sourceFns).forEach(k => delete sourceFns[k])
-    } else if (event.payload.scope === 'single' && event.payload.fileName) {
-      delete sourceFns[event.payload.fileName]
+  try {
+    // 必须先等后端存储加载完毕，再读 hidden 状态；
+    // 否则 hydrateState 同步读到空缓存会回落到 defaults({ hidden: false })，导致每次都弹窗
+    // 同时预热能力缓存和分类缓存命名空间，避免首次打开重复扫描
+    await Promise.all([
+      disclaimerStore.ready,
+      activeTabStore.ready,
+      bookSourceStore.ensureCapsLoaded(),
+      preloadExploreCategoryCache(),
+      preloadExploreBooksCache(),
+    ]);
+    if (!disclaimerStore.state.hidden) {
+      showDisclaimer.value = true;
     }
-    loadSources()
-  }))
-})
+    await bookSourceStore.loadSources();
+    // 等待能力检测完成后 explorableSources 才有数据，再恢复上次选中的书源
+    await bookSourceStore.detectAllCapabilities();
+    if (!bookSourceStore.explorableSources.some((s) => s.fileName === activeSourceTab.value)) {
+      await activeTabStore.replace({ tab: bookSourceStore.explorableSources[0]?.fileName ?? '' });
+    }
+    if (evTabsRef.value) {
+      cleanupWheelScroll = setupTabsWheelScroll(evTabsRef.value);
+    }
+    await nextTick();
+    requestAnimationFrame(() => {
+      scrollActiveSourceTabIntoView();
+    });
+    unlisteners.push(
+      await eventListen<{ fileName?: string; reason?: string }>('booksource:changed', async (event) => {
+        const { fileName: changedFileName, reason } = event.payload ?? {};
+        if (changedFileName) {
+          // toggle 操作只切换 enabled，不影响发现内容，跳过重载
+          if (reason === 'toggle') return;
+          await refreshSingleSource(changedFileName);
+        } else {
+          await refreshAllSources();
+        }
+      }),
+    );
+    unlisteners.push(
+      await eventListen<{ scope?: string; fileName?: string }>(
+        'app:booksource-reload',
+        async (event) => {
+          const { scope, fileName } = event.payload ?? {};
+          if (scope === 'single' && fileName) {
+            await refreshSingleSource(fileName);
+          } else {
+            await refreshAllSources();
+          }
+        },
+      ),
+    );
+    unlisteners.push(
+      await eventListen<{ view?: string }>('app:view-reload', async (event) => {
+        if (event.payload?.view === 'explore') {
+          await handleForceReload();
+        }
+      }),
+    );
+  } finally {
+    initializingSources.value = false;
+  }
+});
 
 onUnmounted(() => {
-  cleanupWheelScroll?.()
-  unlisteners.forEach(fn => fn())
-})
+  cleanupWheelScroll?.();
+  unlisteners.forEach((fn) => fn());
+});
 
-// ── 滑动手势切换书源 Tab ─────────────────────────────────────────────────
-
-let _swStartX = 0
-let _swStartY = 0
-
-function onSwipeStart(e: PointerEvent) {
-  _swStartX = e.clientX
-  _swStartY = e.clientY
-}
-
-function onSwipeEnd(e: PointerEvent) {
-  const dx = e.clientX - _swStartX
-  const dy = e.clientY - _swStartY
-  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return
-  const list = sortedSources.value
-  if (list.length < 2) return
-  const idx = list.findIndex(s => s.fileName === activeSourceTab.value)
-  if (idx < 0) return
-  if (dx < 0 && idx < list.length - 1) {
-    activeSourceTab.value = list[idx + 1].fileName
-  } else if (dx > 0 && idx > 0) {
-    activeSourceTab.value = list[idx - 1].fileName
+// ── 移动端滑动手势切换书源 Tab ────────────────────────────────────────────
+function switchActiveSourceTab(direction: 'prev' | 'next') {
+  const list = sortedSources.value;
+  if (list.length < 2) {
+    return;
+  }
+  const idx = list.findIndex((s) => s.fileName === activeSourceTab.value);
+  if (idx < 0) {
+    return;
+  }
+  if (direction === 'next' && idx < list.length - 1) {
+    activeSourceTab.value = list[idx + 1].fileName;
+  } else if (direction === 'prev' && idx > 0) {
+    activeSourceTab.value = list[idx - 1].fileName;
   }
 }
 
+const {
+  onSwipePointerDown,
+  onSwipePointerMove,
+  onSwipePointerUp,
+  onSwipePointerCancel,
+  onSwipeClickCapture,
+} = useMobileHorizontalSwipe({
+  onSwipeLeft: () => switchActiveSourceTab('next'),
+  onSwipeRight: () => switchActiveSourceTab('prev'),
+});
+
 // ── 鼠标滚轮横向滚动 tabs 导航栏（PC）──────────────────────────────────
-const evTabsRef = ref<HTMLElement | null>(null)
+const evTabsRef = ref<HTMLElement | null>(null);
+
+function scrollActiveSourceTabIntoView() {
+  if (!evTabsRef.value) {
+    return;
+  }
+  const activeTabEl = evTabsRef.value.querySelector<HTMLElement>('.n-tabs-tab--active');
+  activeTabEl?.scrollIntoView({
+    block: 'nearest',
+    inline: 'center',
+    behavior: 'smooth',
+  });
+}
 
 function setupTabsWheelScroll(el: HTMLElement): (() => void) | undefined {
   // Naive UI 渲染时机不确定，用 MutationObserver 等待目标元素出现
-  let cleanup: (() => void) | undefined
-  let found = false
+  let cleanup: (() => void) | undefined;
+  let found = false;
 
   function attach(wrapper: HTMLElement) {
     function onWheel(e: WheelEvent) {
       // 有水平滚动量时直接滚动，否则把垂直量映射到水平
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-      if (delta === 0) return
-      e.preventDefault()
-      wrapper.scrollLeft += delta
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (delta === 0) {
+        return;
+      }
+      e.preventDefault();
+      wrapper.scrollLeft += delta;
     }
-    wrapper.addEventListener('wheel', onWheel, { passive: false })
-    cleanup = () => wrapper.removeEventListener('wheel', onWheel)
+    wrapper.addEventListener('wheel', onWheel, { passive: false });
+    cleanup = () => wrapper.removeEventListener('wheel', onWheel);
   }
 
-  const candidate = el.querySelector<HTMLElement>('.n-tabs-nav-scroll-wrapper')
+  const candidate = el.querySelector<HTMLElement>('.n-tabs-nav-scroll-wrapper');
   if (candidate) {
-    found = true
-    attach(candidate)
+    found = true;
+    attach(candidate);
   } else {
     const observer = new MutationObserver(() => {
-      const w = el.querySelector<HTMLElement>('.n-tabs-nav-scroll-wrapper')
+      const w = el.querySelector<HTMLElement>('.n-tabs-nav-scroll-wrapper');
       if (w) {
-        found = true
-        observer.disconnect()
-        attach(w)
+        found = true;
+        observer.disconnect();
+        attach(w);
       }
-    })
-    observer.observe(el, { childList: true, subtree: true })
+    });
+    observer.observe(el, { childList: true, subtree: true });
     // 安全兜底：5s 后断开
-    setTimeout(() => { if (!found) observer.disconnect() }, 5000)
-    return () => { observer.disconnect(); cleanup?.() }
+    setTimeout(() => {
+      if (!found) {
+        observer.disconnect();
+      }
+    }, 5000);
+    return () => {
+      observer.disconnect();
+      cleanup?.();
+    };
   }
 
-  return () => cleanup?.()
+  return () => cleanup?.();
 }
 
-let cleanupWheelScroll: (() => void) | undefined
+function sourceTypeLabel(source: BookSourceMeta): string {
+  return getSourceTypeLabel(source.sourceType);
+}
+
+let cleanupWheelScroll: (() => void) | undefined;
+
+watch(
+  () => [activeSourceTab.value, sortedSources.value.map((src) => src.fileName).join('|')] as const,
+  async () => {
+    await nextTick();
+    requestAnimationFrame(() => {
+      scrollActiveSourceTabIntoView();
+    });
+  },
+);
 </script>
 
 <template>
   <div class="explore-view" :style="explorerStyle">
-    <!-- 顶部 -->
-    <div class="ev-header">
-      <h1 class="ev-header__title">发现</h1>
-      <span class="ev-header__sub">{{ explorableSources.length }} 个发现源</span>
-      <div class="ev-header__actions">
-        <MobileToolbarMenu :options="exploreMobileMenuOptions" @select="handleExploreMobileMenuSelect">
+    <AppPageHeader title="发现">
+      <template #title-extra>
+        <span class="ev-header__sub">{{ explorableSources.length }} 个发现源</span>
+      </template>
+      <template #actions>
+        <MobileToolbarMenu
+          :options="exploreMobileMenuOptions"
+          @select="handleExploreMobileMenuSelect"
+        >
           <!-- 封面开关 -->
           <n-tooltip trigger="hover">
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                @click="showCovers = !showCovers"
-              >
+              <n-button size="small" quaternary @click="showCovers = !showCovers">
                 <template #icon>
-                  <svg v-if="showCovers" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  <svg v-else xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                  <Image v-if="showCovers" :size="14" />
+                  <ImageOff v-else :size="14" />
                 </template>
               </n-button>
             </template>
@@ -458,7 +663,7 @@ let cleanupWheelScroll: (() => void) | undefined
           <!-- 卡片尺寸选择 -->
           <n-dropdown
             trigger="click"
-            :options="CARD_SIZES.map(s => ({ label: s.label, key: s.key }))"
+            :options="CARD_SIZES.map((s) => ({ label: s.label, key: s.key }))"
             :value="activeSizeKey"
             @select="setSize"
           >
@@ -466,7 +671,7 @@ let cleanupWheelScroll: (() => void) | undefined
               <template #trigger>
                 <n-button size="small" quaternary>
                   <template #icon>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 3v18"/></svg>
+                    <LayoutGrid :size="14" />
                   </template>
                 </n-button>
               </template>
@@ -479,7 +684,7 @@ let cleanupWheelScroll: (() => void) | undefined
             <template #trigger>
               <n-button size="small" quaternary @click="openSortModal">
                 <template #icon>
-                  <n-icon><ReorderFourOutline /></n-icon>
+                  <AlignJustify :size="16" />
                 </template>
               </n-button>
             </template>
@@ -489,123 +694,128 @@ let cleanupWheelScroll: (() => void) | undefined
           <!-- 刷新按钮 -->
           <n-tooltip trigger="hover">
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                :loading="refreshing"
-                @click="handleRefresh"
-              >
+              <n-button size="small" quaternary :loading="reloadingAll" @click="handleForceReload">
+                全部重载
+              </n-button>
+            </template>
+            全量重载发现页书源与缓存
+          </n-tooltip>
+
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button size="small" quaternary :loading="refreshing" @click="handleRefresh">
                 <template #icon>
-                  <n-icon><ReloadOutline /></n-icon>
+                  <RefreshCw :size="16" />
                 </template>
               </n-button>
             </template>
             刷新当前书源
           </n-tooltip>
         </MobileToolbarMenu>
-      </div>
-    </div>
+      </template>
+    </AppPageHeader>
 
     <!-- 书源排序弹窗 -->
-    <n-modal
+    <ExploreViewSortModal
       v-model:show="showSortModal"
-      preset="card"
-      title="书源排序"
-      class="ev-sort-modal"
-      :style="{ width: '340px', maxWidth: '95vw' }"
-      :mask-closable="true"
-    >
-      <div ref="sortListEl" class="ev-sort-list">
-        <div
-          v-for="(src, idx) in sortList"
-          :key="src.fileName"
-          :data-sidx="idx"
-          class="ev-sort-item"
-          :class="{
-            'ev-sort-item--dragging': ptrFrom === idx,
-            'ev-sort-item--drag-over': ptrOver === idx && ptrFrom !== idx,
-          }"
-        >
-          <span
-            class="ev-sort-item__handle"
-            @pointerdown="startSortDrag($event, idx)"
-          >
-            <n-icon size="16"><ReorderFourOutline /></n-icon>
-          </span>
-          <span class="ev-sort-item__name">{{ src.name }}</span>
-        </div>
-      </div>
-      <template #footer>
-        <div style="display:flex; justify-content:flex-end; gap:8px">
-          <n-button size="small" @click="showSortModal = false">取消</n-button>
-          <n-button size="small" type="primary" @click="confirmSort">确定</n-button>
-        </div>
-      </template>
-    </n-modal>
+      :sources="sortedSources"
+      @confirm="saveTabOrder"
+    />
 
     <!-- 按书源分 Tab -->
     <template v-if="sortedSources.length">
-      <div ref="evTabsRef" class="ev-tabs-wrap">
-      <n-tabs
-        v-model:value="activeSourceTab"
-        type="line"
-        animated
-        class="ev-tabs"
+      <div
+        ref="evTabsRef"
+        class="ev-tabs-wrap"
+        @pointerdown="onSwipePointerDown"
+        @pointermove="onSwipePointerMove"
+        @pointerup="onSwipePointerUp"
+        @pointercancel="onSwipePointerCancel"
+        @click.capture="onSwipeClickCapture"
       >
-        <n-tab-pane
-          v-for="src in sortedSources"
-          :key="src.fileName"
-          :name="src.fileName"
-          :tab="src.name"
+        <n-tabs
+          v-model:value="activeSourceTab"
+          type="line"
+          animated
+          class="ev-tabs app-scrollbar-proxy--hidden"
         >
-          <!-- 副标题行 -->
-          <div v-if="currentSource?.description" class="ev-subtitle">
-            <span class="ev-subtitle__text">{{ currentSource.description }}</span>
-            <n-button
-              text
-              size="tiny"
-              class="ev-subtitle__search-btn"
-              @click="navigateToSearch(activeSourceTab)"
-            >
-              <template #icon><n-icon><SearchOutline /></n-icon></template>
-              使用此书源搜索
-            </n-button>
-          </div>
-          <div v-else class="ev-subtitle ev-subtitle--empty">
-            <n-button
-              text
-              size="tiny"
-              class="ev-subtitle__search-btn"
-              @click="navigateToSearch(activeSourceTab)"
-            >
-              <template #icon><n-icon><SearchOutline /></n-icon></template>
-              使用此书源搜索
-            </n-button>
-          </div>
-
-          <!-- 内容区直接渲染，无额外容器 -->
-          <div
-            class="ev-content"
-            @pointerdown="onSwipeStart"
-            @pointerup="onSwipeEnd"
+          <n-tab-pane
+            v-for="src in sortedSources"
+            :key="src.fileName"
+            :name="src.fileName"
+            display-directive="show"
           >
-            <SourceExploreSection
-              :source="src"
-              :show-covers="showCovers"
-              :refresh-trigger="refreshTrigger"
-              @select="openDetail"
-              @open-book="(url: string) => openDetailByUrl(url, src.fileName)"
-              @refreshing="onSectionRefreshing"
-            />
-          </div>
-        </n-tab-pane>
-      </n-tabs>
+            <template #tab>
+              <span
+                class="ev-source-tab"
+                @contextmenu.prevent.stop="openTabMenu($event, src)"
+                @pointerdown="onTabPointerDown($event, src)"
+                @pointermove="onTabPointerMoveCheck($event)"
+                @pointerup="cancelLongPress"
+                @pointercancel="cancelLongPress"
+              >
+                <span class="ev-source-tab__name">{{ src.name }}</span>
+                <SourceTypeBadge
+                  v-if="src.sourceType && src.sourceType !== 'novel'"
+                  :source-type="src.sourceType"
+                  :opaque="true"
+                  :size="10"
+                  class="ev-source-tab__type-icon"
+                />
+              </span>
+            </template>
+            <!-- 副标题行 -->
+            <div v-if="currentSource?.description" class="ev-subtitle">
+              <span class="ev-subtitle__text">{{ currentSource.description }}</span>
+              <n-button
+                v-if="activeSourceCanSearch"
+                text
+                size="tiny"
+                class="ev-subtitle__search-btn"
+                @click="navigateToActiveSourceSearch"
+              >
+                <template #icon><Search :size="14" /></template>
+                使用此书源搜索
+              </n-button>
+            </div>
+            <div v-else-if="activeSourceCanSearch" class="ev-subtitle ev-subtitle--empty">
+              <n-button
+                text
+                size="tiny"
+                class="ev-subtitle__search-btn"
+                @click="navigateToActiveSourceSearch"
+              >
+                <template #icon><Search :size="14" /></template>
+                使用此书源搜索
+              </n-button>
+            </div>
+
+            <!-- 内容区直接渲染，无额外容器 -->
+            <div class="ev-content app-scrollbar">
+              <SourceExploreSection
+                :source="src"
+                :active="activeSourceTab === src.fileName"
+                :prefetch="prefetchedSourceTabs.has(src.fileName)"
+                :show-covers="showCovers"
+                :reload-version="sourceRefreshVersion[src.fileName] ?? 0"
+                @select="openDetail"
+                @open-book="(url: string) => handleOpenBookByUrl(url, src.fileName)"
+                @refreshing="onSectionRefreshing"
+              />
+            </div>
+          </n-tab-pane>
+        </n-tabs>
       </div>
     </template>
-    <n-empty
-      v-else-if="!explorableSources.length"
-      description="暂无可用的发现书源"
-      style="padding: 64px 0"
+    <AppEmpty
+      v-else-if="sourceSystemStarting"
+      title="书源系统启动中"
+      desc="正在加载书源并检测发现能力"
+    />
+    <AppEmpty
+      v-else
+      title="暂无可用的发现书源"
+      desc="请先在书源管理中添加支持「发现」的书源"
     />
 
     <!-- 书籍详情抽屉 -->
@@ -630,6 +840,48 @@ let cleanupWheelScroll: (() => void) | undefined
       :shelf-book-id="readerShelfId"
       :book-info="readerBookInfo"
       :source-type="readerSourceType"
+      :chapter-groups="readerChapterGroups"
+      :initial-group-index="readerActiveGroupIndex"
+      @added-to-shelf="readerShelfId = $event"
+      @source-switched="applySourceSwitchToReader"
+    />
+
+    <!-- 免责声明弹窗 -->
+    <n-modal
+      v-model:show="showDisclaimer"
+      :mask-closable="false"
+      :close-on-esc="false"
+      preset="card"
+      title="使用须知"
+      :style="{ maxWidth: '480px', width: '92vw' }"
+      :bordered="false"
+    >
+      <div class="disclaimer-body">
+        <p>本软件所有书源均来源于社区用户共享，软件本身不提供、不存储任何内容。</p>
+        <p>
+          书源内容由第三方网站提供，版权归原作者及原网站所有。若您发现任何书源涉及侵权内容，请立即停止使用该书源，并通知相关内容提供方。
+        </p>
+        <p>使用书源所产生的一切法律责任由使用者本人承担，与本软件开发者无关。</p>
+      </div>
+      <n-checkbox v-model:checked="disclaimerDontShow" class="disclaimer-check">
+        不再显示
+      </n-checkbox>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end">
+          <n-button type="primary" @click="confirmDisclaimer">我已了解</n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <!-- Tab 右键 / 长按上下文菜单 -->
+    <n-dropdown
+      trigger="manual"
+      :show="tabMenu.visible"
+      :x="tabMenu.x"
+      :y="tabMenu.y"
+      :options="tabMenuOptions"
+      @select="handleTabMenuSelect"
+      @clickoutside="tabMenu.visible = false"
     />
   </div>
 </template>
@@ -640,37 +892,33 @@ let cleanupWheelScroll: (() => void) | undefined
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-surface);
+  /* background: var(--color-bg-page); */
 }
 
-.ev-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 24px 24px 12px;
-  flex-wrap: wrap;
-}
-.ev-header__title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0;
-}
 .ev-header__sub {
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-}
-.ev-header__actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: var(--fs-13);
+  color: var(--color-text-soft);
 }
 .ev-header__stat {
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+.ev-source-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ev-source-tab__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ev-source-tab__type-icon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  background-color: transparent;
 }
 
 .ev-tabs-wrap {
@@ -687,7 +935,7 @@ let cleanupWheelScroll: (() => void) | undefined
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 0 24px;
+  padding: 0 var(--space-6);
 }
 :deep(.n-tabs-nav) {
   flex-shrink: 0;
@@ -696,10 +944,6 @@ let cleanupWheelScroll: (() => void) | undefined
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-:deep(.n-tabs-nav-scroll-wrapper)::-webkit-scrollbar {
-  display: none;
 }
 :deep(.n-tabs-nav-scroll-content) {
   overflow: visible !important;
@@ -729,7 +973,7 @@ let cleanupWheelScroll: (() => void) | undefined
 .ev-subtitle__text {
   flex: 1;
   min-width: 0;
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -740,7 +984,7 @@ let cleanupWheelScroll: (() => void) | undefined
 }
 .ev-subtitle__search-btn {
   flex-shrink: 0;
-  font-size: 0.75rem !important;
+  font-size: var(--fs-12) !important;
   color: var(--color-accent) !important;
 }
 
@@ -752,78 +996,38 @@ let cleanupWheelScroll: (() => void) | undefined
   overflow-x: hidden;
   padding-bottom: 16px;
 }
-.ev-content::-webkit-scrollbar { width: 5px; }
-.ev-content::-webkit-scrollbar-track { background: transparent; }
-.ev-content::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
-}
-
 /* ── 移动端适配 ─────────────────────────── */
 @media (pointer: coarse), (max-width: 640px) {
-  .ev-header { padding: 16px 16px 8px; }
-  .ev-tabs { padding: 0 16px; }
+  .ev-tabs {
+    padding: 0 var(--space-4);
+  }
+  .ev-tabs-wrap,
+  .ev-content {
+    touch-action: pan-y;
+  }
   :deep(.n-tabs-tab) {
     padding: 6px 2px !important;
-    font-size: 0.8125rem !important;
+    font-size: var(--fs-13) !important;
   }
 }
 
-/* ── 排序弹窗 ──────────────────────────── */
-.ev-sort-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  user-select: none;
+.disclaimer-body {
+  font-size: var(--fs-14);
+  line-height: var(--lh-body);
+  color: var(--color-text-soft);
 }
 
-.ev-sort-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+.disclaimer-body p {
+  margin: 0 0 10px;
 }
 
-.ev-sort-item--dragging {
-  opacity: 0.35;
-  border-style: dashed;
+.disclaimer-body p:last-child {
+  margin-bottom: 0;
 }
 
-.ev-sort-item--drag-over {
-  border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
-}
-
-.ev-sort-item__handle {
+.disclaimer-check {
+  margin-top: 14px;
+  font-size: var(--fs-13);
   color: var(--color-text-muted);
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  cursor: grab;
-  touch-action: none;
-  padding: 2px 4px;
-  border-radius: var(--radius-xs);
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-.ev-sort-item__handle:hover {
-  color: var(--color-accent);
-  background: var(--color-surface-hover);
-}
-.ev-sort-item__handle:active {
-  cursor: grabbing;
-}
-
-.ev-sort-item__name {
-  flex: 1;
-  font-size: 0.875rem;
-  color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

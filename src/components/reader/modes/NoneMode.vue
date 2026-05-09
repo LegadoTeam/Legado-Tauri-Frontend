@@ -11,141 +11,157 @@
  *   - 点击中间 40% → 切换菜单
  *   - 滑动距离 > 30% 视口宽 或 速度 > 0.3 px/ms → 翻页（无过渡）
  */
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { usePagination } from '../composables/usePagination'
-import type { ReaderTypography } from '../types'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import type { ReaderTypography } from '../types';
+import { usePagination } from '../composables/usePagination';
 
 const props = defineProps<{
-  content: string
-  chapterTitle?: string
-  typography: ReaderTypography
-  padding: number
-  startFromEnd?: boolean
-  hasPrev?: boolean
-  hasNext?: boolean
+  content: string;
+  chapterTitle?: string;
+  typography: ReaderTypography;
+  padding: number;
+  startFromEnd?: boolean;
+  hasPrev?: boolean;
+  hasNext?: boolean;
   /** 点击左区占比 0-1 */
-  tapZoneLeft?: number
+  tapZoneLeft?: number;
   /** 点击右区开始占比 0-1 */
-  tapZoneRight?: number
-}>()
+  tapZoneRight?: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'tap', zone: 'left' | 'center' | 'right'): void
-  (e: 'prev-chapter'): void
-  (e: 'next-chapter'): void
-  (e: 'progress', ratio: number): void
-}>()
+  (e: 'tap', zone: 'left' | 'center' | 'right'): void;
+  (e: 'prev-chapter'): void;
+  (e: 'next-chapter'): void;
+  (e: 'progress', ratio: number): void;
+}>();
 
 /* ============================================================
    分页引擎
    ============================================================ */
-const { pages, currentPage, totalPages, paginate, nextPage, prevPage, goToPage } = usePagination()
+const { pages, currentPage, totalPages, paginate, nextPage, prevPage, goToPage } = usePagination();
 
-const containerRef = ref<HTMLElement | null>(null)
+const containerRef = ref<HTMLElement | null>(null);
 
 // 仅在内容变化时应用 startFromEnd，避免 resize/排版调整时误跳末页
-let pendingInitialPage: 'first' | 'last' = props.startFromEnd ? 'last' : 'first'
+let pendingInitialPage: 'first' | 'last' = props.startFromEnd ? 'last' : 'first';
 
 // 内容变化时根据 startFromEnd 重新设置初始页（修复切换上一章时总是显示第一页的问题）
 watch(
   () => props.content,
-  () => { pendingInitialPage = props.startFromEnd ? 'last' : 'first' },
-)
+  () => {
+    pendingInitialPage = props.startFromEnd ? 'last' : 'first';
+  },
+);
 
 function makeTitleHtml(title: string): string {
-  return `<p class="reader-chapter-title">${title}</p>`
+  return `<p class="reader-chapter-title">${title}</p>`;
 }
 
 async function doPaginate() {
-  const el = containerRef.value
-  if (!el || !props.content) return
-  const ip = pendingInitialPage
-  pendingInitialPage = 'first'
-  const prefix = props.chapterTitle ? makeTitleHtml(props.chapterTitle) : ''
-  await paginate(props.content, el, props.typography, props.padding, ip, prefix)
+  const el = containerRef.value;
+  if (!el || !props.content) {
+    return;
+  }
+  const ip = pendingInitialPage;
+  pendingInitialPage = 'first';
+  const prefix = props.chapterTitle ? makeTitleHtml(props.chapterTitle) : '';
+  await paginate(props.content, el, props.typography, props.padding, ip, prefix);
 }
 
 watch(
   () => [props.content, props.typography, props.padding] as const,
   () => nextTick(doPaginate),
   { immediate: true, deep: true },
-)
+);
 
-let resizeOb: ResizeObserver | null = null
-let resizeTimer = 0
+let resizeOb: ResizeObserver | null = null;
+let resizeTimer = 0;
 onMounted(() => {
-  requestAnimationFrame(() => nextTick(doPaginate))
+  requestAnimationFrame(() => nextTick(doPaginate));
   if (containerRef.value) {
     resizeOb = new ResizeObserver(() => {
-      cancelAnimationFrame(resizeTimer)
-      resizeTimer = requestAnimationFrame(() => doPaginate())
-    })
-    resizeOb.observe(containerRef.value)
+      cancelAnimationFrame(resizeTimer);
+      resizeTimer = requestAnimationFrame(() => doPaginate());
+    });
+    resizeOb.observe(containerRef.value);
   }
-})
-onUnmounted(() => resizeOb?.disconnect())
+});
+onUnmounted(() => resizeOb?.disconnect());
 
 /* ============================================================
    页面内容
    ============================================================ */
-const currentPageHTML = computed(() => pages.value[currentPage.value] ?? '')
-const pageInfo = computed(() => `${currentPage.value + 1}/${totalPages.value}`)
+const currentPageHTML = computed(() => pages.value[currentPage.value] ?? '');
+const pageInfo = computed(() => `${currentPage.value + 1}/${totalPages.value}`);
 
 /* ============================================================
    手势处理 — 无拖拽跟随，仅判定结果
    ============================================================ */
-let startX = 0
-let startY = 0
-let startTime = 0
-let hasMoved = false
+let startX = 0;
+let startY = 0;
+let startTime = 0;
+let hasMoved = false;
 
-const VELOCITY_THRESHOLD = 0.3
-const DISTANCE_RATIO = 0.30
+const VELOCITY_THRESHOLD = 0.3;
+const DISTANCE_RATIO = 0.3;
 
 /* ── 边界提示 ── */
-const boundaryMsg = ref('')
-let boundaryTimer = 0
+const boundaryMsg = ref('');
+let boundaryTimer = 0;
 function showBoundary(msg: string) {
-  boundaryMsg.value = msg
-  clearTimeout(boundaryTimer)
-  boundaryTimer = window.setTimeout(() => { boundaryMsg.value = '' }, 1500)
+  boundaryMsg.value = msg;
+  clearTimeout(boundaryTimer);
+  boundaryTimer = window.setTimeout(() => {
+    boundaryMsg.value = '';
+  }, 1500);
 }
 
 function onPointerDown(e: PointerEvent) {
-  startX = e.clientX
-  startY = e.clientY
-  startTime = Date.now()
-  hasMoved = false
+  startX = e.clientX;
+  startY = e.clientY;
+  startTime = Date.now();
+  hasMoved = false;
 }
 
 function onPointerMove(e: PointerEvent) {
   if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) {
-    hasMoved = true
+    hasMoved = true;
   }
 }
 
 function onPointerUp(e: PointerEvent) {
-  if (!hasMoved) return // 点击由 onClick 处理
-  const el = containerRef.value
-  if (!el) return
+  if (!hasMoved) {
+    return;
+  } // 点击由 onClick 处理
+  const el = containerRef.value;
+  if (!el) {
+    return;
+  }
 
-  const dx = e.clientX - startX
-  const dy = e.clientY - startY
-  const dt = Date.now() - startTime
-  const velocity = Math.abs(dx) / Math.max(dt, 1)
-  const w = el.clientWidth
-  const shouldFlip = velocity > VELOCITY_THRESHOLD || Math.abs(dx) > w * DISTANCE_RATIO
+  const dx = e.clientX - startX;
+  const dy = e.clientY - startY;
+  const dt = Date.now() - startTime;
+  const velocity = Math.abs(dx) / Math.max(dt, 1);
+  const w = el.clientWidth;
+  const shouldFlip = velocity > VELOCITY_THRESHOLD || Math.abs(dx) > w * DISTANCE_RATIO;
 
   if (shouldFlip && Math.abs(dx) > Math.abs(dy)) {
     if (dx < 0) {
       if (!nextPage()) {
-        if (props.hasNext) emit('next-chapter')
-        else showBoundary('已经到最后一页了')
+        if (props.hasNext) {
+          emit('next-chapter');
+        } else {
+          showBoundary('已经到最后一页了');
+        }
       }
     } else {
       if (!prevPage()) {
-        if (props.hasPrev) emit('prev-chapter')
-        else showBoundary('已经到最前了')
+        if (props.hasPrev) {
+          emit('prev-chapter');
+        } else {
+          showBoundary('已经到最前了');
+        }
       }
     }
   }
@@ -153,35 +169,45 @@ function onPointerUp(e: PointerEvent) {
 
 /** 点击判定 — 使用原生 click 事件确保可靠触发 */
 function onClick(e: MouseEvent) {
-  if (hasMoved) return // 滑动由 onPointerUp 处理
-  const el = containerRef.value
-  if (!el) return
+  if (hasMoved) {
+    return;
+  } // 滑动由 onPointerUp 处理
+  const el = containerRef.value;
+  if (!el) {
+    return;
+  }
 
-  const rect = el.getBoundingClientRect()
-  const relX = (e.clientX - rect.left) / rect.width
+  const rect = el.getBoundingClientRect();
+  const relX = (e.clientX - rect.left) / rect.width;
 
-  const leftRatio = props.tapZoneLeft ?? 0.3
-  const rightRatio = props.tapZoneRight ?? 0.7
+  const leftRatio = props.tapZoneLeft ?? 0.3;
+  const rightRatio = props.tapZoneRight ?? 0.7;
   if (relX < leftRatio) {
     if (!prevPage()) {
-      if (props.hasPrev) emit('prev-chapter')
-      else showBoundary('已经到最前了')
+      if (props.hasPrev) {
+        emit('prev-chapter');
+      } else {
+        showBoundary('已经到最前了');
+      }
     }
   } else if (relX > rightRatio) {
     if (!nextPage()) {
-      if (props.hasNext) emit('next-chapter')
-      else showBoundary('已经到最后一页了')
+      if (props.hasNext) {
+        emit('next-chapter');
+      } else {
+        showBoundary('已经到最后一页了');
+      }
     }
   } else {
-    emit('tap', 'center')
+    emit('tap', 'center');
   }
 }
 
 // 进度上报
 watch(currentPage, (p) => {
-  const ratio = totalPages.value <= 1 ? 1 : p / (totalPages.value - 1)
-  emit('progress', Math.min(1, Math.max(0, ratio)))
-})
+  const ratio = totalPages.value <= 1 ? 1 : p / (totalPages.value - 1);
+  emit('progress', Math.min(1, Math.max(0, ratio)));
+});
 
 defineExpose({
   goToPage,
@@ -189,9 +215,13 @@ defineExpose({
   prevPage,
   goToFirst: () => goToPage(0),
   goToLast: () => goToPage(totalPages.value - 1),
-  get currentPage() { return currentPage.value },
-  get totalPages() { return totalPages.value },
-})
+  get currentPage() {
+    return currentPage.value;
+  },
+  get totalPages() {
+    return totalPages.value;
+  },
+});
 </script>
 
 <template>
@@ -251,9 +281,7 @@ defineExpose({
   font-style: var(--reader-font-style);
   text-align: var(--reader-text-align);
   text-decoration: var(--reader-text-decoration);
-  text-transform: var(--reader-text-transform);
   font-variant: var(--reader-font-variant);
-  writing-mode: var(--reader-writing-mode);
   -webkit-text-stroke-width: var(--reader-text-stroke-width);
   -webkit-text-stroke-color: var(--reader-text-stroke-color);
   text-shadow: var(--reader-text-shadow);

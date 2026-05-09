@@ -1,10 +1,10 @@
 <script setup lang="ts">
 defineProps<{
   /** 分区标题 */
-  title: string
+  title: string;
   /** 用于 scrollIntoView 定位的 id */
-  sectionId?: string
-}>()
+  sectionId?: string;
+}>();
 </script>
 
 <template>
@@ -22,10 +22,10 @@ defineProps<{
 }
 
 .setting-section__title {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  margin: 0 0 8px;
+  font-size: var(--fs-15);
+  font-weight: var(--fw-bold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-2);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--color-border);
 }

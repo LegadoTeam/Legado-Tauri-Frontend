@@ -18,11 +18,11 @@
 // ── postMessage 协议常量 ──────────────────────────────────────────────────
 
 /** iframe → parent 的请求消息类型 */
-export const MSG_REQUEST  = 'legado-request'
+export const MSG_REQUEST = 'legado-request';
 /** parent → iframe 的响应消息类型 */
-export const MSG_RESPONSE = 'legado-response'
+export const MSG_RESPONSE = 'legado-response';
 /** parent → iframe 的事件推送消息类型 */
-export const MSG_EVENT    = 'legado-event'
+export const MSG_EVENT = 'legado-event';
 
 // ── Bridge 可调用的方法白名单 ──────────────────────────────────────────────
 
@@ -30,16 +30,21 @@ export const BRIDGE_METHODS = [
   'http.get',
   'http.post',
   'config.read',
+  'config.readJson',
   'config.write',
+  'config.writeJson',
   'callSource',
   'explore',
   'toast',
   'openBook',
   'search',
   'log',
-] as const
+] as const;
 
-export type BridgeMethod = typeof BRIDGE_METHODS[number]
+export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
+
+const LOCKED_VIEWPORT_META =
+  '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">';
 
 // ── 注入 iframe 的 bridge 脚本 ────────────────────────────────────────────
 
@@ -124,8 +129,17 @@ function generateBridgeScript(): string {
       read: function(key, scope) {
         return request('config.read', [key, scope || null]);
       },
+      readJson: function(key, scope) {
+        return request('config.readJson', [key, scope || null]);
+      },
       write: function(key, value, scope) {
-        return request('config.write', [key, String(value), scope || null]);
+        if (typeof value === 'string') {
+          return request('config.write', [key, value, scope || null]);
+        }
+        return request('config.writeJson', [key, value, scope || null]);
+      },
+      writeJson: function(key, value, scope) {
+        return request('config.writeJson', [key, value, scope || null]);
       }
     },
 
@@ -161,7 +175,7 @@ function generateBridgeScript(): string {
     }
   };
 })();
-</script>`
+</script>`;
 }
 
 // ── 基础样式注入（暗色/亮色适配） ─────────────────────────────────────────
@@ -274,7 +288,20 @@ function generateBaseStyles(): string {
   .text-sm { font-size: 12px; }
   .text-secondary { color: var(--text-secondary); }
   .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-</style>`
+</style>`;
+}
+
+function ensureLockedViewportMeta(html: string): string {
+  if (!/<head[\s>]/i.test(html)) {
+    return html;
+  }
+
+  const viewportMetaPattern = /<meta[^>]+name=(['"])viewport\1[^>]*>/i;
+  if (viewportMetaPattern.test(html)) {
+    return html.replace(viewportMetaPattern, LOCKED_VIEWPORT_META);
+  }
+
+  return html.replace(/<head([^>]*)>/i, `<head$1>\n${LOCKED_VIEWPORT_META}`);
 }
 
 // ── 公共 API ──────────────────────────────────────────────────────────────
@@ -292,28 +319,26 @@ function generateBaseStyles(): string {
  * @returns 完整的 srcdoc HTML
  */
 export function buildSrcdoc(html: string): string {
-  const bridgeScript = generateBridgeScript()
-  const baseStyles = generateBaseStyles()
+  const bridgeScript = generateBridgeScript();
+  const baseStyles = generateBaseStyles();
+  const htmlWithLockedViewport = ensureLockedViewportMeta(html);
 
   // 如果 HTML 已包含 <html> 或 <head>，在 <head> 末尾注入
-  if (/<head[\s>]/i.test(html)) {
-    return html.replace(
-      /<\/head>/i,
-      `${baseStyles}\n${bridgeScript}\n</head>`
-    )
+  if (/<head[\s>]/i.test(htmlWithLockedViewport)) {
+    return htmlWithLockedViewport.replace(/<\/head>/i, `${baseStyles}\n${bridgeScript}\n</head>`);
   }
 
   // 如果 HTML 已有 <html> 但没有 <head>
-  if (/<html[\s>]/i.test(html)) {
-    return html.replace(
+  if (/<html[\s>]/i.test(htmlWithLockedViewport)) {
+    return htmlWithLockedViewport.replace(
       /<html([^>]*)>/i,
       `<html$1><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+${LOCKED_VIEWPORT_META}
 ${baseStyles}
 ${bridgeScript}
-</head>`
-    )
+</head>`,
+    );
   }
 
   // 纯 body 内容，包装完整文档
@@ -321,14 +346,14 @@ ${bridgeScript}
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+${LOCKED_VIEWPORT_META}
 ${baseStyles}
 ${bridgeScript}
 </head>
 <body>
 ${html}
 </body>
-</html>`
+</html>`;
 }
 
 /**
@@ -336,8 +361,12 @@ ${html}
  *
  * 约定格式：`{ type: 'html', html: string, title?: string }`
  */
-export function isHtmlExploreResult(value: unknown): value is { type: 'html'; html: string; title?: string } {
-  if (!value || typeof value !== 'object') return false
-  const obj = value as Record<string, unknown>
-  return obj.type === 'html' && typeof obj.html === 'string'
+export function isHtmlExploreResult(
+  value: unknown,
+): value is { type: 'html'; html: string; title?: string } {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  return obj.type === 'html' && typeof obj.html === 'string';
 }

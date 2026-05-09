@@ -7,79 +7,93 @@
  *   input — 带输入框，关闭时将输入值发回 Rust
  *   repl  — 嵌入式 JS REPL，可双向与 Boa 引擎交互
  */
-import { ref, computed, watch } from 'vue'
-import { useScriptBridge, type DialogRequest } from '../composables/useScriptBridge'
+import { ref, computed, watch } from 'vue';
+import type { DialogRequest } from '@/stores';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { useScriptBridgeStore } from '@/stores';
 
-const bridge = useScriptBridge()
+const bridge = useScriptBridgeStore();
 
 // ── 当前正在显示的弹窗 ──────────────────────────────────────────────────
 const current = computed<DialogRequest | null>(() =>
-  bridge.state.dialogs.length > 0 ? bridge.state.dialogs[0] : null
-)
-const visible = computed(() => current.value !== null)
+  bridge.state.dialogs.length > 0 ? bridge.state.dialogs[0] : null,
+);
+const visible = computed(() => current.value !== null);
+
+useOverlayBackstack(() => visible.value, handleClose);
 
 // ── input 模式 ──────────────────────────────────────────────────────────
-const inputValue = ref('')
+const inputValue = ref('');
 
 // ── repl 模式 ───────────────────────────────────────────────────────────
-const replCode       = ref('')
-const replOutput     = ref<string[]>([])
-const replRunning    = ref(false)
-const replContextFile = ref<string | undefined>(undefined)
+const replCode = ref('');
+const replOutput = ref<string[]>([]);
+const replRunning = ref(false);
+const replContextFile = ref<string | undefined>(undefined);
 
 // 每次弹窗打开时重置状态
 watch(current, (req) => {
-  if (!req) return
-  inputValue.value    = ''
-  replCode.value      = ''
-  replOutput.value    = []
-  replContextFile.value = undefined
+  if (!req) {
+    return;
+  }
+  inputValue.value = '';
+  replCode.value = '';
+  replOutput.value = [];
+  replContextFile.value = undefined;
   // 如果 content 是字符串，直接作为 repl 初始代码
   if (req.kind === 'repl' && typeof req.content === 'string') {
-    replCode.value = req.content
+    replCode.value = req.content;
   }
-})
+});
 
 // ── 操作 ────────────────────────────────────────────────────────────────
 function handleConfirm() {
-  if (!current.value) return
-  const returnValue = current.value.kind === 'input' ? inputValue.value : null
-  bridge.resolveDialog(current.value.id, returnValue)
+  if (!current.value) {
+    return;
+  }
+  const returnValue = current.value.kind === 'input' ? inputValue.value : null;
+  bridge.resolveDialog(current.value.id, returnValue);
 }
 
 function handleClose() {
-  if (!current.value) return
-  bridge.resolveDialog(current.value.id, null)
+  if (!current.value) {
+    return;
+  }
+  bridge.resolveDialog(current.value.id, null);
 }
 
 async function runRepl() {
-  if (!replCode.value.trim() || replRunning.value) return
-  replRunning.value = true
+  if (!replCode.value.trim() || replRunning.value) {
+    return;
+  }
+  replRunning.value = true;
   try {
-    const result = await bridge.replEval(replCode.value, replContextFile.value)
-    replOutput.value.push(`> ${result}`)
+    const result = await bridge.replEval(replCode.value, replContextFile.value);
+    replOutput.value.push(`> ${result}`);
   } catch (e: unknown) {
-    replOutput.value.push(`[错误] ${e instanceof Error ? e.message : String(e)}`)
+    replOutput.value.push(`[错误] ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    replRunning.value = false
+    replRunning.value = false;
   }
   // 最多保留 500 行输出
   if (replOutput.value.length > 500) {
-    replOutput.value = replOutput.value.slice(-400)
+    replOutput.value = replOutput.value.slice(-400);
   }
 }
 
 function clearOutput() {
-  replOutput.value = []
+  replOutput.value = [];
 }
 
 // 内容格式化：对象类型转 JSON 字符串
 function formatContent(content: unknown): string {
-  if (typeof content === 'string') return content
+  if (typeof content === 'string') {
+    return content;
+  }
   try {
-    return JSON.stringify(content, null, 2)
+    return JSON.stringify(content, null, 2);
   } catch {
-    return String(content)
+    return String(content);
   }
 }
 </script>
@@ -101,10 +115,9 @@ function formatContent(content: unknown): string {
   >
     <div class="dialog-content">
       <!-- 只读内容 -->
-      <pre
-        v-if="current.kind === 'info'"
-        class="dialog-info-text"
-      >{{ formatContent(current.content) }}</pre>
+      <pre v-if="current.kind === 'info'" class="dialog-info-text">{{
+        formatContent(current.content)
+      }}</pre>
 
       <!-- 输入框 -->
       <template v-else-if="current.kind === 'input'">
@@ -160,7 +173,10 @@ function formatContent(content: unknown): string {
           type="textarea"
           :rows="8"
           placeholder="// 在此输入 JavaScript 代码&#10;// 可调用 legado.log(), legado.http.get() 等 API"
-          :input-props="{ spellcheck: false, style: 'font-family: var(--font-mono, monospace); font-size: 13px;' }"
+          :input-props="{
+            spellcheck: false,
+            style: 'font-family: var(--font-mono, monospace); font-size: 13px;',
+          }"
           @keydown.ctrl.enter.prevent="runRepl"
         />
         <div class="repl-hint">Ctrl+Enter 运行</div>
@@ -177,7 +193,9 @@ function formatContent(content: unknown): string {
             v-for="(line, i) in replOutput"
             :key="i"
             :class="['repl-output-line', { 'is-error': line.startsWith('[错误]') }]"
-          >{{ line }}</div>
+          >
+            {{ line }}
+          </div>
           <div v-if="replOutput.length === 0" class="repl-empty">运行代码后结果显示在这里</div>
         </div>
       </div>
@@ -185,11 +203,7 @@ function formatContent(content: unknown): string {
       <!-- 实时日志（最后5条） -->
       <div v-if="bridge.state.logs.length > 0" class="repl-log-area">
         <div class="repl-label">脚本日志</div>
-        <div
-          v-for="(log, i) in bridge.state.logs.slice(-5)"
-          :key="i"
-          class="repl-log-line"
-        >
+        <div v-for="(log, i) in bridge.state.logs.slice(-5)" :key="i" class="repl-log-line">
           <span class="log-time">{{ new Date(log.time).toLocaleTimeString() }}</span>
           <span>{{ log.message }}</span>
         </div>

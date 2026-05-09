@@ -1,71 +1,109 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
-import { isMobile } from '@/composables/useEnv'
+import { computed, nextTick, ref, watch } from 'vue';
+import { useMessage } from 'naive-ui';
+import JavaScriptHighlightEditor from '@/components/base/JavaScriptHighlightEditor.vue';
+import { isMobile } from '@/composables/useEnv';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { saveExportFile } from '@/utils/exportFile';
 
 const props = defineProps<{
-  show: boolean
-  title: string
-  content: string
-  fileName: string
-  saving: boolean
-  reloaded: boolean
-}>()
+  show: boolean;
+  title: string;
+  content: string;
+  fileName: string;
+  saving: boolean;
+  reloaded: boolean;
+  editorKey: number;
+}>();
 
 const emit = defineEmits<{
-  'update:show': [value: boolean]
-  'update:content': [value: string]
-  save: []
-  'open-vscode': []
-}>()
+  'update:show': [value: boolean];
+  'update:content': [value: string];
+  save: [];
+  'open-vscode': [];
+}>();
+
+const message = useMessage();
 
 const visible = computed({
   get: () => props.show,
   set: (v) => emit('update:show', v),
-})
+});
+
+useOverlayBackstack(
+  () => visible.value,
+  () => {
+    visible.value = false;
+  },
+);
 
 const code = computed({
   get: () => props.content,
   set: (v) => emit('update:content', v),
-})
+});
 
-const textareaRef = ref<HTMLTextAreaElement | null>()
-
-watch(
-  () => props.show,
-  async (v) => {
-    if (v) {
-      await nextTick()
-      textareaRef.value?.focus()
-    }
-  },
-)
-
-/* Ctrl/Cmd+S 快捷保存 */
-function onKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    if (!props.saving) emit('save')
+function saveFromEditor() {
+  if (!props.saving) {
+    emit('save');
   }
 }
 
-/* Tab 键插入两个空格 */
-function onTab(e: KeyboardEvent) {
-  if (e.key !== 'Tab') return
-  e.preventDefault()
-  const ta = e.target as HTMLTextAreaElement
-  const start = ta.selectionStart
-  const end = ta.selectionEnd
-  const indent = '  '
-  code.value = code.value.substring(0, start) + indent + code.value.substring(end)
-  nextTick(() => {
-    ta.selectionStart = ta.selectionEnd = start + indent.length
-  })
+// ---- 滚动到顶部 ----
+const editorRef = ref<InstanceType<typeof JavaScriptHighlightEditor> | null>(null);
+
+watch(visible, async (v) => {
+  if (v) {
+    await nextTick();
+    editorRef.value?.resetScroll();
+  }
+});
+
+// ---- 复制 ----
+async function copySource() {
+  try {
+    await navigator.clipboard.writeText(props.content);
+    message.success('已复制书源代码');
+  } catch {
+    message.error('复制失败');
+  }
+}
+
+// ---- 导出 ----
+const exporting = ref(false);
+
+async function exportSource() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const name = props.fileName || 'booksource.js';
+    const saved = await saveExportFile({
+      defaultName: name,
+      mime: 'text/javascript;charset=utf-8',
+      text: props.content,
+      filterName: 'JavaScript',
+      extensions: ['js'],
+    });
+    if (saved) {
+      message.success(`已导出到 ${saved}`);
+    }
+  } catch (e: unknown) {
+    message.error(`导出失败: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    exporting.value = false;
+  }
 }
 </script>
 
 <template>
-  <n-modal v-model:show="visible" preset="card" :title="title" :bordered="false" :mask-closable="false"
-    :style="{ width: isMobile ? '95vw' : '80vw', height: isMobile ? '90vh' : '85vh' }" content-style="padding:0;display:flex;flex-direction:column;overflow:hidden">
+  <n-modal
+    v-model:show="visible"
+    preset="card"
+    :title="title"
+    :bordered="false"
+    :mask-closable="false"
+    :style="{ width: isMobile ? '95vw' : '80vw', height: isMobile ? '90vh' : '85vh' }"
+    content-style="padding:0;display:flex;flex-direction:column;overflow:hidden"
+  >
     <!-- 工具栏 -->
     <template #header-extra>
       <n-space :size="8">
@@ -73,51 +111,25 @@ function onTab(e: KeyboardEvent) {
         <n-button size="small" quaternary :disabled="!fileName" @click="emit('open-vscode')">
           VS Code 打开
         </n-button>
+        <n-button size="small" quaternary @click="copySource">
+          复制
+        </n-button>
+        <n-button size="small" quaternary :loading="exporting" :disabled="!content" @click="exportSource">
+          导出
+        </n-button>
         <n-button size="small" type="primary" :loading="saving" @click="emit('save')">
           保存
         </n-button>
       </n-space>
     </template>
 
-    <!-- 编辑区 -->
-    <textarea
-      ref="textareaRef"
-      :value="code"
-      class="source-editor-textarea"
-      spellcheck="false"
-      autocomplete="off"
-      autocorrect="off"
-      autocapitalize="off"
-      @input="code = ($event.target as HTMLTextAreaElement).value"
-      @keydown="onKeydown"
-      @keydown.tab="onTab"
+    <JavaScriptHighlightEditor
+      ref="editorRef"
+      v-model="code"
+      :autofocus-key="editorKey"
+      min-height="100%"
+      placeholder="书源 JavaScript 内容..."
+      @save="saveFromEditor"
     />
   </n-modal>
 </template>
-
-<style scoped>
-.source-editor-textarea {
-  flex: 1;
-  width: 100%;
-  resize: none;
-  border: none;
-  outline: none;
-  padding: 12px 16px;
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  tab-size: 2;
-  color: var(--n-text-color, #333);
-  background: var(--n-color, #fff);
-  overflow: auto;
-  white-space: pre;
-  word-wrap: normal;
-}
-
-/* 暗色主题下调整 */
-:root.dark .source-editor-textarea,
-.n-config-provider[data-theme="dark"] .source-editor-textarea {
-  color: #d4d4d4;
-  background: #1e1e1e;
-}
-</style>
