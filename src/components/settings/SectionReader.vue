@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+import { useMessage } from 'naive-ui';
 import { useReaderSettingsStore } from '@/stores';
 import type { PaginationEngine } from '@/components/reader/types';
 import SettingItem from './SettingItem.vue';
 import SettingSection from './SettingSection.vue';
 
-const { settings, resetSettings } = useReaderSettingsStore();
+const message = useMessage();
+const paginationEngineSaving = ref(false);
+const { settings, resetSettings, setPaginationEngine } = useReaderSettingsStore();
 
 const PAGINATION_ENGINE_OPTIONS: { label: string; value: PaginationEngine; desc: string }[] = [
   {
@@ -18,6 +22,22 @@ const PAGINATION_ENGINE_OPTIONS: { label: string; value: PaginationEngine; desc:
     desc: 'Canvas + Pretext 精确排版（部分旧版 Android WebView 可能字间距异常）',
   },
 ];
+
+async function handlePaginationEngineUpdate(value: string) {
+  const nextEngine = value as PaginationEngine;
+  if (paginationEngineSaving.value || settings.paginationEngine === nextEngine) {
+    return;
+  }
+
+  paginationEngineSaving.value = true;
+  try {
+    await setPaginationEngine(nextEngine);
+  } catch (error) {
+    message.error(`排版方式保存失败: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    paginationEngineSaving.value = false;
+  }
+}
 </script>
 
 <template>
@@ -34,8 +54,9 @@ const PAGINATION_ENGINE_OPTIONS: { label: string; value: PaginationEngine; desc:
         >
           <n-radio-group
             :value="settings.paginationEngine"
+            :disabled="paginationEngineSaving"
             size="small"
-            @update:value="(v: string) => (settings.paginationEngine = v as PaginationEngine)"
+            @update:value="handlePaginationEngineUpdate"
           >
             <n-radio-button
               v-for="opt in PAGINATION_ENGINE_OPTIONS"

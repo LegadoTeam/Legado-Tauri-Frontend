@@ -1,97 +1,51 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import type { Ref } from 'vue';
 import { NSpin, NAlert, NButton, NDropdown, useMessage } from 'naive-ui';
-import type { PagedModeApi, ScrollModeApi, ComicModeApi } from './composables/useReaderModeBridge';
+import { useReaderActionsStore, useReaderSessionStore, useReaderSettingsStore, useReaderViewStore } from '@/stores';
 import { useFrontendPlugins, type ReaderTextSelectionContext } from '@/composables/useFrontendPlugins';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import ComicMode from './modes/ComicMode.vue';
 import PagedMode from './modes/PagedMode.vue';
 import ScrollMode from './modes/ScrollMode.vue';
 
-type PagedModeKind = 'slide' | 'cover' | 'simulation' | 'none';
-
-const props = defineProps<{
-  content: string;
-  isComicMode: boolean;
-  isPagedMode: boolean;
-  pagedMode: PagedModeKind | null;
-  legacyPagedMode: PagedModeKind | null;
-  pages: string[];
-  pagedPageIndex: number;
-  prevBoundaryPage: string;
-  nextBoundaryPage: string;
-  hasPrev: boolean;
-  hasNext: boolean;
-  blockingLoading: boolean;
-  blockingError: boolean;
-  error: string;
-  pagedLoading: boolean;
-  currentChapterName: string;
-  currentChapterUrl: string;
-  chapterIndex: number;
-  fileName: string;
-  sourceType?: string;
-  bookUrl: string;
-  bookName: string;
-  ttsScrollHighlightIdx: number;
-  tapZoneLeft: number;
-  tapZoneRight: number;
-  tapLeftAction: string;
-  tapRightAction: string;
-  layoutDebugMode: boolean;
-  tapZoneDebug: boolean;
-  paragraphSpacing: number;
-  textIndent: number;
-  /** 预加载的滚动模式上一章正文 */
-  prevScrollChapterContent?: string;
-  /** 预加载的滚动模式上一章章节名 */
-  prevScrollChapterTitle?: string;
-  /** 预加载的滚动模式下一章正文 */
-  nextScrollChapterContent?: string;
-  /** 预加载的滚动模式下一章章节名 */
-  nextScrollChapterTitle?: string;
-  /** 预加载的漫画模式上一章内容 */
-  prevComicChapterContent?: string;
-  /** 预加载的漫画模式上一章章节名 */
-  prevComicChapterTitle?: string;
-  /** 预加载的漫画模式下一章内容 */
-  nextComicChapterContent?: string;
-  /** 预加载的漫画模式下一章章节名 */
-  nextComicChapterTitle?: string;
-  /** Plain object (markRaw) containing parent Ref objects to write into */
-  contentRefs: {
-    pagedModeRef: Ref<PagedModeApi | null>;
-    scrollModeRef: Ref<ScrollModeApi | null>;
-    comicModeRef: Ref<ComicModeApi | null>;
-    readerBodyRef: Ref<HTMLElement | null>;
-    measureHostRef: Ref<HTMLElement | null>;
-    backgroundMeasureHostRef: Ref<HTMLElement | null>;
-  };
-}>();
-
-const emit = defineEmits<{
-  (e: 'tap', zone: 'left' | 'center' | 'right'): void;
-  (e: 'retry'): void;
-  (e: 'paged-page-change', page: number): void;
-  (e: 'paged-progress', ratio: number): void;
-  (e: 'scroll-progress', ratio: number): void;
-  (e: 'comic-progress', ratio: number): void;
-  (e: 'prev-chapter'): void;
-  (e: 'next-chapter'): void;
-  (e: 'prev-boundary'): void;
-  (e: 'next-boundary'): void;
-  /** 滚动模式下用户进入上一章区域 */
-  (e: 'scroll-prev-chapter-entered'): void;
-  /** 滚动模式下用户进入下一章区域 */
-  (e: 'scroll-next-chapter-entered', sectionHeight: number): void;
-  /** 漫画模式下用户进入上一章区域 */
-  (e: 'comic-prev-chapter-entered'): void;
-  /** 漫画模式下用户进入下一章区域 */
-  (e: 'comic-next-chapter-entered', sectionHeight: number): void;
-}>();
-
 const message = useMessage();
+const readerActionsStore = useReaderActionsStore();
+const readerSessionStore = useReaderSessionStore();
+const readerViewStore = useReaderViewStore();
+const { settings, tapZoneDebugPreviewVisible } = useReaderSettingsStore();
+const { activeChapterIndex, content, error, pagedLoading, pagedPageIndex } = storeToRefs(readerSessionStore);
+const {
+  activePagedPages,
+  blockingError,
+  blockingLoading,
+  bookName,
+  bookUrl,
+  contentRefs,
+  currentChapterName,
+  currentChapterUrl,
+  currentScrollChapterLoading,
+  fileName,
+  hasNext,
+  hasPrev,
+  isComicMode,
+  isPagedMode,
+  legacyPagedMode,
+  nextBoundaryPage,
+  nextComicChapterContent,
+  nextComicChapterTitle,
+  nextScrollChapterLoading,
+  nextScrollChapterContent,
+  nextScrollChapterTitle,
+  prevBoundaryPage,
+  prevComicChapterContent,
+  prevComicChapterTitle,
+  prevScrollChapterLoading,
+  prevScrollChapterContent,
+  prevScrollChapterTitle,
+  sourceType,
+  ttsScrollHighlightIdx,
+} = storeToRefs(readerViewStore);
 const { getReaderContextActions, runReaderContextAction } = useFrontendPlugins();
 const selectionMode = ref(false);
 
@@ -150,7 +104,7 @@ function getSelectedReaderText(): string {
   if (!selection || selection.isCollapsed) {
     return '';
   }
-  const root = props.contentRefs.readerBodyRef.value;
+  const root = contentRefs.value.readerBodyRef.value;
   if (!root) {
     return '';
   }
@@ -182,18 +136,18 @@ function updateSelectionModeFromSelection() {
 function buildSelectionContext(text: string): ReaderTextSelectionContext {
   return {
     text,
-    sourceType: props.sourceType ?? 'novel',
-    fileName: props.fileName,
-    chapterIndex: props.chapterIndex,
-    chapterName: props.currentChapterName,
-    chapterUrl: props.currentChapterUrl,
-    bookName: props.bookName || undefined,
-    bookUrl: props.bookUrl || undefined,
+    sourceType: sourceType.value,
+    fileName: fileName.value,
+    chapterIndex: activeChapterIndex.value,
+    chapterName: currentChapterName.value,
+    chapterUrl: currentChapterUrl.value,
+    bookName: bookName.value || undefined,
+    bookUrl: bookUrl.value || undefined,
   };
 }
 
 function openReaderContextMenu(x: number, y: number): boolean {
-  if (props.sourceType && props.sourceType !== 'novel') {
+  if (sourceType.value !== 'novel') {
     return false;
   }
   const text = getSelectedReaderText();
@@ -295,7 +249,7 @@ async function onReaderContextSelect(key: string) {
 }
 
 watch(
-  () => props.content,
+  content,
   () => {
     window.getSelection()?.removeAllRanges();
     selectionMode.value = false;
@@ -316,7 +270,7 @@ onBeforeUnmount(() => {
 <template>
   <!-- 内容主体 -->
   <div
-    :ref="(el) => (props.contentRefs.readerBodyRef.value = el as HTMLElement | null)"
+    :ref="(el) => (contentRefs.readerBodyRef.value = el as HTMLElement | null)"
     class="reader-modal__body"
     @contextmenu="onReaderContextMenu"
     @pointerdown.capture="onReaderPointerDown"
@@ -326,81 +280,89 @@ onBeforeUnmount(() => {
   >
     <n-spin v-if="blockingLoading" :show="true" class="reader-modal__spin" />
     <n-alert v-else-if="blockingError" type="error" :title="error" style="margin: 24px">
-      <n-button type="error" size="small" style="margin-top: 8px" @click="emit('retry')">
+      <n-button
+        type="error"
+        size="small"
+        style="margin-top: 8px"
+        @click="readerActionsStore.retryCurrentChapter"
+      >
         重试
       </n-button>
     </n-alert>
 
     <ComicMode
       v-else-if="isComicMode"
-      :ref="(el: any) => (props.contentRefs.comicModeRef.value = el)"
+      :ref="(el: any) => (contentRefs.comicModeRef.value = el)"
       :content="content"
       :file-name="fileName"
       :chapter-url="currentChapterUrl"
       :book-url="bookUrl"
       :book-name="bookName"
-      :chapter-index="chapterIndex"
+      :chapter-index="activeChapterIndex"
       :has-prev="hasPrev"
       :has-next="hasNext"
       :prev-chapter-content="prevComicChapterContent"
       :prev-chapter-title="prevComicChapterTitle"
       :next-chapter-content="nextComicChapterContent"
       :next-chapter-title="nextComicChapterTitle"
-      @tap="emit('tap', $event)"
-      @progress="emit('comic-progress', $event)"
-      @prev-chapter="emit('prev-chapter')"
-      @next-chapter="emit('next-chapter')"
-      @prev-chapter-entered="emit('comic-prev-chapter-entered')"
-      @next-chapter-entered="emit('comic-next-chapter-entered', $event)"
+      @tap="readerActionsStore.onTap"
+      @progress="readerActionsStore.onComicProgress"
+      @prev-chapter="readerActionsStore.gotoPrevChapter"
+      @next-chapter="readerActionsStore.gotoNextChapter"
+      @prev-chapter-entered="readerActionsStore.onComicPrevChapterEntered"
+      @next-chapter-entered="readerActionsStore.onComicNextChapterEntered"
     />
 
     <PagedMode
       v-else-if="isPagedMode && legacyPagedMode"
-      :ref="(el: any) => (props.contentRefs.pagedModeRef.value = el)"
+      :ref="(el: any) => (contentRefs.pagedModeRef.value = el)"
       :mode="legacyPagedMode"
-      :pages="pages"
+      :pages="activePagedPages"
       :current-page="pagedPageIndex"
       :prev-boundary-page="prevBoundaryPage"
       :next-boundary-page="nextBoundaryPage"
       :has-prev-chapter="hasPrev"
       :has-next-chapter="hasNext"
-      :tap-zone-left="tapZoneLeft"
-      :tap-zone-right="tapZoneRight"
-      :tap-left-action="tapLeftAction"
-      :tap-right-action="tapRightAction"
+      :tap-zone-left="settings.tapZoneLeft"
+      :tap-zone-right="settings.tapZoneRight"
+      :tap-left-action="settings.tapLeftAction"
+      :tap-right-action="settings.tapRightAction"
       :selection-mode="selectionMode"
       :busy="pagedLoading"
-      :layout-debug="layoutDebugMode"
-      :tap-zone-debug="tapZoneDebug"
-      @tap="emit('tap', $event)"
-      @update:current-page="emit('paged-page-change', $event)"
-      @request-prev-chapter="emit('prev-boundary')"
-      @request-next-chapter="emit('next-boundary')"
-      @progress="emit('paged-progress', $event)"
+      :layout-debug="settings.layoutDebugMode"
+      :tap-zone-debug="tapZoneDebugPreviewVisible"
+      @tap="readerActionsStore.onTap"
+      @update:current-page="readerActionsStore.onPagedPageChange"
+      @request-prev-chapter="readerActionsStore.gotoPrevBoundary"
+      @request-next-chapter="readerActionsStore.gotoNextBoundary"
+      @progress="readerActionsStore.onPagedProgress"
     />
 
     <ScrollMode
       v-else
-      :ref="(el: any) => (props.contentRefs.scrollModeRef.value = el)"
+      :ref="(el: any) => (contentRefs.scrollModeRef.value = el)"
       :content="content"
       :chapter-title="currentChapterName"
-      :paragraph-spacing="paragraphSpacing"
-      :text-indent="textIndent"
+      :paragraph-spacing="settings.typography.paragraphSpacing"
+      :text-indent="settings.typography.textIndent"
       :has-prev="hasPrev"
       :has-next="hasNext"
       :prev-chapter-content="prevScrollChapterContent"
       :prev-chapter-title="prevScrollChapterTitle"
+      :prev-chapter-loading="prevScrollChapterLoading"
       :next-chapter-content="nextScrollChapterContent"
       :next-chapter-title="nextScrollChapterTitle"
-      :tap-zone-left="tapZoneLeft"
-      :tap-zone-right="tapZoneRight"
-      :layout-debug="layoutDebugMode"
-      :tap-zone-debug="tapZoneDebug"
+      :next-chapter-loading="nextScrollChapterLoading"
+      :current-chapter-loading="currentScrollChapterLoading"
+      :tap-zone-left="settings.tapZoneLeft"
+      :tap-zone-right="settings.tapZoneRight"
+      :layout-debug="settings.layoutDebugMode"
+      :tap-zone-debug="tapZoneDebugPreviewVisible"
       :tts-highlight-index="ttsScrollHighlightIdx"
-      @tap="emit('tap', $event)"
-      @progress="emit('scroll-progress', $event)"
-      @prev-chapter-entered="emit('scroll-prev-chapter-entered')"
-      @next-chapter-entered="emit('scroll-next-chapter-entered', $event)"
+      @tap="readerActionsStore.onTap"
+      @progress="readerActionsStore.onScrollProgress"
+      @prev-chapter-entered="readerActionsStore.onScrollPrevChapterEntered"
+      @next-chapter-entered="readerActionsStore.onScrollNextChapterEntered"
     />
 
     <n-dropdown
@@ -417,12 +379,12 @@ onBeforeUnmount(() => {
 
   <!-- 测量宿主（分页排版用） -->
   <div
-    :ref="(el) => (props.contentRefs.measureHostRef.value = el as HTMLElement | null)"
+    :ref="(el) => (contentRefs.measureHostRef.value = el as HTMLElement | null)"
     class="reader-modal__measure-host"
     aria-hidden="true"
   />
   <div
-    :ref="(el) => (props.contentRefs.backgroundMeasureHostRef.value = el as HTMLElement | null)"
+    :ref="(el) => (contentRefs.backgroundMeasureHostRef.value = el as HTMLElement | null)"
     class="reader-modal__measure-host"
     aria-hidden="true"
   />

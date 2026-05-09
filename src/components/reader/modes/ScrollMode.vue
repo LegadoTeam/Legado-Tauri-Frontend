@@ -6,19 +6,23 @@
  * 滚动至下一章区域时自动触发 next-chapter-entered 事件通知父组件切换章节元数据。
  * 无下一章时在底部显示章节结束画面。
  */
+import { NSpin } from 'naive-ui';
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps<{
   content: string;
   chapterTitle?: string;
+  currentChapterLoading?: boolean;
   /** 预加载的上一章正文（空字符串表示尚未加载或不存在） */
   prevChapterContent?: string;
   /** 预加载的上一章章节名 */
   prevChapterTitle?: string;
+  prevChapterLoading?: boolean;
   /** 预加载的下一章正文（空字符串表示尚未加载或不存在） */
   nextChapterContent?: string;
   /** 预加载的下一章章节名 */
   nextChapterTitle?: string;
+  nextChapterLoading?: boolean;
   paragraphSpacing: number;
   textIndent: number;
   hasPrev?: boolean;
@@ -56,12 +60,17 @@ const atBottom = ref(false);
 /** 是否已滚动到顶部 */
 const atTop = ref(true);
 
-// ── 无缝切章：记录待补偿的滚动偏移（-1 表示普通翻章，需重置滚动） ─────
-let seamlessSwapOffset = -1;
+// ── 无缝切章：记录向下切章时相对下一章起点的滚动偏移 ───────────────
+let seamlessSwapAnchorOffset: number | null = null;
+let seamlessSwapFallbackOffset = -1;
 /** 向上无缝翻章标志：不重置 scrollTop */
 let isBackwardSeamless = false;
 /** 上一章进入事件是否已触发（每次 prevContent 变化后重置） */
 let prevChapterEnteredFired = false;
+/** 上边界兜底翻章事件是否已触发 */
+let prevBoundaryFallbackFired = false;
+/** 下边界兜底翻章事件是否已触发 */
+let nextBoundaryFallbackFired = false;
 
 /**
  * 父组件在更新 content prop 之前调用此方法，传入当前章节内容区高度。
@@ -69,7 +78,15 @@ let prevChapterEnteredFired = false;
  * 会在 DOM 更新后将 scrollTop 减去该高度，实现无缝衔接。
  */
 function prepareSeamlessSwap(prevSectionHeight: number) {
-  seamlessSwapOffset = prevSectionHeight;
+  const el = scrollRef.value;
+  const nextTop = nextChapterSentinelRef.value?.offsetTop;
+  if (el && typeof nextTop === 'number') {
+    seamlessSwapAnchorOffset = el.scrollTop - nextTop;
+    seamlessSwapFallbackOffset = -1;
+    return;
+  }
+  seamlessSwapAnchorOffset = null;
+  seamlessSwapFallbackOffset = prevSectionHeight;
 }
 
 /**
@@ -123,16 +140,25 @@ watch(
     atBottom.value = false;
     atTop.value = true;
     prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
+    nextBoundaryFallbackFired = false;
 
-    if (seamlessSwapOffset >= 0) {
-      // 向下无缝翻章：调整 scrollTop 使画面位置不变
-      const offset = seamlessSwapOffset;
-      seamlessSwapOffset = -1;
+    if (seamlessSwapAnchorOffset !== null || seamlessSwapFallbackOffset >= 0) {
+      // 向下无缝翻章：恢复到进入下一章时的相对位置，避免因上方章节高度变化而瞬移。
+      const anchorOffset = seamlessSwapAnchorOffset;
+      const fallbackOffset = seamlessSwapFallbackOffset;
+      seamlessSwapAnchorOffset = null;
+      seamlessSwapFallbackOffset = -1;
       await nextTick();
       const el = scrollRef.value;
       if (el) {
         el.style.scrollBehavior = 'auto';
-        el.scrollTop = Math.max(0, el.scrollTop - offset);
+        if (anchorOffset !== null) {
+          const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+          el.scrollTop = Math.max(0, currentTop + anchorOffset);
+        } else {
+          el.scrollTop = Math.max(0, el.scrollTop - fallbackOffset);
+        }
         requestAnimationFrame(() => {
           el.style.scrollBehavior = '';
         });
@@ -148,7 +174,8 @@ watch(
     }
 
     // 普通翻章：滚到当前章节起始位置（跳过上方预渲染的上一章区域）
-    seamlessSwapOffset = -1;
+    seamlessSwapAnchorOffset = null;
+    seamlessSwapFallbackOffset = -1;
     await nextTick();
     const el = scrollRef.value;
     if (!el) {
@@ -168,6 +195,7 @@ watch(
   () => props.nextChapterContent,
   async (val) => {
     nextParagraphs.value = val ? val.split(/\n+/).filter((p) => p.trim()) : [];
+    nextBoundaryFallbackFired = false;
     teardownSentinel();
     if (val) {
       await nextTick();
@@ -185,6 +213,7 @@ watch(
     const isNowFilled = !!val;
     prevParagraphs.value = val ? val.split(/\n+/).filter((p) => p.trim()) : [];
     prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
 
     if (wasEmpty && isNowFilled) {
       // 上一章内容被插入到 DOM 顶部，需手动补偿 scrollTop
@@ -262,6 +291,13 @@ function onScroll() {
   atTop.value = scrollTop <= 0;
   atBottom.value = scrollTop + clientHeight >= scrollHeight - 8;
 
+  if (!atTop.value) {
+    prevBoundaryFallbackFired = false;
+  }
+  if (!atBottom.value) {
+    nextBoundaryFallbackFired = false;
+  }
+
   if (!prevAtTop && atTop.value) {
     emit('reachStart');
   }
@@ -275,6 +311,28 @@ function onScroll() {
       prevChapterEnteredFired = true;
       emit('prev-chapter-entered');
     }
+  }
+
+  if (
+    !prevBoundaryFallbackFired &&
+    !hasPrevChapterContent.value &&
+    !!props.hasPrev &&
+    !prevAtTop &&
+    atTop.value
+  ) {
+    prevBoundaryFallbackFired = true;
+    emit('prev-chapter-entered');
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    !hasNextChapterContent.value &&
+    !!props.hasNext &&
+    !prevAtBottom &&
+    atBottom.value
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('next-chapter-entered', currentSectionRef.value?.offsetHeight ?? 0);
   }
 }
 
@@ -375,8 +433,12 @@ const showAnyDebug = computed(() => !!props.layoutDebug || !!props.tapZoneDebug)
 // ── 章节边界条件 ─────────────────────────────────────────────────────
 const hasPrevChapterContent = computed(() => !!props.prevChapterContent);
 const hasNextChapterContent = computed(() => !!props.nextChapterContent);
+const showPrevChapterSurface = computed(() => hasPrevChapterContent.value || !!props.prevChapterLoading);
+const showNextChapterSurface = computed(() => hasNextChapterContent.value || !!props.nextChapterLoading);
+const showCurrentChapterTitle = computed(() => !!props.chapterTitle && !showPrevChapterSurface.value);
+const showCurrentChapterLoading = computed(() => !!props.currentChapterLoading && paragraphs.value.length === 0);
 /** 无下一章且无预加载内容时显示结束画面 */
-const showEndScreen = computed(() => !props.hasNext && !hasNextChapterContent.value);
+const showEndScreen = computed(() => !props.hasNext && !showNextChapterSurface.value);
 
 defineExpose({
   scrollToRatio,
@@ -399,24 +461,30 @@ defineExpose({
     @touchend.passive="onTouchEnd"
   >
     <!-- ── 上一章节内容区（顶部预渲染，无缝向上翻章） ── -->
-    <template v-if="hasPrevChapterContent">
+    <template v-if="showPrevChapterSurface">
       <div
         ref="prevSectionRef"
         class="scroll-mode__body scroll-mode__body--prev"
         :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
       >
         <p v-if="prevChapterTitle" class="reader-chapter-title">{{ prevChapterTitle }}</p>
-        <p
-          v-for="(para, i) in prevParagraphs"
-          :key="`prev-${i}`"
-          class="reader-para scroll-mode__para"
-          :style="{
-            textIndent: `${textIndent}em`,
-            marginBottom: `${paragraphSpacing}px`,
-          }"
-        >
-          {{ para }}
-        </p>
+        <template v-if="hasPrevChapterContent">
+          <p
+            v-for="(para, i) in prevParagraphs"
+            :key="`prev-${i}`"
+            class="reader-para scroll-mode__para"
+            :style="{
+              textIndent: `${textIndent}em`,
+              marginBottom: `${paragraphSpacing}px`,
+            }"
+          >
+            {{ para }}
+          </p>
+        </template>
+        <div v-else class="scroll-mode__chapter-loading">
+          <n-spin size="small" />
+          <span>上一章节加载中...</span>
+        </div>
       </div>
       <!-- 章节分隔线（上一章 → 当前章） -->
       <div class="scroll-mode__chapter-sep">
@@ -433,24 +501,30 @@ defineExpose({
       class="scroll-mode__body"
       :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
     >
-      <p v-if="chapterTitle" class="reader-chapter-title">{{ chapterTitle }}</p>
+      <p v-if="showCurrentChapterTitle" class="reader-chapter-title">{{ chapterTitle }}</p>
 
-      <p
-        v-for="(para, i) in paragraphs"
-        :key="i"
-        class="reader-para scroll-mode__para"
-        :class="{ 'tts-playing': ttsHighlightIndex === i }"
-        :style="{
-          textIndent: `${textIndent}em`,
-          marginBottom: `${paragraphSpacing}px`,
-        }"
-      >
-        {{ para }}
-      </p>
+      <div v-if="showCurrentChapterLoading" class="scroll-mode__chapter-loading scroll-mode__chapter-loading--current">
+        <n-spin size="small" />
+        <span>{{ chapterTitle || '当前章节' }}加载中...</span>
+      </div>
+      <template v-else>
+        <p
+          v-for="(para, i) in paragraphs"
+          :key="i"
+          class="reader-para scroll-mode__para"
+          :class="{ 'tts-playing': ttsHighlightIndex === i }"
+          :style="{
+            textIndent: `${textIndent}em`,
+            marginBottom: `${paragraphSpacing}px`,
+          }"
+        >
+          {{ para }}
+        </p>
+      </template>
     </div>
 
     <!-- ── 下一章区域（预渲染，无缝拼接） ── -->
-    <template v-if="hasNextChapterContent">
+    <template v-if="showNextChapterSurface">
       <!-- 章节分隔 + 标题 -->
       <div class="scroll-mode__chapter-sep">
         <div class="scroll-mode__chapter-sep-line" />
@@ -467,17 +541,23 @@ defineExpose({
         class="scroll-mode__body scroll-mode__body--next"
         :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
       >
-        <p
-          v-for="(para, i) in nextParagraphs"
-          :key="i"
-          class="reader-para scroll-mode__para"
-          :style="{
-            textIndent: `${textIndent}em`,
-            marginBottom: `${paragraphSpacing}px`,
-          }"
-        >
-          {{ para }}
-        </p>
+        <template v-if="hasNextChapterContent">
+          <p
+            v-for="(para, i) in nextParagraphs"
+            :key="i"
+            class="reader-para scroll-mode__para"
+            :style="{
+              textIndent: `${textIndent}em`,
+              marginBottom: `${paragraphSpacing}px`,
+            }"
+          >
+            {{ para }}
+          </p>
+        </template>
+        <div v-else class="scroll-mode__chapter-loading">
+          <n-spin size="small" />
+          <span>下一章节加载中...</span>
+        </div>
       </div>
     </template>
 
@@ -534,6 +614,21 @@ defineExpose({
   padding: var(--reader-padding, 24px);
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
+}
+
+.scroll-mode__chapter-loading {
+  min-height: min(40vh, 320px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--reader-text-color);
+  opacity: 0.75;
+}
+
+.scroll-mode__chapter-loading--current {
+  min-height: min(48vh, 420px);
 }
 
 /* 章节分隔线 + 下一章标题 */

@@ -5,6 +5,8 @@ import type { AppConfig } from '../../../composables/useAppConfig';
 import type { OpenChapterOptions } from './useReaderChapterOpen';
 import type { ReaderPositionSnapshot, ReaderProgressPayload } from './useReaderPosition';
 
+type ValueSource<T> = Ref<T> | ComputedRef<T>;
+
 interface ReaderConflictPayload {
   bookId?: string;
   local?: Record<string, unknown>;
@@ -45,8 +47,8 @@ interface UseReaderProgressSyncOptions {
   activeChapterIndex: Ref<number>;
   shouldIgnorePositionEvents: () => boolean;
   getChapter: (index: number) => ChapterItem | undefined;
-  fallbackChapterName: string;
-  fallbackChapterUrl: string;
+  fallbackChapterName: ValueSource<string>;
+  fallbackChapterUrl: ValueSource<string>;
   readCurrentPosition: () => ReaderPositionSnapshot;
   buildProgressPayload: (snapshot?: ReaderPositionSnapshot) => ReaderProgressPayload;
   updateProgress: (
@@ -57,6 +59,10 @@ interface UseReaderProgressSyncOptions {
   ) => Promise<unknown>;
   updateSessionVisibility: (visible: boolean) => Promise<void>;
   openChapter: (index: number, options?: OpenChapterOptions) => Promise<void>;
+}
+
+function readSource<T>(source: ValueSource<T>): T {
+  return source.value;
 }
 
 const READER_SYNC_DEBOUNCE_MS = 3000;
@@ -90,8 +96,8 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
         active,
         bookId,
         chapterIndex: options.activeChapterIndex.value,
-        chapterName: chapter?.name ?? options.fallbackChapterName,
-        chapterUrl: chapter?.url ?? options.fallbackChapterUrl,
+        chapterName: chapter?.name ?? readSource(options.fallbackChapterName),
+        chapterUrl: chapter?.url ?? readSource(options.fallbackChapterUrl),
         pageIndex: position.pageIndex,
         scrollRatio: position.scrollRatio,
         playbackTime: position.playbackTime,

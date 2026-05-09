@@ -101,6 +101,10 @@ let seamlessSwapOffset = -1;
 let isBackwardSeamless = false;
 /** 上一章进入事件是否已触发（每次 prevContent 变化后重置） */
 let prevChapterEnteredFired = false;
+const atTop = ref(true);
+const atBottom = ref(false);
+let prevBoundaryFallbackFired = false;
+let nextBoundaryFallbackFired = false;
 
 function prepareSeamlessSwap(prevSectionHeight: number) {
   seamlessSwapOffset = prevSectionHeight;
@@ -326,6 +330,10 @@ watch(
     const backward = isBackwardSeamless;
     isBackwardSeamless = false;
     prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
+    nextBoundaryFallbackFired = false;
+    atTop.value = true;
+    atBottom.value = false;
 
     await loadImages();
 
@@ -357,6 +365,7 @@ watch(
     const isNowFilled = !!val;
     prevPages.value = val ? createPages(parseImageUrls(val)) : [];
     prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
 
     if (wasEmpty && isNowFilled) {
       const el = containerRef.value;
@@ -376,6 +385,7 @@ watch(
   () => props.nextChapterContent,
   async (val) => {
     nextPages.value = val ? createPages(parseImageUrls(val)) : [];
+    nextBoundaryFallbackFired = false;
     teardownSentinel();
     if (val) {
       await nextTick();
@@ -404,12 +414,46 @@ function onScroll() {
       : adjustedScrollTop / (currentSectionH - clientHeight);
   emit('progress', Math.min(1, Math.max(0, ratio)));
 
+  const prevAtTop = atTop.value;
+  const prevAtBottom = atBottom.value;
+  atTop.value = scrollTop <= 0;
+  atBottom.value = scrollTop + clientHeight >= scrollHeight - 8;
+
+  if (!atTop.value) {
+    prevBoundaryFallbackFired = false;
+  }
+  if (!atBottom.value) {
+    nextBoundaryFallbackFired = false;
+  }
+
   // 检测向上翻章：滚到上一章区域前 60% 时触发一次
   if (!prevChapterEnteredFired && prevH > 0 && hasPrevChapterContent.value) {
     if (scrollTop <= prevH * 0.6) {
       prevChapterEnteredFired = true;
       emit('prevChapterEntered');
     }
+  }
+
+  if (
+    !prevBoundaryFallbackFired &&
+    !hasPrevChapterContent.value &&
+    props.hasPrev &&
+    !prevAtTop &&
+    atTop.value
+  ) {
+    prevBoundaryFallbackFired = true;
+    emit('prevChapterEntered');
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    !hasNextChapterContent.value &&
+    props.hasNext &&
+    !prevAtBottom &&
+    atBottom.value
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('nextChapterEntered', currentSectionRef.value?.offsetHeight ?? 0);
   }
 }
 

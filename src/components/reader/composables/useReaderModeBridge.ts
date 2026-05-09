@@ -19,6 +19,7 @@ export interface ScrollModeApi {
   pageUp?: () => boolean;
   getFirstVisibleParaIndex?: () => number;
   prepareSeamlessSwap?: (height: number) => void;
+  prepareSeamlessSwapBack?: () => void;
 }
 
 export interface ComicModeApi {
@@ -29,6 +30,7 @@ export interface ComicModeApi {
   currentPage?: number;
   totalPages?: number;
   prepareSeamlessSwap?: (height: number) => void;
+  prepareSeamlessSwapBack?: () => void;
 }
 
 interface VideoModeApi {

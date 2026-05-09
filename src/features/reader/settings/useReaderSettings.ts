@@ -25,6 +25,7 @@ import {
   type ReaderTypography,
   type ReaderTheme,
   type FlipMode,
+  type PaginationEngine,
   DEFAULT_SETTINGS,
 } from '@/components/reader/types';
 
@@ -226,8 +227,16 @@ function applySettings(target: ReaderSettings, next: ReaderSettings) {
 }
 
 export function useReaderSettings() {
+  const readerDefaultsStore = getReaderDefaultsStore();
+
+  async function persistSettingsSnapshot(nextSettings: ReaderSettings) {
+    await readerDefaultsStore.replace(createReaderDefaultsSnapshot(nextSettings));
+    if (_activeBookId) {
+      saveBookSettings(_activeBookId, nextSettings);
+    }
+  }
+
   if (!_settings) {
-    const readerDefaultsStore = getReaderDefaultsStore();
     _settings = reactive(loadGlobalSettings());
     watch(
       _settings,
@@ -236,10 +245,7 @@ export function useReaderSettings() {
           return;
         }
         const nextSettings = cloneSettings(val as ReaderSettings);
-        readerDefaultsStore.replace(createReaderDefaultsSnapshot(nextSettings));
-        if (_activeBookId) {
-          saveBookSettings(_activeBookId, nextSettings);
-        }
+        void persistSettingsSnapshot(nextSettings);
       },
       { deep: true },
     );
@@ -291,6 +297,26 @@ export function useReaderSettings() {
   /** 切换翻页模式 */
   function setFlipMode(mode: FlipMode) {
     settings.flipMode = mode;
+  }
+
+  async function setPaginationEngine(engine: PaginationEngine) {
+    if (settings.paginationEngine === engine) {
+      return;
+    }
+
+    const previousEngine = settings.paginationEngine;
+    runWithoutPersistence(() => {
+      settings.paginationEngine = engine;
+    });
+
+    try {
+      await persistSettingsSnapshot(cloneSettings(settings));
+    } catch (error) {
+      runWithoutPersistence(() => {
+        settings.paginationEngine = previousEngine;
+      });
+      throw error;
+    }
   }
 
   /** 重置为默认设置 */
@@ -411,6 +437,7 @@ export function useReaderSettings() {
     updatePagePadding,
     setTheme,
     setFlipMode,
+    setPaginationEngine,
     resetSettings,
     activateBookSettings,
     deactivateBookSettings,

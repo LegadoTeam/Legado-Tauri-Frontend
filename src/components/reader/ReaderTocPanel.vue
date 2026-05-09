@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useVirtualList } from '@vueuse/core';
-import { Trash2, RefreshCw } from 'lucide-vue-next';
+import { Trash2, RefreshCw, Download } from 'lucide-vue-next';
 import { ref, nextTick, watch, computed } from 'vue';
 import type { ChapterItem } from '@/stores';
 import type { ReaderBookInfo } from './types';
@@ -322,6 +322,14 @@ const detailRows = computed(() => {
               @keydown.space.prevent="onSelect(item.data.index)"
             >
               <span class="reader-toc__item-name">{{ item.data.ch.name }}</span>
+              <span
+                v-if="cachedIndices?.has(item.data.index)"
+                class="reader-toc__item-cache-icon"
+                title="已缓存"
+                aria-label="已缓存"
+              >
+                <Download :size="12" />
+              </span>
               <span
                 v-if="item.data.index === currentIndex"
                 class="reader-toc__badge reader-toc__badge--current"
@@ -646,6 +654,17 @@ const detailRows = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reader-toc__item-cache-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #63e2b7;
+  opacity: 0.9;
 }
 
 /* 单章缓存清除小按钮 */

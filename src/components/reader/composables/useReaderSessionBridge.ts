@@ -6,6 +6,8 @@ import type {
 } from '../../../composables/useFrontendPlugins';
 import type { ReaderBookInfo } from '../types';
 
+type ValueSource<T> = Ref<T> | ComputedRef<T>;
+
 interface ReaderSessionSettingsState {
   theme: ReaderSessionAppearanceState['theme'];
   themePresetId: string;
@@ -16,12 +18,12 @@ interface ReaderSessionSettingsState {
 
 interface UseReaderSessionBridgeOptions {
   getShow: () => boolean;
-  fileName: string;
-  sourceType?: string;
-  bookInfo?: ReaderBookInfo;
+  fileName: ValueSource<string>;
+  sourceType: ValueSource<string | undefined>;
+  bookInfo: ValueSource<ReaderBookInfo | undefined>;
   getChapterCount: () => number;
-  fallbackChapterName: string;
-  fallbackChapterUrl: string;
+  fallbackChapterName: ValueSource<string>;
+  fallbackChapterUrl: ValueSource<string>;
   currentShelfId: ComputedRef<string | undefined>;
   activeChapterIndex: Ref<number>;
   currentPageIndex: Ref<number>;
@@ -33,6 +35,10 @@ interface UseReaderSessionBridgeOptions {
   openReaderSession: (session: ReaderSessionSnapshot) => Promise<void>;
   updateReaderSession: (patch: Partial<ReaderSessionSnapshot>) => Promise<void>;
   closeReaderSession: () => Promise<void>;
+}
+
+function readSource<T>(source: ValueSource<T>): T {
+  return source.value;
 }
 
 export function useReaderSessionBridge(options: UseReaderSessionBridgeOptions) {
@@ -49,14 +55,14 @@ export function useReaderSessionBridge(options: UseReaderSessionBridgeOptions) {
     const chapter = options.getChapter(options.activeChapterIndex.value);
     const viewport = getReaderViewportSize();
     return {
-      fileName: options.fileName,
-      sourceType: options.sourceType ?? 'novel',
+      fileName: readSource(options.fileName),
+      sourceType: readSource(options.sourceType) ?? 'novel',
       shelfBookId: options.currentShelfId.value || undefined,
-      bookInfo: options.bookInfo,
+      bookInfo: readSource(options.bookInfo),
       chapterIndex: options.activeChapterIndex.value,
       totalChapters: options.getChapterCount(),
-      chapterName: chapter?.name ?? options.fallbackChapterName,
-      chapterUrl: chapter?.url ?? options.fallbackChapterUrl,
+      chapterName: chapter?.name ?? readSource(options.fallbackChapterName),
+      chapterUrl: chapter?.url ?? readSource(options.fallbackChapterUrl),
       content: options.content.value,
       pageIndex: options.currentPageIndex.value >= 0 ? options.currentPageIndex.value : undefined,
       scrollRatio:

@@ -1,0 +1,797 @@
+import { computed, nextTick, onBeforeUnmount, onMounted, watch, type ComputedRef, type Ref } from 'vue';
+import type { DialogApiInjection, MessageApiInjection } from 'naive-ui';
+import type { CachedChapter } from '@/types';
+import type { ChapterItem } from '@/stores';
+import type { ReaderBookInfo, TemporaryChapterSourceOverride, WholeBookSwitchedPayload } from '../types';
+import { eventListenSync } from '@/composables/useEventBus';
+import { FRONTEND_PLUGIN_TOAST_EVENT } from '@/composables/useFrontendPlugins';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { getCoverImageUrl } from '@/utils/coverImage';
+import { createReaderCacheController } from '@/features/reader/services/readerCache';
+import { createReaderLifecycleController } from '@/features/reader/services/readerLifecycle';
+import { createReaderSourceSwitchController } from '@/features/reader/services/readerSourceSwitch';
+
+interface ReaderProgressPayloadLike {
+  pageIndex?: number;
+  scrollRatio?: number;
+  playbackTime?: number;
+  readerSettings?: string;
+}
+
+interface ReaderSettingsLike {
+  backBehavior: string;
+  volumeKeyPageTurnEnabled: boolean;
+  flipMode: string;
+  typography: Record<string, unknown>;
+  pagePadding: string | number | Record<string, unknown>;
+  paginationEngine: string;
+}
+
+interface ReaderModeRefLike {
+  scrollToRatio?: (ratio: number) => void;
+}
+
+interface ReaderPagedCacheLike {
+  buildAnchorForChapterPage: (chapterIndex: number, pageIndex: number) => unknown;
+  invalidatePages: () => void;
+}
+
+interface ReaderViewStoreLike {
+  bind: (...args: any[]) => void;
+  clear: () => void;
+}
+
+interface ReaderActionsStoreLike {
+  bind: (...args: any[]) => void;
+  clear: () => void;
+}
+
+interface ReaderUiStoreLike {
+  openMenu: () => void;
+  resetLayers: () => void;
+}
+
+interface ReaderSessionStoreLike {
+  resetForOpen: (...args: any[]) => void;
+  resetForClose: (...args: any[]) => void;
+}
+
+interface UseReaderModalHostOptions {
+  message: MessageApiInjection;
+  dialog: DialogApiInjection;
+  settings: ReaderSettingsLike;
+  readerViewStore: ReaderViewStoreLike;
+  readerActionsStore: ReaderActionsStoreLike;
+  readerUiStore: ReaderUiStoreLike;
+  readerSessionStore: ReaderSessionStoreLike;
+  getShow: () => boolean;
+  getCurrentIndex: () => number;
+  getShelfBookId: () => string | undefined;
+  getChapterName: () => string;
+  getChapterUrl: () => string;
+  getFileName: () => string;
+  getSourceType: () => string | undefined;
+  getRefreshingToc: () => boolean | undefined;
+  getBookInfo: () => ReaderBookInfo | undefined;
+  getChapters: () => ChapterItem[];
+  emitUpdateShow: (visible: boolean) => void;
+  emitAddedToShelf: (shelfId: string) => void;
+  emitRefreshToc: () => void;
+  emitSourceSwitched: (payload: WholeBookSwitchedPayload) => void;
+  closeMenuLayerSettings: () => void;
+  localAddedShelfId: Ref<string>;
+  currentShelfId: ComputedRef<string | undefined>;
+  isOnShelf: ComputedRef<boolean>;
+  addingToShelf: Ref<boolean>;
+  activeChapterIndex: Ref<number>;
+  currentPageIndex: Ref<number>;
+  currentScrollRatio: Ref<number>;
+  pagedPageIndex: Ref<number>;
+  cachedIndices: Ref<Set<number>>;
+  temporaryChapterOverrides: Ref<Record<number, TemporaryChapterSourceOverride>>;
+  pendingRestorePageIndex: Ref<number>;
+  pendingRestoreScrollRatio: Ref<number>;
+  pendingResumePlaybackTime: Ref<number>;
+  openingChapter: Ref<boolean>;
+  restoringPosition: Ref<boolean>;
+  content: Ref<string>;
+  showMenu: Ref<boolean>;
+  showToc: Ref<boolean>;
+  settingsVisible: Ref<boolean>;
+  showSourceSwitchDialog: Ref<boolean>;
+  sourceSwitchMode: Ref<string>;
+  showTtsBar: Ref<boolean>;
+  hasPrev: ComputedRef<boolean>;
+  hasNext: ComputedRef<boolean>;
+  isPagedMode: ComputedRef<boolean>;
+  legacyPagedMode: ComputedRef<string | null>;
+  isComicMode: ComputedRef<boolean>;
+  isVideoMode: ComputedRef<boolean>;
+  isScrollMode: ComputedRef<boolean>;
+  currentChapterName: ComputedRef<string>;
+  currentChapterUrl: ComputedRef<string>;
+  currentChapterOverride: ComputedRef<TemporaryChapterSourceOverride | null>;
+  activePagedPages: ComputedRef<string[]>;
+  prevBoundaryPage: ComputedRef<string>;
+  nextBoundaryPage: ComputedRef<string>;
+  blockingLoading: ComputedRef<boolean>;
+  blockingError: ComputedRef<boolean>;
+  ttsProgressText: Ref<string>;
+  ttsScrollHighlightIdx: Ref<number>;
+  currentScrollChapterLoading: ComputedRef<boolean>;
+  prevScrollChapterContent: Ref<string>;
+  prevScrollChapterTitle: Ref<string>;
+  prevScrollChapterLoading: Ref<boolean>;
+  nextScrollChapterContent: Ref<string>;
+  nextScrollChapterTitle: Ref<string>;
+  nextScrollChapterLoading: Ref<boolean>;
+  prevComicChapterContent: Ref<string>;
+  prevComicChapterTitle: Ref<string>;
+  nextComicChapterContent: Ref<string>;
+  nextComicChapterTitle: Ref<string>;
+  contentRefs: Record<string, unknown>;
+  pagedLoading: Ref<boolean>;
+  readerBodyRef: Ref<HTMLElement | null>;
+  scrollModeRef: Ref<ReaderModeRefLike | null>;
+  comicModeRef: Ref<ReaderModeRefLike | null>;
+  pagedCache: ReaderPagedCacheLike;
+  getChapter: (index: number) => ChapterItem | undefined;
+  buildProgressPayload: () => ReaderProgressPayloadLike;
+  updateProgress: (
+    shelfId: string,
+    chapterIndex: number,
+    chapterUrl: string,
+    payload?: ReaderProgressPayloadLike,
+  ) => Promise<unknown>;
+  ensureShelfLoaded: () => Promise<unknown>;
+  addToShelf: (
+    book: {
+      name: string;
+      author: string;
+      coverUrl: string;
+      intro?: string;
+      kind?: string;
+      bookUrl: string;
+      lastChapter?: string;
+      sourceType: string;
+    },
+    fileName: string,
+    sourceName: string,
+  ) => Promise<{ id: string }>;
+  saveChapters: (shelfId: string, chapters: CachedChapter[]) => Promise<unknown>;
+  deleteContent: (shelfId: string, chapterIndex: number) => Promise<unknown>;
+  getShelfBook: (shelfId: string) => Promise<unknown>;
+  activateBookSettings: (bookId: string, savedJson?: string) => void;
+  deactivateBookSettings: () => void;
+  ensureFrontendPlugins: () => Promise<unknown>;
+  openSession: () => Promise<unknown>;
+  closeSession: () => Promise<unknown>;
+  syncSessionSnapshot: () => Promise<unknown>;
+  loadShelfStatus: () => Promise<void>;
+  openChapter: (index: number, options?: Record<string, unknown>) => Promise<unknown>;
+  openLinearChapter: (index: number) => Promise<unknown>;
+  openPagedChapter: (
+    index: number,
+    options?: { position?: 'resume' | 'first'; pageRatio?: number },
+  ) => Promise<unknown>;
+  retryCurrentChapter: () => void;
+  gotoPrevChapter: () => Promise<void>;
+  gotoNextChapter: () => Promise<void>;
+  gotoPrevBoundary: () => Promise<void>;
+  gotoNextBoundary: () => Promise<void>;
+  gotoChapter: (index: number) => Promise<void>;
+  onPagedPageChange: (page: number) => void;
+  onPagedProgress: (...args: any[]) => void;
+  onScrollProgress: (...args: any[]) => void;
+  onComicProgress: (...args: any[]) => void;
+  onScrollNextChapterEntered: (sectionHeight: number) => Promise<void>;
+  onScrollPrevChapterEntered: () => Promise<void>;
+  onComicNextChapterEntered: (sectionHeight: number) => Promise<void>;
+  onComicPrevChapterEntered: () => Promise<void>;
+  onVideoProgress: (...args: any[]) => void;
+  onVideoEnded: () => void;
+  onTtsToggle: () => void;
+  flipNext: () => void;
+  flipPrev: () => void;
+  volumePageNext: () => void;
+  volumePagePrev: () => void;
+  dumpPaginationLayoutDebug: () => void;
+  prefetchChapters: (count: number) => Promise<unknown>;
+  saveDetailedProgress: () => void;
+  reportReaderSession: (active: boolean) => void;
+  triggerReaderProgressSync: () => Promise<unknown>;
+  setupReadingConflictListener: () => void;
+  cleanupReadingConflictListener: () => void;
+  startAutoSave: () => void;
+  stopAutoSave: () => void;
+  onVisibilityChange: () => void;
+  onBeforeUnloadSave: () => void;
+  clearChapterRuntimeCache: (index: number) => void;
+  clearAllRuntimeCache: () => void;
+  invalidatePages: () => void;
+  resetProgressSyncState: () => void;
+  reportPluginToast?: (text: string, type: 'info' | 'success' | 'warning' | 'error') => void;
+  clearAllSeamlessSlots: () => void;
+  getShelfDataReady: () => Promise<void> | null;
+  setShelfDataReady: (ready: Promise<void> | null) => void;
+}
+
+const REPAGINATE_DEBOUNCE_MS = 120;
+
+export function useReaderModalHost(options: UseReaderModalHostOptions) {
+  let resizeObserver: ResizeObserver | null = null;
+  let resizeRaf = 0;
+  let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let unlistenPluginToast: (() => void) | null = null;
+
+  options.readerViewStore.bind({
+    chapters: computed(() => options.getChapters()),
+    bookInfo: computed(() => options.getBookInfo()),
+    sourceType: computed(() => options.getSourceType()),
+    fileName: computed(() => options.getFileName()),
+    refreshingToc: computed(() => options.getRefreshingToc()),
+    hasPrev: options.hasPrev,
+    hasNext: options.hasNext,
+    currentChapterName: options.currentChapterName,
+    currentChapterUrl: options.currentChapterUrl,
+    isVideoMode: options.isVideoMode,
+    isComicMode: options.isComicMode,
+    isPagedMode: options.isPagedMode,
+    legacyPagedMode: options.legacyPagedMode,
+    activePagedPages: options.activePagedPages,
+    prevBoundaryPage: options.prevBoundaryPage,
+    nextBoundaryPage: options.nextBoundaryPage,
+    blockingLoading: options.blockingLoading,
+    blockingError: options.blockingError,
+    currentShelfId: options.currentShelfId,
+    isOnShelf: options.isOnShelf,
+    addingToShelf: options.addingToShelf,
+    currentChapterOverride: options.currentChapterOverride,
+    ttsProgressText: options.ttsProgressText,
+    ttsScrollHighlightIdx: options.ttsScrollHighlightIdx,
+    currentScrollChapterLoading: options.currentScrollChapterLoading,
+    prevScrollChapterContent: options.prevScrollChapterContent,
+    prevScrollChapterTitle: options.prevScrollChapterTitle,
+    prevScrollChapterLoading: options.prevScrollChapterLoading,
+    nextScrollChapterContent: options.nextScrollChapterContent,
+    nextScrollChapterTitle: options.nextScrollChapterTitle,
+    nextScrollChapterLoading: options.nextScrollChapterLoading,
+    prevComicChapterContent: options.prevComicChapterContent,
+    prevComicChapterTitle: options.prevComicChapterTitle,
+    nextComicChapterContent: options.nextComicChapterContent,
+    nextComicChapterTitle: options.nextComicChapterTitle,
+    contentRefs: options.contentRefs,
+  });
+
+  const nativeVolumeKeyPageTurnEnabled = computed(
+    () =>
+      options.getShow() &&
+      options.settings.volumeKeyPageTurnEnabled &&
+      !options.isVideoMode.value &&
+      !options.showTtsBar.value &&
+      !options.showMenu.value &&
+      !options.showToc.value &&
+      !options.settingsVisible.value,
+  );
+
+  function syncNativeVolumeKeyPageTurn(enabled: boolean) {
+    window.LegadoAndroidInput?.setVolumeKeyPageTurnEnabled?.(enabled);
+  }
+
+  watch(nativeVolumeKeyPageTurnEnabled, syncNativeVolumeKeyPageTurn, { immediate: true });
+
+  async function handleAddToShelf(): Promise<boolean> {
+    const info = options.getBookInfo();
+    if (!info || options.isOnShelf.value || options.addingToShelf.value) {
+      return false;
+    }
+    options.addingToShelf.value = true;
+    try {
+      await options.ensureShelfLoaded();
+      const result = await options.addToShelf(
+        {
+          name: info.name,
+          author: info.author,
+          coverUrl: getCoverImageUrl(info.coverUrl),
+          intro: info.intro,
+          kind: info.kind,
+          bookUrl: info.bookUrl ?? '',
+          lastChapter: info.lastChapter,
+          sourceType: options.getSourceType() ?? 'novel',
+        },
+        options.getFileName(),
+        info.sourceName ?? '',
+      );
+
+      const chapters = options.getChapters();
+      if (chapters.length) {
+        const cached: CachedChapter[] = chapters.map((chapter, index) => ({
+          index,
+          name: chapter.name,
+          url: chapter.url,
+        }));
+        await options.saveChapters(result.id, cached).catch(() => {});
+      }
+
+      options.localAddedShelfId.value = result.id;
+
+      const chapter = options.getChapter(options.activeChapterIndex.value);
+      if (chapter) {
+        await options
+          .updateProgress(result.id, options.activeChapterIndex.value, chapter.url, {
+            ...options.buildProgressPayload(),
+          })
+          .catch(() => {});
+      }
+
+      options.message.success('已加入书架');
+      options.emitAddedToShelf(result.id);
+      return true;
+    } catch (error: unknown) {
+      options.message.error(`加入书架失败: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    } finally {
+      options.addingToShelf.value = false;
+    }
+  }
+
+  function close() {
+    options.saveDetailedProgress();
+    const info = options.getBookInfo();
+    if (!options.isOnShelf.value && info && !options.isVideoMode.value) {
+      options.dialog.create({
+        title: '加入书架',
+        content: `《${info.name}》还未加入书架，是否加入？`,
+        positiveText: '加入',
+        negativeText: '不用了',
+        closeOnEsc: false,
+        maskClosable: false,
+        onPositiveClick: () => {
+          void handleAddToShelf().finally(() => {
+            options.emitUpdateShow(false);
+          });
+        },
+        onNegativeClick: () => {
+          options.emitUpdateShow(false);
+        },
+      });
+      return;
+    }
+    options.emitUpdateShow(false);
+  }
+
+  async function closeWithBackBehavior() {
+    close();
+    if (options.settings.backBehavior === 'desktop') {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().minimize();
+      } catch {
+        // 非 Tauri 环境忽略
+      }
+    }
+  }
+
+  useOverlayBackstack(
+    () => options.getShow(),
+    () => {
+      void closeWithBackBehavior();
+    },
+  );
+
+  useOverlayBackstack(
+    () => options.getShow() && options.showMenu.value,
+    () => {
+      options.settingsVisible.value = false;
+      options.closeMenuLayerSettings();
+      options.showMenu.value = false;
+    },
+  );
+
+  useOverlayBackstack(
+    () => options.getShow() && options.showToc.value,
+    () => {
+      options.showToc.value = false;
+    },
+  );
+
+  useOverlayBackstack(
+    () => options.getShow() && options.settingsVisible.value,
+    () => {
+      options.settingsVisible.value = false;
+      options.closeMenuLayerSettings();
+    },
+  );
+
+  useOverlayBackstack(
+    () => options.getShow() && options.showSourceSwitchDialog.value,
+    () => {
+      options.showSourceSwitchDialog.value = false;
+    },
+  );
+
+  function onTap(zone: 'left' | 'center' | 'right') {
+    if (zone === 'center') {
+      if (options.showToc.value) {
+        options.showToc.value = false;
+      } else if (!options.showMenu.value) {
+        options.readerUiStore.openMenu();
+      } else {
+        options.settingsVisible.value = false;
+        options.showMenu.value = false;
+      }
+      return;
+    }
+
+    if (zone === 'left') {
+      void options.gotoPrevBoundary();
+      return;
+    }
+
+    void options.gotoNextBoundary();
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (!options.getShow() || event.defaultPrevented) {
+      return;
+    }
+
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      if (options.showToc.value) {
+        options.showToc.value = false;
+      } else if (options.showMenu.value) {
+        options.settingsVisible.value = false;
+        options.showMenu.value = false;
+      } else {
+        options.readerUiStore.openMenu();
+      }
+      return;
+    }
+
+    if (options.showMenu.value || options.showToc.value) {
+      return;
+    }
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'd':
+      case 'D':
+        event.preventDefault();
+        options.flipNext();
+        break;
+      case 'ArrowLeft':
+      case 'a':
+      case 'A':
+        event.preventDefault();
+        options.flipPrev();
+        break;
+      case 'AudioVolumeDown':
+        if (options.settings.volumeKeyPageTurnEnabled && !options.isVideoMode.value && !options.showTtsBar.value) {
+          event.preventDefault();
+          options.volumePageNext();
+        }
+        break;
+      case 'AudioVolumeUp':
+        if (options.settings.volumeKeyPageTurnEnabled && !options.isVideoMode.value && !options.showTtsBar.value) {
+          event.preventDefault();
+          options.volumePagePrev();
+        }
+        break;
+    }
+  }
+
+  const {
+    openWholeBookSourceSwitch,
+    openTemporaryChapterSwitch,
+    clearTemporaryChapterSwitch,
+    handleTemporaryChapterSourceSwitched,
+    handleWholeBookSourceSwitched,
+  } = createReaderSourceSwitchController({
+    currentShelfId: options.currentShelfId,
+    activeChapterIndex: options.activeChapterIndex,
+    temporaryChapterOverrides: options.temporaryChapterOverrides,
+    currentChapterOverride: options.currentChapterOverride,
+    sourceSwitchMode: options.sourceSwitchMode,
+    showSourceSwitchDialog: options.showSourceSwitchDialog,
+    message: options.message,
+    clearChapterRuntimeCache: options.clearChapterRuntimeCache,
+    clearAllRuntimeCache: options.clearAllRuntimeCache,
+    invalidatePages: options.invalidatePages,
+    openChapter: options.openChapter,
+    emitSourceSwitched: options.emitSourceSwitched,
+  });
+
+  const {
+    forceRefreshChapter,
+    clearChapterCache: handleClearChapterCache,
+    clearAllCache: handleClearAllCache,
+  } = createReaderCacheController({
+    currentShelfId: options.currentShelfId,
+    getFileName: options.getFileName,
+    message: options.message,
+    activeChapterIndex: options.activeChapterIndex,
+    cachedIndices: options.cachedIndices,
+    currentPageIndex: options.currentPageIndex,
+    currentScrollRatio: options.currentScrollRatio,
+    pagedPageIndex: options.pagedPageIndex,
+    pendingRestorePageIndex: options.pendingRestorePageIndex,
+    pendingRestoreScrollRatio: options.pendingRestoreScrollRatio,
+    isPagedMode: options.isPagedMode,
+    isComicMode: options.isComicMode,
+    getBookUrl: () => options.getBookInfo()?.bookUrl ?? '',
+    getBookName: () => options.getBookInfo()?.name ?? '',
+    getChapter: options.getChapter,
+    buildAnchorForChapterPage: (chapterIndex, pageIndex) =>
+      options.pagedCache.buildAnchorForChapterPage(chapterIndex, pageIndex),
+    clearChapterRuntimeCache: options.clearChapterRuntimeCache,
+    clearAllRuntimeCache: options.clearAllRuntimeCache,
+    invalidatePages: options.invalidatePages,
+    deleteContent: options.deleteContent,
+    openChapter: options.openChapter,
+  });
+
+  options.readerActionsStore.bind({
+    close,
+    retryCurrentChapter: options.retryCurrentChapter,
+    onTap,
+    onPagedPageChange: options.onPagedPageChange,
+    onPagedProgress: options.onPagedProgress,
+    onScrollProgress: options.onScrollProgress,
+    onComicProgress: options.onComicProgress,
+    gotoPrevChapter: options.gotoPrevChapter,
+    gotoNextChapter: options.gotoNextChapter,
+    gotoPrevBoundary: options.gotoPrevBoundary,
+    gotoNextBoundary: options.gotoNextBoundary,
+    gotoChapter: options.gotoChapter,
+    onScrollNextChapterEntered: options.onScrollNextChapterEntered,
+    onScrollPrevChapterEntered: options.onScrollPrevChapterEntered,
+    onComicNextChapterEntered: options.onComicNextChapterEntered,
+    onComicPrevChapterEntered: options.onComicPrevChapterEntered,
+    dumpPaginationLayoutDebug: options.dumpPaginationLayoutDebug,
+    onTtsToggle: options.onTtsToggle,
+    forceRefreshChapter,
+    prefetchChapters: (count: number) => options.prefetchChapters(count),
+    openWholeBookSourceSwitch,
+    openTemporaryChapterSwitch,
+    clearTemporaryChapterSwitch,
+    handleAddToShelf,
+    emitRefreshToc: options.emitRefreshToc,
+    handleClearChapterCache,
+    handleClearAllCache,
+    handleTemporaryChapterSourceSwitched,
+    handleWholeBookSourceSwitched,
+    onVideoProgress: options.onVideoProgress,
+    onVideoEnded: options.onVideoEnded,
+  });
+
+  const readerLifecycle = createReaderLifecycleController({
+    getShelfBookId: options.getShelfBookId,
+    getCurrentIndex: options.getCurrentIndex,
+    getTrackingPayload: () => ({
+      book_name: options.getBookInfo()?.name,
+      author_name: options.getBookInfo()?.author,
+      source_file: options.getFileName(),
+      source_type: options.getSourceType() ?? 'novel',
+      chapter_name: options.getChapterName(),
+      chapter_index: options.getCurrentIndex(),
+      shelf_book_id: options.getShelfBookId() || options.localAddedShelfId.value,
+    }),
+    readerBodyRef: options.readerBodyRef,
+    activeChapterIndex: options.activeChapterIndex,
+    pendingRestorePageIndex: options.pendingRestorePageIndex,
+    pendingRestoreScrollRatio: options.pendingRestoreScrollRatio,
+    pendingResumePlaybackTime: options.pendingResumePlaybackTime,
+    isPagedMode: options.isPagedMode,
+    ensureFrontendPlugins: options.ensureFrontendPlugins,
+    getShelfBook: options.getShelfBook,
+    activateBookSettings: options.activateBookSettings,
+    deactivateBookSettings: options.deactivateBookSettings,
+    clearLocalAddedShelfId: () => {
+      options.localAddedShelfId.value = '';
+    },
+    setShelfDataReady: options.setShelfDataReady,
+    getShelfDataReady: options.getShelfDataReady,
+    observeReaderBody: () => {
+      if (resizeObserver && options.readerBodyRef.value) {
+        resizeObserver.observe(options.readerBodyRef.value);
+      }
+    },
+    unobserveReaderBody: () => {
+      if (resizeObserver && options.readerBodyRef.value) {
+        resizeObserver.unobserve(options.readerBodyRef.value);
+      }
+    },
+    resetReaderSessionForOpen: options.readerSessionStore.resetForOpen,
+    resetReaderSessionForClose: options.readerSessionStore.resetForClose,
+    resetReaderUiLayers: options.readerUiStore.resetLayers,
+    resetProgressSyncState: options.resetProgressSyncState,
+    openSession: options.openSession,
+    closeSession: options.closeSession,
+    loadShelfStatus: options.loadShelfStatus,
+    openChapter: options.openChapter,
+    reportReaderSession: options.reportReaderSession,
+    triggerReaderProgressSync: options.triggerReaderProgressSync,
+    startAutoSave: options.startAutoSave,
+    stopAutoSave: options.stopAutoSave,
+    saveDetailedProgress: options.saveDetailedProgress,
+    clearAllRuntimeCache: options.clearAllRuntimeCache,
+    invalidatePages: options.invalidatePages,
+    trackSessionOpen: (_payload) => {
+    },
+  });
+
+  function schedulePagedRepaginate() {
+    if (resizeDebounceTimer) {
+      clearTimeout(resizeDebounceTimer);
+    }
+
+    resizeDebounceTimer = setTimeout(() => {
+      resizeDebounceTimer = null;
+      cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        if (!options.getShow() || options.openingChapter.value || options.restoringPosition.value) {
+          return;
+        }
+
+        void options.syncSessionSnapshot();
+
+        if (options.isPagedMode.value) {
+          const total = options.activePagedPages.value.length;
+          if (total <= 0 || options.pagedLoading.value) {
+            return;
+          }
+          const anchor = options.pagedCache.buildAnchorForChapterPage(
+            options.activeChapterIndex.value,
+            options.pagedPageIndex.value,
+          );
+          options.pagedCache.invalidatePages();
+          void options.openChapter(options.activeChapterIndex.value, {
+            position: 'resume',
+            anchor,
+          });
+          return;
+        }
+
+        if (options.isScrollMode.value) {
+          const ratio = options.currentScrollRatio.value;
+          if (ratio >= 0) {
+            void nextTick(() => {
+              requestAnimationFrame(() => {
+                options.scrollModeRef.value?.scrollToRatio?.(ratio);
+              });
+            });
+          }
+          return;
+        }
+
+        if (options.isComicMode.value) {
+          const ratio = options.currentScrollRatio.value;
+          if (ratio > 0) {
+            void nextTick(() => {
+              requestAnimationFrame(() => {
+                options.comicModeRef.value?.scrollToRatio?.(ratio);
+              });
+            });
+          }
+        }
+      });
+    }, REPAGINATE_DEBOUNCE_MS);
+  }
+
+  function clearRepaginateWork() {
+    if (resizeDebounceTimer) {
+      clearTimeout(resizeDebounceTimer);
+      resizeDebounceTimer = null;
+    }
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = 0;
+  }
+
+  watch(
+    () => options.settings.flipMode,
+    (nextMode, prevMode) => {
+      if (
+        !options.getShow() ||
+        options.isComicMode.value ||
+        options.isVideoMode.value ||
+        nextMode === prevMode ||
+        !options.content.value
+      ) {
+        return;
+      }
+
+      if (nextMode === 'scroll') {
+        if (options.currentScrollRatio.value >= 0) {
+          options.pendingRestoreScrollRatio.value = options.currentScrollRatio.value;
+        }
+        void options.openLinearChapter(options.activeChapterIndex.value);
+        return;
+      }
+
+      if (prevMode === 'scroll') {
+        void options.openPagedChapter(options.activeChapterIndex.value, {
+          position: options.currentScrollRatio.value >= 0 ? 'resume' : 'first',
+          pageRatio: options.currentScrollRatio.value >= 0 ? options.currentScrollRatio.value : undefined,
+        });
+      }
+    },
+  );
+
+  watch(
+    () => [options.settings.typography, options.settings.pagePadding, options.settings.paginationEngine] as const,
+    () => {
+      schedulePagedRepaginate();
+    },
+    { deep: true },
+  );
+
+  watch(
+    () => options.getShow(),
+    (visible) => readerLifecycle.handleVisibilityChange(visible),
+  );
+
+  onMounted(() => {
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', schedulePagedRepaginate);
+    window.addEventListener('orientationchange', schedulePagedRepaginate);
+    document.addEventListener('visibilitychange', options.onVisibilityChange);
+    window.addEventListener('beforeunload', options.onBeforeUnloadSave);
+    resizeObserver = new ResizeObserver(() => {
+      schedulePagedRepaginate();
+    });
+    if (options.readerBodyRef.value) {
+      resizeObserver.observe(options.readerBodyRef.value);
+    }
+    options.setupReadingConflictListener();
+    unlistenPluginToast = eventListenSync<{
+      pluginId?: string;
+      message?: string;
+      type?: 'info' | 'success' | 'warning' | 'error';
+    }>(FRONTEND_PLUGIN_TOAST_EVENT, (event) => {
+      const text = event.payload.message?.trim();
+      if (!text) {
+        return;
+      }
+      const prefix = event.payload.pluginId ? `[${event.payload.pluginId}] ` : '';
+      switch (event.payload.type) {
+        case 'success':
+          options.message.success(prefix + text);
+          break;
+        case 'warning':
+          options.message.warning(prefix + text);
+          break;
+        case 'error':
+          options.message.error(prefix + text);
+          break;
+        default:
+          options.message.info(prefix + text);
+          break;
+      }
+    });
+  });
+
+  onBeforeUnmount(() => {
+    syncNativeVolumeKeyPageTurn(false);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('resize', schedulePagedRepaginate);
+    window.removeEventListener('orientationchange', schedulePagedRepaginate);
+    document.removeEventListener('visibilitychange', options.onVisibilityChange);
+    window.removeEventListener('beforeunload', options.onBeforeUnloadSave);
+    options.stopAutoSave();
+    options.saveDetailedProgress();
+    clearRepaginateWork();
+    options.clearAllSeamlessSlots();
+    options.readerActionsStore.clear();
+    options.readerViewStore.clear();
+    resizeObserver?.disconnect();
+    options.reportReaderSession(false);
+    void options.closeSession();
+    options.cleanupReadingConflictListener();
+    unlistenPluginToast?.();
+  });
+
+  return {
+    clearRepaginateWork,
+  };
+}

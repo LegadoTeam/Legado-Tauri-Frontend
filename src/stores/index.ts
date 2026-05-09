@@ -18,6 +18,8 @@ export { useBookshelfReaderStore } from '@/features/bookshelf/stores/bookshelfRe
 export { useReaderSessionStore } from '@/features/reader/stores/readerSession';
 export { useReaderUiStore } from '@/features/reader/stores/readerUi';
 export { useReaderSettingsStore } from '@/features/reader/stores/readerSettings';
+export { useReaderActionsStore } from '@/features/reader/stores/readerActions';
+export { useReaderViewStore } from '@/features/reader/stores/readerView';
 export { useMusicPlayerStore } from './musicPlayer';
 export type { PlayerTrack, PlayerBookContext, PlayMode } from './musicPlayer';
 export type { BackHandler } from './backStack';

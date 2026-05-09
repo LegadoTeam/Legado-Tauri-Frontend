@@ -1,12 +1,8 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import { Bookmark } from 'lucide-vue-next';
 import { ref } from 'vue';
-import type { ChapterItem } from '@/stores';
-import type {
-  ReaderBookInfo,
-  TemporaryChapterSourceOverride,
-  WholeBookSwitchedPayload,
-} from '../reader/types';
+import { useReaderActionsStore, useReaderSessionStore, useReaderUiStore, useReaderViewStore } from '@/stores';
 // eslint-disable-next-line typescript/consistent-type-imports -- component is used in template
 import ReaderBottomBar from '../reader/ReaderBottomBar.vue';
 import ReaderTocPanel from '../reader/ReaderTocPanel.vue';
@@ -14,67 +10,58 @@ import ReaderTopBar from '../reader/ReaderTopBar.vue';
 import TtsControlBar from '../reader/TtsControlBar.vue';
 import ReaderSourceSwitchBridge from '@/features/reader/components/ReaderSourceSwitchBridge.vue';
 
-const props = defineProps<{
-  showMenu: boolean;
-  showToc: boolean;
-  settingsVisible: boolean;
-  showTtsBar: boolean;
-  ttsProgressText: string;
-  showSourceSwitchDialog: boolean;
-  sourceSwitchMode: 'whole-book' | 'chapter-temp';
-  chapters: ChapterItem[];
-  activeChapterIndex: number;
-  bookInfo?: ReaderBookInfo;
-  sourceType?: string;
-  hasPrev: boolean;
-  hasNext: boolean;
-  currentChapterName: string;
-  currentChapterUrl: string;
-  isVideoMode: boolean;
-  isOnShelf: boolean;
-  addingToShelf: boolean;
-  currentChapterOverride: TemporaryChapterSourceOverride | null;
-  currentShelfId: string | undefined;
-  fileName: string;
-  readIndices?: Set<number>;
-  cachedIndices?: Set<number>;
-  refreshingToc?: boolean;
-  menuOpenTime: number;
-}>();
-
-const emit = defineEmits<{
-  (e: 'update:show-menu', val: boolean): void;
-  (e: 'update:show-toc', val: boolean): void;
-  (e: 'update:settings-visible', val: boolean): void;
-  (e: 'update:show-tts-bar', val: boolean): void;
-  (e: 'update:show-source-switch-dialog', val: boolean): void;
-  (e: 'overlay-click'): void;
-  (e: 'prev'): void;
-  (e: 'next'): void;
-  (e: 'goto', idx: number): void;
-  (e: 'open-toc'): void;
-  (e: 'settings-visible', val: boolean): void;
-  (e: 'dump-pagination-layout'): void;
-  (e: 'tts-toggle'): void;
-  (e: 'close'): void;
-  (e: 'refresh-chapter'): void;
-  (e: 'cache-chapters', count: number): void;
-  (e: 'whole-book-switch'): void;
-  (e: 'temporary-switch'): void;
-  (e: 'clear-temporary-switch'): void;
-  (e: 'add-to-shelf'): void;
-  (e: 'select-toc', idx: number): void;
-  (e: 'refresh-toc'): void;
-  (e: 'clear-chapter-cache', idx: number): void;
-  (e: 'clear-all-cache'): void;
-  (e: 'chapter-temp-switched', payload: TemporaryChapterSourceOverride): void;
-  (e: 'whole-book-switched', payload: WholeBookSwitchedPayload): void;
-}>();
-
+const readerActionsStore = useReaderActionsStore();
+const readerUiStore = useReaderUiStore();
+const readerSessionStore = useReaderSessionStore();
+const readerViewStore = useReaderViewStore();
+const {
+  showMenu,
+  showToc,
+  settingsVisible,
+  showTtsBar,
+  showSourceSwitchDialog,
+  sourceSwitchMode,
+  menuOpenTime,
+} = storeToRefs(readerUiStore);
+const { activeChapterIndex, readIndices, cachedIndices } = storeToRefs(readerSessionStore);
+const {
+  addingToShelf,
+  bookInfo,
+  chapters,
+  currentChapterName,
+  currentChapterOverride,
+  currentChapterUrl,
+  currentShelfId,
+  fileName,
+  hasNext,
+  hasPrev,
+  isOnShelf,
+  isVideoMode,
+  refreshingToc,
+  sourceType,
+  ttsProgressText,
+} = storeToRefs(readerViewStore);
 const bottomBarRef = ref<InstanceType<typeof ReaderBottomBar> | null>(null);
 
 function closeSettings() {
   bottomBarRef.value?.closeSettings();
+}
+
+function onOverlayClick() {
+  if (Date.now() - menuOpenTime.value <= 200) {
+    return;
+  }
+  settingsVisible.value = false;
+  readerUiStore.closeMenu();
+}
+
+function onOpenToc() {
+  closeSettings();
+  readerUiStore.openToc();
+}
+
+function onSettingsVisibleChange(val: boolean) {
+  settingsVisible.value = val;
 }
 
 defineExpose({ closeSettings });
@@ -86,7 +73,7 @@ defineExpose({ closeSettings });
     <div
       v-if="showMenu"
       class="reader-modal__overlay"
-      @click="Date.now() - menuOpenTime > 200 && emit('overlay-click')"
+      @click="onOverlayClick"
     />
   </Transition>
 
@@ -102,12 +89,12 @@ defineExpose({ closeSettings });
       :can-whole-book-switch="!!currentShelfId && !isVideoMode"
       :can-temporary-switch="!isVideoMode"
       :has-temporary-override="!!currentChapterOverride"
-      @close="emit('close')"
-      @refresh-chapter="emit('refresh-chapter')"
-      @cache-chapters="emit('cache-chapters', $event)"
-      @whole-book-switch="emit('whole-book-switch')"
-      @temporary-switch="emit('temporary-switch')"
-      @clear-temporary-switch="emit('clear-temporary-switch')"
+      @close="readerActionsStore.close"
+      @refresh-chapter="readerActionsStore.forceRefreshChapter"
+      @cache-chapters="readerActionsStore.prefetchChapters"
+      @whole-book-switch="readerActionsStore.openWholeBookSourceSwitch"
+      @temporary-switch="readerActionsStore.openTemporaryChapterSwitch"
+      @clear-temporary-switch="readerActionsStore.clearTemporaryChapterSwitch"
     />
   </Transition>
 
@@ -127,7 +114,7 @@ defineExpose({ closeSettings });
       v-if="showMenu && !settingsVisible && !isOnShelf && bookInfo"
       class="reader-modal__shelf-btn"
       :disabled="addingToShelf"
-      @click="emit('add-to-shelf')"
+      @click="readerActionsStore.handleAddToShelf"
     >
       <Bookmark :size="16" aria-hidden="true" />
       {{ addingToShelf ? '加入中…' : '加入书架' }}
@@ -144,13 +131,13 @@ defineExpose({ closeSettings });
       :has-prev="hasPrev"
       :has-next="hasNext"
       :source-type="sourceType"
-      @prev="emit('prev')"
-      @next="emit('next')"
-      @goto="emit('goto', $event)"
-      @open-toc="emit('open-toc')"
-      @settings-visible="emit('settings-visible', $event)"
-      @dump-pagination-layout="emit('dump-pagination-layout')"
-      @tts-toggle="emit('tts-toggle')"
+      @prev="readerActionsStore.gotoPrevChapter"
+      @next="readerActionsStore.gotoNextChapter"
+      @goto="readerActionsStore.gotoChapter"
+      @open-toc="onOpenToc"
+      @settings-visible="onSettingsVisibleChange($event)"
+      @dump-pagination-layout="readerActionsStore.dumpPaginationLayoutDebug"
+      @tts-toggle="readerActionsStore.onTtsToggle"
     />
   </Transition>
 
@@ -158,7 +145,7 @@ defineExpose({ closeSettings });
   <TtsControlBar
     :visible="showTtsBar"
     :progress-text="ttsProgressText"
-    @close="emit('update:show-tts-bar', false)"
+    @close="showTtsBar = false"
   />
 
   <!-- 目录面板 -->
@@ -171,11 +158,11 @@ defineExpose({ closeSettings });
     :cached-indices="cachedIndices"
     :refreshing-toc="refreshingToc"
     :source-type="sourceType"
-    @update:show="emit('update:show-toc', $event)"
-    @select="emit('select-toc', $event)"
-    @refresh-toc="emit('refresh-toc')"
-    @clear-chapter-cache="emit('clear-chapter-cache', $event)"
-    @clear-all-cache="emit('clear-all-cache')"
+    @update:show="showToc = $event"
+    @select="readerActionsStore.gotoChapter"
+    @refresh-toc="readerActionsStore.emitRefreshToc"
+    @clear-chapter-cache="readerActionsStore.handleClearChapterCache"
+    @clear-all-cache="readerActionsStore.handleClearAllCache"
   />
 
   <ReaderSourceSwitchBridge
@@ -188,9 +175,9 @@ defineExpose({ closeSettings });
     :active-chapter-index="activeChapterIndex"
     :current-chapter-url="currentChapterUrl"
     :current-shelf-id="currentShelfId"
-    @update:show="emit('update:show-source-switch-dialog', $event)"
-    @chapter-temp-switched="emit('chapter-temp-switched', $event)"
-    @whole-book-switched="emit('whole-book-switched', $event)"
+    @update:show="showSourceSwitchDialog = $event"
+    @chapter-temp-switched="readerActionsStore.handleTemporaryChapterSourceSwitched"
+    @whole-book-switched="readerActionsStore.handleWholeBookSourceSwitched"
   />
 </template>
 
