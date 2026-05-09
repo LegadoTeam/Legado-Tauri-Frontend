@@ -1,22 +1,20 @@
 <script setup lang="ts">
 /**
- * ScrollMode — 滚动翻页模式
+ * ScrollMode — 无缝滚动翻页模式
  *
- * 类似长网页式无限滚动阅读，支持触摸滚动和鼠标滚轮。
- * 左右点击不翻页，只有中间点击切换菜单。
- * 底部/顶部提供章节切换按钮（桌面端），移动端需要上拉超过阈值才触发下一章。
- * 上拉/下拉加载逻辑与 ComicMode 共用 usePullToLoad composable。
+ * 将当前章节与下一章节内联渲染，用户无需手动点击「下一章」——
+ * 滚动至下一章区域时自动触发 next-chapter-entered 事件通知父组件切换章节元数据。
+ * 无下一章时在底部显示章节结束画面。
  */
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
-import { usePullToLoad } from '../composables/usePullToLoad';
-import PullBubble from '../PullBubble.vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps<{
   content: string;
   chapterTitle?: string;
-  paragraphSpacing: number;
-  textIndent: number;
-  hasPrev?: boolean;
+  /** 预加载的下一章正文（空字符串表示尚未加载或不存在） */
+  nextChapterContent?: string;
+  /** 预加载的下一章章节名 */
+  nextChapterTitle?: string;
   hasNext?: boolean;
   tapZoneLeft?: number;
   tapZoneRight?: number;
@@ -32,13 +30,8 @@ const emit = defineEmits<{
   (e: 'reachEnd'): void;
   (e: 'tap', zone: 'left' | 'center' | 'right'): void;
   (e: 'prev-chapter'): void;
-  (e: 'next-chapter'): void;
-}>();
-
-const scrollRef = ref<HTMLElement | null>(null);
-
-const paragraphs = ref<string[]>([]);
-
+  /** 用户滚动进入下一章区域，携带当前章节内容区高度（用于无缝滚动位置补偿） */
+  (e: 'next-chapter-entered', sectionHeight: number): void;
 /** 是否已滚动到底部附近 */
 const atBottom = ref(false);
 /** 是否已滚动到顶部 */

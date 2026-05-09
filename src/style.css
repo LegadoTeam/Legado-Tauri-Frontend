@@ -493,6 +493,75 @@ ol {
   opacity: 0;
 }
 
+/**
+ * 章节结束画面 — 当无下一章时显示在所有阅读模式的末尾。
+ * 用于：ScrollMode 底部、ComicMode 底部、PagedMode 末页 v-html 注入。
+ */
+.chapter-end-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px 56px;
+  gap: 12px;
+  color: var(--reader-text-color, var(--color-text-muted));
+  opacity: 0.65;
+  user-select: none;
+  pointer-events: none;
+}
+
+.chapter-end-screen__icon {
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.chapter-end-screen__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  font-family: var(--reader-font-family, inherit);
+}
+
+.chapter-end-screen__sub {
+  font-size: 0.82rem;
+  margin: 0;
+  opacity: 0.75;
+}
+
+/* PagedMode 末页：居中占满整个 paged-mode__page 容器 */
+.paged-mode-end-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: 12px;
+  color: var(--reader-text-color, var(--color-text-muted));
+  opacity: 0.65;
+  user-select: none;
+}
+
+.paged-mode-end-screen__icon {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.paged-mode-end-screen__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.paged-mode-end-screen__sub {
+  font-size: 0.82rem;
+  margin: 0;
+  opacity: 0.75;
+}
+
 button {
   font: inherit;
 }
