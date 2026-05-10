@@ -40,7 +40,7 @@ interface ReaderLifecycleControllerOptions {
   triggerReaderProgressSync: () => Promise<void>;
   startAutoSave: () => void;
   stopAutoSave: () => void;
-  saveDetailedProgress: () => void;
+  saveDetailedProgress: () => Promise<void> | void;
   clearAllRuntimeCache: () => void;
   invalidatePages: () => void;
   trackSessionOpen: (payload: Record<string, unknown>) => void;
@@ -51,7 +51,12 @@ export function createReaderLifecycleController(options: ReaderLifecycleControll
     try {
       const book = await options.getShelfBook(shelfBookId);
       options.activateBookSettings(shelfBookId, book.readerSettings);
-      if (book.readChapterIndex === options.getCurrentIndex()) {
+      const savedIndex =
+        typeof book.readChapterIndex === 'number' && book.readChapterIndex >= 0
+          ? book.readChapterIndex
+          : options.getCurrentIndex();
+      if (savedIndex >= 0) {
+        options.activeChapterIndex.value = savedIndex;
         options.pendingRestorePageIndex.value = book.readPageIndex ?? -1;
         options.pendingRestoreScrollRatio.value = book.readScrollRatio ?? -1;
         options.pendingResumePlaybackTime.value = book.readPlaybackTime ?? -1;
@@ -106,7 +111,7 @@ export function createReaderLifecycleController(options: ReaderLifecycleControll
 
   async function closeReader() {
     options.stopAutoSave();
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     await options.closeSession();
     options.deactivateBookSettings();
     options.clearAllRuntimeCache();

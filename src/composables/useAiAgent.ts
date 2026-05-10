@@ -22,7 +22,7 @@
  */
 
 import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, tool, stepCountIs } from 'ai';
+import { streamText, tool, stepCountIs, type ModelMessage } from 'ai';
 import { reactive } from 'vue';
 import { z } from 'zod';
 import { useAiSessionsStore } from '@/stores';
@@ -540,16 +540,16 @@ export async function runAiAgent(
   _abortController = new AbortController();
 
   // 继续对话时：从会话恢复现有状态；全新任务时：清空
-  let prevMessages: unknown[] = [];
+  let prevMessages: ModelMessage[] = [];
   if (sessionId) {
-    const session = useAiSessionsStore().sessions.value.find((s) => s.id === sessionId);
+    const session = useAiSessionsStore().sessions.find((s) => s.id === sessionId);
     if (session) {
       if (continueConversation) {
         state.activities = [...session.activities];
         state.testResults = [...session.testResults];
         state.currentFileName = session.currentFileName;
         state.currentSourceCode = session.currentSourceCode;
-        prevMessages = session.conversationHistory;
+        prevMessages = session.conversationHistory as ModelMessage[];
       } else {
         state.activities = [];
         state.testResults = [];
@@ -572,10 +572,7 @@ export async function runAiAgent(
   addActivity('info', continueConversation ? `继续对话：${userPrompt}` : `开始任务：${userPrompt}`);
 
   // 构建发送给模型的消息列表（历史 + 本次用户指令）
-  const inputMessages = [...prevMessages, { role: 'user', content: userPrompt }] as {
-    role: string;
-    content: string;
-  }[];
+  const inputMessages: ModelMessage[] = [...prevMessages, { role: 'user', content: userPrompt }];
 
   try {
     const openaiProvider = createOpenAI({
@@ -598,7 +595,7 @@ export async function runAiAgent(
     const result = streamText({
       model: llmModel,
       system: buildSystemPrompt(),
-      messages: inputMessages as Parameters<typeof streamText>[0]['messages'],
+      messages: inputMessages,
       tools: buildTools(sessionId),
       stopWhen: stepCountIs(Math.max(1, config.maxSteps ?? 30)),
       abortSignal: _abortController.signal,
@@ -692,7 +689,7 @@ export async function runAiAgent(
 
     // 持久化会话：保存活动日志、测试结果，并追加本轮对话历史
     if (sessionId) {
-      let newHistory = inputMessages;
+      let newHistory: ModelMessage[] = inputMessages;
       try {
         const response = await result.response;
         if (response && 'messages' in response && Array.isArray(response.messages)) {

@@ -24,7 +24,12 @@ import { useReaderContentState } from './useReaderContentState';
 import { useReaderLayoutDump } from './useReaderLayoutDump';
 import { useReaderModalHost } from './useReaderModalHost';
 import { useReaderModeBridge } from './useReaderModeBridge';
-import { type ReaderPositionMode, useReaderPosition } from './useReaderPosition';
+import {
+  type ReaderPositionMode,
+  type ReaderPositionSnapshot,
+  type ReaderProgressTarget,
+  useReaderPosition,
+} from './useReaderPosition';
 import { useReaderProgressSync } from './useReaderProgressSync';
 import { useReaderSeamlessWindow } from './useReaderSeamlessWindow';
 import { useReaderSessionBridge } from './useReaderSessionBridge';
@@ -74,7 +79,7 @@ export function useChapterReaderModalController(
   const { runChapterContent, appendDebugLog } = useScriptBridgeStore();
   const sync = useSync();
   const {
-    updateProgress,
+    updateProgress: updateBookshelfProgress,
     saveContent,
     getContent,
     deleteContent,
@@ -84,6 +89,17 @@ export function useChapterReaderModalController(
     saveChapters,
     ensureLoaded: ensureShelfLoaded,
   } = useBookshelfStore();
+  let progressWriteQueue: Promise<unknown> = Promise.resolve();
+
+  function updateProgress(
+    ...args: Parameters<typeof updateBookshelfProgress>
+  ): ReturnType<typeof updateBookshelfProgress> {
+    const nextWrite = progressWriteQueue
+      .catch(() => {})
+      .then(() => updateBookshelfProgress(...args));
+    progressWriteQueue = nextWrite;
+    return nextWrite as ReturnType<typeof updateBookshelfProgress>;
+  }
 
   const readerSessionStore = useReaderSessionStore();
   const {
@@ -150,6 +166,7 @@ export function useChapterReaderModalController(
   let shelfDataReady: Promise<void> | null = null;
   let readerNavigation: ReaderNavigationController | null = null;
   let clearRepaginateWork = () => {};
+  let waitForLinearSeamlessWindowStable = async (_index: number) => {};
 
   function closeMenuLayerSettings() {
     const closeSettings = menuLayerRef.value?.closeSettings;
@@ -189,6 +206,27 @@ export function useChapterReaderModalController(
     readerSkins,
   });
 
+  const readingChapterOffset = ref(0);
+  const readingChapterIndex = computed(() => {
+    if (!chapters.value.length) {
+      return activeChapterIndex.value;
+    }
+    if (isPagedMode.value || isVideoMode.value) {
+      return activeChapterIndex.value;
+    }
+    const nextIndex = activeChapterIndex.value + readingChapterOffset.value;
+    return Math.min(Math.max(nextIndex, 0), chapters.value.length - 1);
+  });
+  const reopenChapterIndex = computed(() => {
+    if (!props.show) {
+      return props.currentIndex;
+    }
+    return readingChapterIndex.value;
+  });
+  const readingChapter = computed(() => getChapter(readingChapterIndex.value));
+  const readingChapterName = computed(() => readingChapter.value?.name ?? currentChapterName.value);
+  const readingChapterUrl = computed(() => readingChapter.value?.url ?? currentChapterUrl.value);
+
   function buildReaderContentPayload(
     stage: Parameters<typeof runReaderContentPipeline>[0],
     contentText: string,
@@ -206,33 +244,6 @@ export function useChapterReaderModalController(
     };
   }
 
-  const {
-    buildReaderSessionSnapshot,
-    openSession,
-    closeSession,
-    syncSessionSnapshot,
-    updateSessionVisibility,
-  } = useReaderSessionBridge({
-    getShow: () => props.show,
-    fileName,
-    sourceType,
-    bookInfo,
-    getChapterCount: () => chapters.value.length,
-    fallbackChapterName: chapterName,
-    fallbackChapterUrl: chapterUrl,
-    currentShelfId,
-    activeChapterIndex,
-    currentPageIndex,
-    currentScrollRatio,
-    content,
-    settings,
-    readerBodyRef,
-    getChapter,
-    openReaderSession,
-    updateReaderSession,
-    closeReaderSession,
-  });
-
   watch(showMenu, (visible) => {
     if (!visible) {
       if (settingsVisible.value) {
@@ -242,13 +253,26 @@ export function useChapterReaderModalController(
     }
   });
 
-  watch(activeChapterIndex, (idx) => {
-    if (idx !== props.currentIndex) {
+  watch(reopenChapterIndex, (idx) => {
+    if (props.show && idx !== props.currentIndex) {
       emit('update:currentIndex', idx);
     }
   });
 
+  watch(
+    () => props.show,
+    (visible) => {
+      if (!visible) {
+        if (readingChapterIndex.value !== props.currentIndex) {
+          emit('update:currentIndex', readingChapterIndex.value);
+        }
+        readingChapterOffset.value = 0;
+      }
+    },
+  );
+
   watch(activeChapterIndex, (idx) => {
+    readingChapterOffset.value = 0;
     const count = config.value.cache_prefetch_count;
     if (count === 0 || sourceType.value === 'video' || !currentShelfId.value) {
       return;
@@ -406,6 +430,7 @@ export function useChapterReaderModalController(
     pagedLoading,
     currentShelfId,
     activeChapterIndex,
+    readingChapterOffset,
     currentPageIndex,
     currentScrollRatio,
     pagedPageIndex,
@@ -454,6 +479,57 @@ export function useChapterReaderModalController(
     comicModeRef,
     getPlaybackTime,
     getSettingsJson,
+  });
+
+  function clampChapterIndex(index: number): number {
+    if (!chapters.value.length) {
+      return Math.max(0, index);
+    }
+    return Math.min(Math.max(index, 0), chapters.value.length - 1);
+  }
+
+  function resolveReadingProgressTarget(
+    snapshot = readCurrentPosition(),
+  ): ReaderProgressTarget {
+    const chapterIndex = clampChapterIndex(activeChapterIndex.value + snapshot.chapterOffset);
+    const chapter = getChapter(chapterIndex);
+    const isActiveChapter = chapterIndex === activeChapterIndex.value;
+    return {
+      chapterIndex,
+      chapterName: chapter?.name ?? (isActiveChapter ? currentChapterName.value : chapterName.value),
+      chapterUrl: chapter?.url ?? (isActiveChapter ? currentChapterUrl.value : chapterUrl.value),
+      position: snapshot,
+    };
+  }
+
+  function applySeamlessActivatedPosition(snapshot: ReaderPositionSnapshot) {
+    readingChapterOffset.value = 0;
+    writeSnapshotToRefs({
+      ...snapshot,
+      chapterOffset: 0,
+    });
+  }
+
+  const {
+    buildReaderSessionSnapshot,
+    openSession,
+    closeSession,
+    syncSessionSnapshot,
+    updateSessionVisibility,
+  } = useReaderSessionBridge({
+    getShow: () => props.show,
+    fileName,
+    sourceType,
+    bookInfo,
+    getChapterCount: () => chapters.value.length,
+    currentShelfId,
+    content,
+    settings,
+    readerBodyRef,
+    resolveReadingProgressTarget,
+    openReaderSession,
+    updateReaderSession,
+    closeReaderSession,
   });
 
   const { dumpPaginationLayoutDebug } = useReaderLayoutDump({
@@ -513,6 +589,7 @@ export function useChapterReaderModalController(
     writePositionSnapshot: writeSnapshotToRefs,
     buildProgressPayload,
     updateProgress,
+    waitForLinearSeamlessWindowStable: (index) => waitForLinearSeamlessWindowStable(index),
     reportLoadError: (loadError) => {
       message.error(`加载正文失败: ${loadError}`, { duration: 8000, closable: true });
     },
@@ -554,12 +631,10 @@ export function useChapterReaderModalController(
     dialog,
     sync,
     currentShelfId,
-    activeChapterIndex,
     shouldIgnorePositionEvents,
     getChapter,
-    fallbackChapterName: chapterName,
-    fallbackChapterUrl: chapterUrl,
     readCurrentPosition,
+    resolveReadingProgressTarget,
     buildProgressPayload,
     updateProgress,
     updateSessionVisibility,
@@ -595,23 +670,7 @@ export function useChapterReaderModalController(
     await readerNavigation?.gotoChapter(index);
   }
 
-  const {
-    prevScrollChapterContent,
-    prevScrollChapterTitle,
-    prevScrollChapterLoading,
-    nextScrollChapterContent,
-    nextScrollChapterTitle,
-    nextScrollChapterLoading,
-    prevComicChapterContent,
-    prevComicChapterTitle,
-    nextComicChapterContent,
-    nextComicChapterTitle,
-    clearAllSeamlessSlots,
-    onScrollNextChapterEntered,
-    onScrollPrevChapterEntered,
-    onComicNextChapterEntered,
-    onComicPrevChapterEntered,
-  } = useReaderSeamlessWindow({
+  const seamlessWindow = useReaderSeamlessWindow({
     getShow: () => props.show,
     getFileName: () => props.fileName,
     getSourceType: () => props.sourceType,
@@ -637,8 +696,27 @@ export function useChapterReaderModalController(
     markChapterRead,
     updateProgress: (shelfId, chapterIndex, chapterUrl, payload) =>
       updateProgress(shelfId, chapterIndex, chapterUrl, payload),
-    buildProgressPayload: () => buildProgressPayload(),
+    buildProgressPayload: (snapshot) => buildProgressPayload(snapshot),
+    onSeamlessChapterActivated: applySeamlessActivatedPosition,
   });
+  waitForLinearSeamlessWindowStable = seamlessWindow.waitForStableWindow;
+  const {
+    prevScrollChapterContent,
+    prevScrollChapterTitle,
+    prevScrollChapterLoading,
+    nextScrollChapterContent,
+    nextScrollChapterTitle,
+    nextScrollChapterLoading,
+    prevComicChapterContent,
+    prevComicChapterTitle,
+    nextComicChapterContent,
+    nextComicChapterTitle,
+    clearAllSeamlessSlots,
+    onScrollNextChapterEntered,
+    onScrollPrevChapterEntered,
+    onComicNextChapterEntered,
+    onComicPrevChapterEntered,
+  } = seamlessWindow;
 
   const currentScrollChapterLoading = computed(
     () => isScrollMode.value && loading.value && !content.value,
@@ -672,7 +750,7 @@ export function useChapterReaderModalController(
     readerUiStore,
     readerSessionStore,
     getShow: () => props.show,
-    getCurrentIndex: () => props.currentIndex,
+    getCurrentIndex: () => reopenChapterIndex.value,
     getShelfBookId: () => props.shelfBookId,
     getChapterName: () => props.chapterName,
     getChapterUrl: () => props.chapterUrl,
@@ -681,6 +759,8 @@ export function useChapterReaderModalController(
     getRefreshingToc: () => props.refreshingToc,
     getBookInfo: () => props.bookInfo,
     getChapters: () => props.chapters,
+    getReadingChapterIndex: () => readingChapterIndex.value,
+    getReadingChapterUrl: () => readingChapterUrl.value,
     emitUpdateShow: (visible) => emit('update:show', visible),
     emitAddedToShelf: (shelfId) => emit('added-to-shelf', shelfId),
     emitRefreshToc: () => emit('refresh-toc'),

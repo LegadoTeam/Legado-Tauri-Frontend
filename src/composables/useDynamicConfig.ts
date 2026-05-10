@@ -68,7 +68,7 @@ function writeToBackend(namespace: string, version: number, data: unknown): Prom
   return setFrontendStorageItemAsync(namespace, STATE_KEY, JSON.stringify(payload));
 }
 
-function syncReactiveState<T extends Record<string, unknown>>(target: T, next: T) {
+function syncReactiveState<T extends Record<string, unknown>>(target: Record<string, unknown>, next: T) {
   const cloned = clonePlain(next);
   for (const key of Object.keys(target)) {
     if (!(key in cloned)) {
@@ -79,7 +79,7 @@ function syncReactiveState<T extends Record<string, unknown>>(target: T, next: T
 }
 
 /**
- * 从已加载的后端缓存水合状态（版本匹配返回存储值，否则返回 defaults）。
+ * 从已加载的后端缓存还原状态（版本匹配返回存储值，否则返回 defaults）。
  * 仅在 ready 之后调用。
  */
 function hydrateFromCache<T extends Record<string, unknown>>(
@@ -146,7 +146,7 @@ export function useDynamicConfig<T extends Record<string, unknown>>(
   ).then(() => {
     // 后端加载完毕，从缓存读取真实数据并更新响应式状态
     const hydrated = hydrateFromCache(storageNamespace, options);
-    dbgLog(`[DynConfig] ${options.namespace}: ready，水合结果 → ` + JSON.stringify(hydrated));
+    dbgLog(`[DynConfig] ${options.namespace}: ready，从后端还原的配置 → ` + JSON.stringify(hydrated));
     syncReactiveState(state, hydrated);
   });
 

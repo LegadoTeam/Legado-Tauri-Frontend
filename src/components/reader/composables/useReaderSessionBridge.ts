@@ -1,10 +1,13 @@
+/**
+ * 将当前阅读器状态同步给前端插件运行时，章节与位置统一由进度解析器提供。
+ */
 import { watch, type ComputedRef, type Ref } from 'vue';
-import type { ChapterItem } from '@/stores';
 import type {
   ReaderSessionSnapshot,
   ReaderSessionAppearanceState,
 } from '../../../composables/useFrontendPlugins';
 import type { ReaderBookInfo } from '../types';
+import type { ReaderProgressTarget } from './useReaderPosition';
 
 type ValueSource<T> = Ref<T> | ComputedRef<T>;
 
@@ -22,16 +25,11 @@ interface UseReaderSessionBridgeOptions {
   sourceType: ValueSource<string | undefined>;
   bookInfo: ValueSource<ReaderBookInfo | undefined>;
   getChapterCount: () => number;
-  fallbackChapterName: ValueSource<string>;
-  fallbackChapterUrl: ValueSource<string>;
   currentShelfId: ComputedRef<string | undefined>;
-  activeChapterIndex: Ref<number>;
-  currentPageIndex: Ref<number>;
-  currentScrollRatio: Ref<number>;
   content: Ref<string>;
   settings: ReaderSessionSettingsState;
   readerBodyRef: Ref<HTMLElement | null>;
-  getChapter: (index: number) => ChapterItem | undefined;
+  resolveReadingProgressTarget: () => ReaderProgressTarget;
   openReaderSession: (session: ReaderSessionSnapshot) => Promise<void>;
   updateReaderSession: (patch: Partial<ReaderSessionSnapshot>) => Promise<void>;
   closeReaderSession: () => Promise<void>;
@@ -52,21 +50,21 @@ export function useReaderSessionBridge(options: UseReaderSessionBridgeOptions) {
   function buildReaderSessionSnapshot(
     overrides: Partial<Record<string, unknown>> = {},
   ): ReaderSessionSnapshot & Record<string, unknown> {
-    const chapter = options.getChapter(options.activeChapterIndex.value);
+    const target = options.resolveReadingProgressTarget();
+    const position = target.position;
     const viewport = getReaderViewportSize();
     return {
       fileName: readSource(options.fileName),
       sourceType: readSource(options.sourceType) ?? 'novel',
       shelfBookId: options.currentShelfId.value || undefined,
       bookInfo: readSource(options.bookInfo),
-      chapterIndex: options.activeChapterIndex.value,
+      chapterIndex: target.chapterIndex,
       totalChapters: options.getChapterCount(),
-      chapterName: chapter?.name ?? readSource(options.fallbackChapterName),
-      chapterUrl: chapter?.url ?? readSource(options.fallbackChapterUrl),
+      chapterName: target.chapterName,
+      chapterUrl: target.chapterUrl,
       content: options.content.value,
-      pageIndex: options.currentPageIndex.value >= 0 ? options.currentPageIndex.value : undefined,
-      scrollRatio:
-        options.currentScrollRatio.value >= 0 ? options.currentScrollRatio.value : undefined,
+      pageIndex: position.pageIndex >= 0 ? position.pageIndex : undefined,
+      scrollRatio: position.scrollRatio >= 0 ? position.scrollRatio : undefined,
       visible: options.getShow() && !document.hidden,
       appearance: {
         theme: { ...options.settings.theme },
@@ -101,13 +99,16 @@ export function useReaderSessionBridge(options: UseReaderSessionBridgeOptions) {
   }
 
   watch(
-    () =>
-      [
-        options.activeChapterIndex.value,
-        options.currentPageIndex.value,
-        options.currentScrollRatio.value,
+    () => {
+      const target = options.resolveReadingProgressTarget();
+      return [
+        target.chapterIndex,
+        target.position.pageIndex,
+        target.position.scrollRatio,
+        target.position.playbackTime,
         options.content.value,
-      ] as const,
+      ] as const;
+    },
     () => {
       if (!options.getShow()) {
         return;

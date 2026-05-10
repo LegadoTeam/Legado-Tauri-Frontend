@@ -23,6 +23,7 @@ export interface ReaderViewBindings {
   refreshingToc: ValueSource<boolean | undefined>;
   hasPrev: ValueSource<boolean>;
   hasNext: ValueSource<boolean>;
+  readingChapterIndex: ValueSource<number>;
   currentChapterName: ValueSource<string>;
   currentChapterUrl: ValueSource<string>;
   isVideoMode: ValueSource<boolean>;
@@ -77,6 +78,7 @@ export const useReaderViewStore = defineStore('readerView', () => {
   const refreshingToc = computed(() => readSource(bindings.value?.refreshingToc, false));
   const hasPrev = computed(() => readSource(bindings.value?.hasPrev, false));
   const hasNext = computed(() => readSource(bindings.value?.hasNext, false));
+  const readingChapterIndex = computed(() => readSource(bindings.value?.readingChapterIndex, 0));
   const currentChapterName = computed(() => readSource(bindings.value?.currentChapterName, ''));
   const currentChapterUrl = computed(() => readSource(bindings.value?.currentChapterUrl, ''));
   const isVideoMode = computed(() => readSource(bindings.value?.isVideoMode, false));
@@ -143,6 +145,7 @@ export const useReaderViewStore = defineStore('readerView', () => {
     refreshingToc,
     hasPrev,
     hasNext,
+    readingChapterIndex,
     currentChapterName,
     currentChapterUrl,
     isVideoMode,

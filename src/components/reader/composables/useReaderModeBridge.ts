@@ -1,3 +1,6 @@
+/**
+ * 连接具体阅读模式组件与父级控制器，转发翻页、滚动进度和媒体进度事件。
+ */
 import { ref, type ComputedRef, type Ref } from 'vue';
 import type { ChapterItem } from '@/stores';
 
@@ -14,7 +17,17 @@ export interface PagedModeApi {
 export interface ScrollModeApi {
   $el?: HTMLElement;
   scrollToRatio?: (ratio: number) => void;
+  scrollToParagraph?: (index: number) => void;
+  scrollToReadingAnchor?: (anchor: number) => void;
+  restoreToReadingAnchor?: (anchor: number) => Promise<void>;
   getScrollRatio?: () => number;
+  getReadingChapterOffset?: () => number;
+  getReadingScrollRatio?: () => number;
+  getReadingLineAnchor?: () => number;
+  getReadingParagraphIndex?: () => number;
+  getAdjacentScrollRatio?: (side: 'prev' | 'next') => number;
+  getAdjacentLineAnchor?: (side: 'prev' | 'next') => number;
+  getAdjacentParagraphIndex?: (side: 'prev' | 'next') => number;
   pageDown?: () => boolean;
   pageUp?: () => boolean;
   getFirstVisibleParaIndex?: () => number;
@@ -27,6 +40,11 @@ export interface ComicModeApi {
   restoreToScrollRatio?: (ratio: number) => Promise<void>;
   scrollToRatio?: (ratio: number) => void;
   getScrollRatio?: () => number;
+  getReadingChapterOffset?: () => number;
+  getReadingScrollRatio?: () => number;
+  getReadingPageIndex?: () => number;
+  getAdjacentScrollRatio?: (side: 'prev' | 'next') => number;
+  getAdjacentPageIndex?: (side: 'prev' | 'next') => number;
   currentPage?: number;
   totalPages?: number;
   prepareSeamlessSwap?: (height: number) => void;
@@ -54,6 +72,7 @@ interface UseReaderModeBridgeOptions {
   pagedLoading: Ref<boolean>;
   currentShelfId: ComputedRef<string | undefined>;
   activeChapterIndex: Ref<number>;
+  readingChapterOffset: Ref<number>;
   currentPageIndex: Ref<number>;
   currentScrollRatio: Ref<number>;
   pagedPageIndex: Ref<number>;
@@ -85,12 +104,14 @@ export function useReaderModeBridge(options: UseReaderModeBridgeOptions) {
 
   function onPagedPageChange(page: number) {
     options.setPagedPage(page);
+    options.readingChapterOffset.value = 0;
   }
 
   function onPagedProgress(ratio: number) {
     if (options.shouldIgnorePositionEvents()) {
       return;
     }
+    options.readingChapterOffset.value = 0;
     options.currentPageIndex.value = options.pagedPageIndex.value;
     options.currentScrollRatio.value = ratio;
   }
@@ -99,19 +120,24 @@ export function useReaderModeBridge(options: UseReaderModeBridgeOptions) {
     if (options.shouldIgnorePositionEvents()) {
       return;
     }
-    options.currentPageIndex.value = -1;
-    options.currentScrollRatio.value = ratio;
+    options.readingChapterOffset.value = scrollModeRef.value?.getReadingChapterOffset?.() ?? 0;
+    options.currentPageIndex.value =
+      scrollModeRef.value?.getReadingLineAnchor?.() ??
+      scrollModeRef.value?.getReadingParagraphIndex?.() ??
+      -1;
+    options.currentScrollRatio.value = scrollModeRef.value?.getReadingScrollRatio?.() ?? ratio;
   }
 
   function onComicProgress(ratio: number) {
     if (options.shouldIgnorePositionEvents()) {
       return;
     }
-    const page = comicModeRef.value?.currentPage;
+    options.readingChapterOffset.value = comicModeRef.value?.getReadingChapterOffset?.() ?? 0;
+    const page = comicModeRef.value?.getReadingPageIndex?.() ?? comicModeRef.value?.currentPage;
     if (typeof page === 'number') {
       options.currentPageIndex.value = page;
     }
-    options.currentScrollRatio.value = ratio;
+    options.currentScrollRatio.value = comicModeRef.value?.getReadingScrollRatio?.() ?? ratio;
   }
 
   function onVideoProgress(time: number, _duration: number) {

@@ -1,3 +1,6 @@
+<!--
+  阅读器目录与书籍详情抽屉，负责章节检索、跳转、缓存操作和当前阅读章节定位。
+-->
 <script setup lang="ts">
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useVirtualList } from '@vueuse/core';
@@ -37,6 +40,7 @@ const emit = defineEmits<{
 }>();
 
 type TabKey = 'toc' | 'detail';
+const TOC_ITEM_HEIGHT = 48;
 const activeTab = ref<TabKey>('toc');
 const tocTabs = [
   { key: 'toc', label: '目录' },
@@ -61,24 +65,39 @@ const {
   containerProps,
   wrapperProps,
   scrollTo,
-} = useVirtualList(filteredChapters, { itemHeight: 48, overscan: 8 });
+} = useVirtualList(filteredChapters, { itemHeight: TOC_ITEM_HEIGHT, overscan: 8 });
 
-function scrollCurrentChapterIntoView() {
+function getTocListElement() {
+  return document.querySelector<HTMLElement>('.reader-toc__list');
+}
+
+async function scrollCurrentChapterIntoView() {
   const idx = filteredChapters.value.findIndex((item) => item.index === props.currentIndex);
   if (idx < 0) {
     return;
   }
 
-  // 先让虚拟列表跳到目标附近，确保当前章节节点被渲染出来。
-  scrollTo(idx);
+  const listEl = getTocListElement();
+  const visibleCount = listEl
+    ? Math.max(1, Math.floor(listEl.clientHeight / TOC_ITEM_HEIGHT))
+    : 1;
+  const firstVisibleIndex = Math.max(0, idx - Math.floor(visibleCount / 2));
+
+  // 虚拟列表的 scrollTo 默认会把目标项贴到顶部；这里先滚到目标附近，
+  // 再按容器实际高度修正 scrollTop，让“阅读中”章节尽量停在列表中部。
+  scrollTo(firstVisibleIndex);
+  await nextTick();
 
   requestAnimationFrame(() => {
-    const currentEl = document.querySelector<HTMLElement>('.reader-toc__item--active');
-    currentEl?.scrollIntoView({
-      block: 'center',
-      inline: 'nearest',
-      behavior: 'smooth',
-    });
+    const currentListEl = getTocListElement();
+    if (!currentListEl) {
+      return;
+    }
+    const centeredTop = Math.max(
+      0,
+      idx * TOC_ITEM_HEIGHT - Math.max(0, currentListEl.clientHeight - TOC_ITEM_HEIGHT) / 2,
+    );
+    currentListEl.scrollTo({ top: centeredTop, behavior: 'auto' });
   });
 }
 
@@ -119,7 +138,7 @@ watch(
     if (val) {
       nextTick(() => {
         if (activeTab.value === 'toc') {
-          scrollCurrentChapterIntoView();
+          void scrollCurrentChapterIntoView();
         }
       });
     }
@@ -133,7 +152,7 @@ watch(
       return;
     }
     nextTick(() => {
-      scrollCurrentChapterIntoView();
+      void scrollCurrentChapterIntoView();
     });
   },
 );

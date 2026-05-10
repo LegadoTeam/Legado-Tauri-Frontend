@@ -91,12 +91,14 @@ let restoreCorrectionRaf = 0;
 
 const currentSectionRef = ref<HTMLDivElement | null>(null);
 const prevSectionRef = ref<HTMLDivElement | null>(null);
+const nextSectionRef = ref<HTMLDivElement | null>(null);
 const nextChapterSentinelRef = ref<HTMLDivElement | null>(null);
 const prevPages = ref<ComicPage[]>([]);
 const nextPages = ref<ComicPage[]>([]);
 
 // ── 无缝切章 ────────────────────────────────────────────────────────
-let seamlessSwapOffset = -1;
+let seamlessSwapAnchorOffset: number | null = null;
+let seamlessSwapFallbackOffset = -1;
 /** 向上无缝翻章标志：不重置 scrollTop */
 let isBackwardSeamless = false;
 /** 上一章进入事件是否已触发（每次 prevContent 变化后重置） */
@@ -107,7 +109,15 @@ let prevBoundaryFallbackFired = false;
 let nextBoundaryFallbackFired = false;
 
 function prepareSeamlessSwap(prevSectionHeight: number) {
-  seamlessSwapOffset = prevSectionHeight;
+  const el = containerRef.value;
+  const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+  if (el && typeof nextTop === 'number') {
+    seamlessSwapAnchorOffset = el.scrollTop - nextTop;
+    seamlessSwapFallbackOffset = -1;
+    return;
+  }
+  seamlessSwapAnchorOffset = null;
+  seamlessSwapFallbackOffset = prevSectionHeight;
 }
 
 function prepareSeamlessSwapBack() {
@@ -133,6 +143,11 @@ function setupSentinel() {
     (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
+          const rootEl = containerRef.value;
+          const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+          if (rootEl && typeof nextTop === 'number' && rootEl.scrollTop < nextTop - 1) {
+            return;
+          }
           teardownSentinel();
           const sectionH = currentSectionRef.value?.offsetHeight ?? 0;
           emit('nextChapterEntered', sectionH);
@@ -325,8 +340,10 @@ async function loadImages() {
 watch(
   () => [props.content, props.fileName, props.chapterUrl, comicCacheEnabled.value],
   async () => {
-    const offset = seamlessSwapOffset;
-    seamlessSwapOffset = -1;
+    const anchorOffset = seamlessSwapAnchorOffset;
+    const fallbackOffset = seamlessSwapFallbackOffset;
+    seamlessSwapAnchorOffset = null;
+    seamlessSwapFallbackOffset = -1;
     const backward = isBackwardSeamless;
     isBackwardSeamless = false;
     prevChapterEnteredFired = false;
@@ -342,10 +359,15 @@ watch(
       return;
     }
 
-    if (offset >= 0) {
-      // 向下无缝翻章：补偿 scrollTop
+    if (anchorOffset !== null || fallbackOffset >= 0) {
+      // 向下无缝翻章：恢复到进入下一章时的相对位置，避免章节高度变化导致瞬移。
       await nextTick();
-      el.scrollTop = Math.max(0, el.scrollTop - offset);
+      if (anchorOffset !== null) {
+        const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+        el.scrollTop = Math.max(0, currentTop + anchorOffset);
+      } else {
+        el.scrollTop = Math.max(0, el.scrollTop - fallbackOffset);
+      }
     } else if (backward) {
       // 向上无缝翻章：旧上一章内容现在是 current，位置不变
     } else {
@@ -404,6 +426,7 @@ function onScroll() {
   }
   const { scrollTop, scrollHeight, clientHeight } = el;
   const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
 
   // 进度按当前章节区域计算（不含上/下章预渲染部分）
   const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
@@ -432,6 +455,16 @@ function onScroll() {
       prevChapterEnteredFired = true;
       emit('prevChapterEntered');
     }
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    hasNextChapterContent.value &&
+    props.hasNext &&
+    scrollTop >= nextTop - 1
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('nextChapterEntered', currentSectionRef.value?.offsetHeight ?? 0);
   }
 
   if (
@@ -610,15 +643,87 @@ function goToPage(idx: number) {
 }
 
 function getScrollRatio(): number {
+  return getReadingScrollRatio();
+}
+
+function getReadingChapterOffset(): number {
   const el = containerRef.value;
   if (!el) {
+    return 0;
+  }
+  const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
+  if (hasPrevChapterContent.value && el.scrollTop < currentTop - 1) {
     return -1;
   }
-  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
-  const currentH = currentSectionRef.value?.offsetHeight ?? Math.max(0, el.scrollHeight - prevH);
-  const adjustedScrollTop = Math.max(0, el.scrollTop - prevH);
-  const max = Math.max(0, currentH - el.clientHeight);
+  if (hasNextChapterContent.value && el.scrollTop >= nextTop - 1) {
+    return 1;
+  }
+  return 0;
+}
+
+function getSectionRatio(section: HTMLElement | null): number {
+  const el = containerRef.value;
+  if (!el || !section) {
+    return -1;
+  }
+  const sectionTop = section.offsetTop;
+  const sectionHeight = section.offsetHeight;
+  const adjustedScrollTop = Math.max(0, el.scrollTop - sectionTop);
+  const max = Math.max(0, sectionHeight - el.clientHeight);
   return max <= 0 ? 1 : Math.min(1, Math.max(0, adjustedScrollTop / max));
+}
+
+function getReadingScrollRatio(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getSectionRatio(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getSectionRatio(nextSectionRef.value);
+  }
+  return getSectionRatio(currentSectionRef.value);
+}
+
+function getAdjacentScrollRatio(side: 'prev' | 'next'): number {
+  return side === 'prev' ? getSectionRatio(prevSectionRef.value) : getSectionRatio(nextSectionRef.value);
+}
+
+function getPageIndexWithin(section: HTMLElement | null): number {
+  const container = containerRef.value;
+  if (!container || !section) {
+    return 0;
+  }
+  const pageEls = section.querySelectorAll<HTMLElement>('.comic-mode__page');
+  if (pageEls.length === 0) {
+    return 0;
+  }
+  const containerTop = container.getBoundingClientRect().top;
+  for (let i = 0; i < pageEls.length; i++) {
+    const rect = pageEls[i]?.getBoundingClientRect();
+    if (!rect) {
+      continue;
+    }
+    if (rect.bottom > containerTop + 1) {
+      return i;
+    }
+  }
+  return Math.max(0, pageEls.length - 1);
+}
+
+function getReadingPageIndex(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getPageIndexWithin(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getPageIndexWithin(nextSectionRef.value);
+  }
+  return currentPage.value;
+}
+
+function getAdjacentPageIndex(side: 'prev' | 'next'): number {
+  return side === 'prev' ? getPageIndexWithin(prevSectionRef.value) : getPageIndexWithin(nextSectionRef.value);
 }
 
 /** 是否正在恢复阅读位置（显示 loading 遮罩期间为 true） */
@@ -750,6 +855,11 @@ defineExpose({
   restoreToScrollRatio,
   scrollToRatio,
   getScrollRatio,
+  getReadingChapterOffset,
+  getReadingScrollRatio,
+  getReadingPageIndex,
+  getAdjacentScrollRatio,
+  getAdjacentPageIndex,
   prepareSeamlessSwap,
   prepareSeamlessSwapBack,
   get currentPage() {
@@ -873,17 +983,19 @@ defineExpose({
         <!-- 哨兵元素：进入视口时触发章节切换 -->
         <div ref="nextChapterSentinelRef" class="comic-mode__sentinel" aria-hidden="true" />
         <!-- 下一章图片（直接显示，不经过内容缓存） -->
-        <div
-          v-for="(page, idx) in nextPages"
-          :key="`next-${idx}`"
-          class="comic-mode__page comic-mode__page--next"
-        >
-          <img
-            :src="page.src"
-            :alt="`下一章第 ${idx + 1} 页`"
-            class="comic-mode__img comic-mode__img--ready"
-            loading="lazy"
-          />
+        <div ref="nextSectionRef">
+          <div
+            v-for="(page, idx) in nextPages"
+            :key="`next-${idx}`"
+            class="comic-mode__page comic-mode__page--next"
+          >
+            <img
+              :src="page.src"
+              :alt="`下一章第 ${idx + 1} 页`"
+              class="comic-mode__img comic-mode__img--ready"
+              loading="lazy"
+            />
+          </div>
         </div>
       </template>
 
@@ -914,7 +1026,8 @@ defineExpose({
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #111;
+  /* 漫画背景必须固定白色，避免透明漫画在深色主题/皮肤下出现脏底。 */
+  background: #ffffff;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   /* 禁用浏览器自动滚动锚定，改为手动精确补偿 */
@@ -986,7 +1099,7 @@ defineExpose({
   height: auto;
   gap: 10px;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(17, 17, 17, 0.58), rgba(17, 17, 17, 0.72));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.92));
   font-size: 0.95rem;
   opacity: 1;
 }
@@ -1003,7 +1116,7 @@ defineExpose({
 .comic-mode__footer {
   padding: 16px 24px 28px;
   text-align: center;
-  color: var(--color-text-muted);
+  color: rgba(32, 32, 32, 0.55);
   font-size: 0.875rem;
 }
 
@@ -1016,7 +1129,7 @@ defineExpose({
   position: fixed;
   bottom: 16px;
   right: 16px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.88);
   color: #fff;
   padding: 4px 10px;
   border-radius: 12px;
@@ -1033,8 +1146,8 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: rgba(17, 17, 17, 0.88);
-  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(32, 32, 32, 0.7);
   font-size: 0.9rem;
   z-index: 30;
   pointer-events: all;
@@ -1042,20 +1155,26 @@ defineExpose({
 
 /* 章节分隔 */
 .comic-mode__chapter-sep {
-  padding: 16px 24px 0;
+  padding: 22px 24px 8px;
+  text-align: center;
 }
 
 .comic-mode__chapter-sep-line {
-  height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.25) 20%, rgba(255, 255, 255, 0.25) 80%, transparent);
-  margin-bottom: 12px;
+  width: min(180px, 46vw);
+  height: 2px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.04));
 }
 
 .comic-mode__chapter-sep-title {
   text-align: center;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 0.95rem;
-  padding-bottom: 8px;
+  color: rgba(28, 28, 28, 0.7);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0 12px 6px;
+  text-transform: uppercase;
 }
 
 /* 哨兵 */

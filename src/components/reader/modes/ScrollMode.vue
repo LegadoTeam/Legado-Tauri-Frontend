@@ -8,6 +8,11 @@
  */
 import { NSpin } from 'naive-ui';
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import {
+  decodeScrollLineAnchor,
+  encodeScrollLineAnchor,
+  type ScrollLineAnchor,
+} from '../composables/useReaderPosition';
 
 const props = defineProps<{
   content: string;
@@ -33,6 +38,8 @@ const props = defineProps<{
   tapZoneDebug?: boolean;
   /** TTS 当前高亮段落索引，-1 表示无高亮 */
   ttsHighlightIndex?: number;
+  /** 当前章节中需要高亮的书签文本列表 */
+  bookmarkTexts?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -49,6 +56,7 @@ const emit = defineEmits<{
 const scrollRef = ref<HTMLElement | null>(null);
 const prevSectionRef = ref<HTMLElement | null>(null);
 const currentSectionRef = ref<HTMLElement | null>(null);
+const nextSectionRef = ref<HTMLElement | null>(null);
 const nextChapterSentinelRef = ref<HTMLElement | null>(null);
 
 const paragraphs = ref<string[]>([]);
@@ -71,6 +79,10 @@ let prevChapterEnteredFired = false;
 let prevBoundaryFallbackFired = false;
 /** 下边界兜底翻章事件是否已触发 */
 let nextBoundaryFallbackFired = false;
+/** 打开恢复期间的行锚点；内容和相邻章节稳定后会重复应用，避免被异步预加载顶偏。 */
+let pendingRestoreAnchor: number | null = null;
+let pendingRestoreAttempts = 0;
+let restoreRunToken = 0;
 
 /**
  * 父组件在更新 content prop 之前调用此方法，传入当前章节内容区高度。
@@ -79,7 +91,7 @@ let nextBoundaryFallbackFired = false;
  */
 function prepareSeamlessSwap(prevSectionHeight: number) {
   const el = scrollRef.value;
-  const nextTop = nextChapterSentinelRef.value?.offsetTop;
+  const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
   if (el && typeof nextTop === 'number') {
     seamlessSwapAnchorOffset = el.scrollTop - nextTop;
     seamlessSwapFallbackOffset = -1;
@@ -117,6 +129,11 @@ function setupSentinel() {
     (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
+          const rootEl = scrollRef.value;
+          const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+          if (rootEl && typeof nextTop === 'number' && rootEl.scrollTop < nextTop - 1) {
+            return;
+          }
           teardownSentinel();
           const sectionH = currentSectionRef.value?.offsetHeight ?? 0;
           emit('next-chapter-entered', sectionH);
@@ -130,6 +147,64 @@ function setupSentinel() {
     },
   );
   sentinelObserver.observe(el);
+}
+
+function waitNextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function isReadingAnchorAtTop(anchor: number): boolean {
+  const lineAnchor = decodeScrollLineAnchor(anchor);
+  if (lineAnchor) {
+    return getReadingLineAnchor() === anchor;
+  }
+  return getReadingParagraphIndex() === Math.max(0, Math.floor(anchor));
+}
+
+async function applyPendingRestoreAnchor() {
+  if (pendingRestoreAnchor === null || pendingRestoreAttempts <= 0) {
+    return;
+  }
+
+  const anchor = pendingRestoreAnchor;
+  pendingRestoreAttempts -= 1;
+  await nextTick();
+  await waitNextFrame();
+  scrollToReadingAnchor(anchor);
+
+  if (pendingRestoreAttempts > 0 && pendingRestoreAnchor === anchor) {
+    void applyPendingRestoreAnchor();
+  } else if (pendingRestoreAnchor === anchor) {
+    pendingRestoreAnchor = null;
+  }
+}
+
+async function runRestoreAnchor(anchor: number, token: number): Promise<void> {
+  let stableFrames = 0;
+  for (let frame = 0; frame < 120; frame++) {
+    if (token !== restoreRunToken || pendingRestoreAnchor !== anchor) {
+      return;
+    }
+
+    await nextTick();
+    await waitNextFrame();
+    scrollToReadingAnchor(anchor);
+
+    const adjacentStable = !props.prevChapterLoading && !props.nextChapterLoading;
+    if (adjacentStable && isReadingAnchorAtTop(anchor)) {
+      stableFrames += 1;
+      if (stableFrames >= 3) {
+        break;
+      }
+    } else {
+      stableFrames = 0;
+    }
+  }
+
+  if (token === restoreRunToken && pendingRestoreAnchor === anchor) {
+    pendingRestoreAnchor = null;
+    pendingRestoreAttempts = 0;
+  }
 }
 
 // ── 内容变化处理 ────────────────────────────────────────────────────
@@ -186,6 +261,7 @@ watch(
     requestAnimationFrame(() => {
       el.style.scrollBehavior = '';
     });
+    void applyPendingRestoreAnchor();
   },
   { immediate: true },
 );
@@ -200,6 +276,7 @@ watch(
     if (val) {
       await nextTick();
       setupSentinel();
+      void applyPendingRestoreAnchor();
     }
   },
   { immediate: true },
@@ -220,14 +297,16 @@ watch(
       // （已通过 overflow-anchor:none 禁用浏览器自动锚定）
       const el = scrollRef.value;
       const savedTop = el?.scrollTop ?? 0;
+      const oldPrevH = prevSectionRef.value?.offsetHeight ?? 0;
       await nextTick();
       const prevH = prevSectionRef.value?.offsetHeight ?? 0;
       if (prevH > 0 && el) {
         el.style.scrollBehavior = 'auto';
-        el.scrollTop = savedTop + prevH;
+        el.scrollTop = Math.max(0, savedTop + prevH - oldPrevH);
         requestAnimationFrame(() => {
           el.style.scrollBehavior = '';
         });
+        void applyPendingRestoreAnchor();
       }
     }
   },
@@ -243,6 +322,30 @@ onMounted(() => {
 onBeforeUnmount(() => {
   teardownSentinel();
 });
+
+// ── 书签高亮 ───────────────────────────────────────────────────
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function highlightParagraph(text: string): string {
+  const texts = props.bookmarkTexts;
+  const escaped = escapeHtml(text);
+  if (!texts || texts.length === 0) return escaped;
+  let result = escaped;
+  for (const bmText of texts) {
+    if (!bmText.trim()) continue;
+    const escapedBm = escapeHtml(bmText);
+    result = result.split(escapedBm).join(
+      `<mark class="reader-bookmark">${escapedBm}</mark>`,
+    );
+  }
+  return result;
+}
 
 // ── 触摸事件 ────────────────────────────────────────────────────────
 let touchStartX = 0;
@@ -276,6 +379,7 @@ function onScroll() {
   }
   const { scrollTop, scrollHeight, clientHeight } = el;
   const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
 
   // 进度按当前章节区域计算（不含上/下章预渲染部分）
   const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
@@ -311,6 +415,16 @@ function onScroll() {
       prevChapterEnteredFired = true;
       emit('prev-chapter-entered');
     }
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    hasNextChapterContent.value &&
+    !!props.hasNext &&
+    scrollTop >= nextTop - 1
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('next-chapter-entered', currentSectionRef.value?.offsetHeight ?? 0);
   }
 
   if (
@@ -365,16 +479,240 @@ function scrollToRatio(ratio: number) {
   });
 }
 
+function scrollToParagraph(index: number) {
+  const el = scrollRef.value;
+  const section = currentSectionRef.value;
+  if (!el || !section) {
+    return;
+  }
+  const paras = section.querySelectorAll<HTMLElement>('.scroll-mode__para');
+  if (paras.length === 0) {
+    scrollToRatio(0);
+    return;
+  }
+  const target = paras[Math.min(Math.max(Math.floor(index), 0), paras.length - 1)];
+  if (!target) {
+    return;
+  }
+  const containerTop = el.getBoundingClientRect().top;
+  const targetTop = target.getBoundingClientRect().top;
+  el.style.scrollBehavior = 'auto';
+  el.scrollTop = Math.max(0, el.scrollTop + targetTop - containerTop);
+  requestAnimationFrame(() => {
+    el.style.scrollBehavior = '';
+  });
+}
+
+interface LineBox {
+  top: number;
+  bottom: number;
+}
+
+function getLineGroupingTolerance(para: HTMLElement): number {
+  const style = window.getComputedStyle(para);
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  return Number.isFinite(lineHeight) && lineHeight > 0 ? Math.max(2, lineHeight * 0.35) : 6;
+}
+
+function getParagraphTextHost(para: HTMLElement): HTMLElement {
+  return para.querySelector<HTMLElement>('.scroll-mode__text') ?? para;
+}
+
+function getParagraphLineBoxes(para: HTMLElement): LineBox[] {
+  const host = getParagraphTextHost(para);
+  const rects = Array.from(host.getClientRects())
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .sort((a, b) => a.top - b.top || a.left - b.left);
+
+  if (rects.length === 0) {
+    const rect = para.getBoundingClientRect();
+    return rect.height > 0 ? [{ top: rect.top, bottom: rect.bottom }] : [];
+  }
+
+  const tolerance = getLineGroupingTolerance(para);
+  const lines: LineBox[] = [];
+  for (const rect of rects) {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(rect.top - last.top) <= tolerance) {
+      last.top = Math.min(last.top, rect.top);
+      last.bottom = Math.max(last.bottom, rect.bottom);
+    } else {
+      lines.push({ top: rect.top, bottom: rect.bottom });
+    }
+  }
+  return lines;
+}
+
+function getSectionFirstVisibleLineAnchor(section: HTMLElement | null): ScrollLineAnchor {
+  const el = scrollRef.value;
+  if (!el || !section) {
+    return { paragraphIndex: 0, lineIndex: 0 };
+  }
+  const containerTop = el.getBoundingClientRect().top;
+  const paras = section.querySelectorAll<HTMLElement>('.scroll-mode__para');
+  for (let paragraphIndex = 0; paragraphIndex < paras.length; paragraphIndex++) {
+    const lines = getParagraphLineBoxes(paras[paragraphIndex]);
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      if (lines[lineIndex].bottom > containerTop + 1) {
+        return { paragraphIndex, lineIndex };
+      }
+    }
+  }
+  return {
+    paragraphIndex: Math.max(0, paras.length - 1),
+    lineIndex: 0,
+  };
+}
+
+function scrollToParagraphLine(paragraphIndex: number, lineIndex: number) {
+  const el = scrollRef.value;
+  const section = currentSectionRef.value;
+  if (!el || !section) {
+    return;
+  }
+
+  const paras = section.querySelectorAll<HTMLElement>('.scroll-mode__para');
+  if (paras.length === 0) {
+    scrollToRatio(0);
+    return;
+  }
+
+  const para = paras[Math.min(Math.max(Math.floor(paragraphIndex), 0), paras.length - 1)];
+  const lines = getParagraphLineBoxes(para);
+  const targetLineIndex = Math.min(
+    Math.max(Math.floor(lineIndex), 0),
+    Math.max(0, lines.length - 1),
+  );
+  const targetLine = lines[targetLineIndex];
+  if (!targetLine) {
+    scrollToParagraph(paragraphIndex);
+    return;
+  }
+
+  const containerTop = el.getBoundingClientRect().top;
+  el.style.scrollBehavior = 'auto';
+  el.scrollTop = Math.max(0, el.scrollTop + targetLine.top - containerTop);
+  requestAnimationFrame(() => {
+    el.style.scrollBehavior = '';
+  });
+}
+
+function scrollToReadingAnchor(anchor: number) {
+  const lineAnchor = decodeScrollLineAnchor(anchor);
+  if (lineAnchor) {
+    scrollToParagraphLine(lineAnchor.paragraphIndex, lineAnchor.lineIndex);
+    return;
+  }
+  scrollToParagraph(anchor);
+}
+
+async function restoreToReadingAnchor(anchor: number): Promise<void> {
+  const token = ++restoreRunToken;
+  pendingRestoreAnchor = anchor;
+  pendingRestoreAttempts = 120;
+  await runRestoreAnchor(anchor, token);
+}
+
 function getScrollRatio(): number {
+  return getReadingScrollRatio();
+}
+
+function getReadingChapterOffset(): number {
   const el = scrollRef.value;
   if (!el) {
+    return 0;
+  }
+  const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
+  if (showPrevChapterSurface.value && el.scrollTop < currentTop - 1) {
     return -1;
   }
-  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
-  const currentH = currentSectionRef.value?.offsetHeight ?? Math.max(0, el.scrollHeight - prevH);
-  const adjustedScrollTop = Math.max(0, el.scrollTop - prevH);
-  const max = Math.max(0, currentH - el.clientHeight);
+  if (showNextChapterSurface.value && el.scrollTop >= nextTop - 1) {
+    return 1;
+  }
+  return 0;
+}
+
+function getSectionRatio(section: HTMLElement | null): number {
+  const el = scrollRef.value;
+  if (!el || !section) {
+    return -1;
+  }
+  const sectionTop = section.offsetTop;
+  const sectionHeight = section.offsetHeight;
+  const adjustedScrollTop = Math.max(0, el.scrollTop - sectionTop);
+  const max = Math.max(0, sectionHeight - el.clientHeight);
   return max <= 0 ? 1 : Math.min(1, Math.max(0, adjustedScrollTop / max));
+}
+
+function getReadingScrollRatio(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getSectionRatio(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getSectionRatio(nextSectionRef.value);
+  }
+  return getSectionRatio(currentSectionRef.value);
+}
+
+function getAdjacentScrollRatio(side: 'prev' | 'next'): number {
+  return side === 'prev' ? getSectionRatio(prevSectionRef.value) : getSectionRatio(nextSectionRef.value);
+}
+
+function getSectionFirstVisibleParaIndex(section: HTMLElement | null): number {
+  const el = scrollRef.value;
+  if (!el || !section) {
+    return 0;
+  }
+  const containerTop = el.getBoundingClientRect().top;
+  const paras = section.querySelectorAll<HTMLElement>('.scroll-mode__para');
+  for (let i = 0; i < paras.length; i++) {
+    const rect = paras[i]?.getBoundingClientRect();
+    if (!rect) {
+      continue;
+    }
+    if (rect.bottom > containerTop + 1) {
+      return i;
+    }
+  }
+  return Math.max(0, paras.length - 1);
+}
+
+function getReadingParagraphIndex(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getSectionFirstVisibleParaIndex(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getSectionFirstVisibleParaIndex(nextSectionRef.value);
+  }
+  return getSectionFirstVisibleParaIndex(currentSectionRef.value);
+}
+
+function getReadingLineAnchor(): number {
+  const offset = getReadingChapterOffset();
+  const anchor =
+    offset < 0
+      ? getSectionFirstVisibleLineAnchor(prevSectionRef.value)
+      : offset > 0
+        ? getSectionFirstVisibleLineAnchor(nextSectionRef.value)
+        : getSectionFirstVisibleLineAnchor(currentSectionRef.value);
+  return encodeScrollLineAnchor(anchor.paragraphIndex, anchor.lineIndex);
+}
+
+function getAdjacentParagraphIndex(side: 'prev' | 'next'): number {
+  return side === 'prev'
+    ? getSectionFirstVisibleParaIndex(prevSectionRef.value)
+    : getSectionFirstVisibleParaIndex(nextSectionRef.value);
+}
+
+function getAdjacentLineAnchor(side: 'prev' | 'next'): number {
+  const anchor =
+    side === 'prev'
+      ? getSectionFirstVisibleLineAnchor(prevSectionRef.value)
+      : getSectionFirstVisibleLineAnchor(nextSectionRef.value);
+  return encodeScrollLineAnchor(anchor.paragraphIndex, anchor.lineIndex);
 }
 
 function scrollByPage(direction: 'up' | 'down'): boolean {
@@ -406,22 +744,7 @@ function pageUp(): boolean {
 }
 
 function getFirstVisibleParaIndex(): number {
-  const el = scrollRef.value;
-  if (!el) {
-    return 0;
-  }
-  const containerTop = el.getBoundingClientRect().top;
-  const paras = el.querySelectorAll<HTMLElement>('.scroll-mode__para');
-  for (let i = 0; i < paras.length; i++) {
-    const rect = paras[i]?.getBoundingClientRect();
-    if (!rect) {
-      continue;
-    }
-    if (rect.bottom > containerTop + 1) {
-      return i;
-    }
-  }
-  return 0;
+  return getSectionFirstVisibleParaIndex(currentSectionRef.value);
 }
 
 // ── Debug 辅助 ───────────────────────────────────────────────────────
@@ -442,7 +765,17 @@ const showEndScreen = computed(() => !props.hasNext && !showNextChapterSurface.v
 
 defineExpose({
   scrollToRatio,
+  scrollToParagraph,
+  scrollToReadingAnchor,
+  restoreToReadingAnchor,
   getScrollRatio,
+  getReadingChapterOffset,
+  getReadingScrollRatio,
+  getReadingLineAnchor,
+  getReadingParagraphIndex,
+  getAdjacentScrollRatio,
+  getAdjacentLineAnchor,
+  getAdjacentParagraphIndex,
   pageDown,
   pageUp,
   getFirstVisibleParaIndex,
@@ -478,7 +811,7 @@ defineExpose({
               marginBottom: `${paragraphSpacing}px`,
             }"
           >
-            {{ para }}
+            <span class="scroll-mode__text">{{ para }}</span>
           </p>
         </template>
         <div v-else class="scroll-mode__chapter-loading">
@@ -518,7 +851,7 @@ defineExpose({
             marginBottom: `${paragraphSpacing}px`,
           }"
         >
-          {{ para }}
+          <span class="scroll-mode__text" v-html="highlightParagraph(para)" />
         </p>
       </template>
     </div>
@@ -538,6 +871,7 @@ defineExpose({
 
       <!-- 下一章正文 -->
       <div
+        ref="nextSectionRef"
         class="scroll-mode__body scroll-mode__body--next"
         :class="{ 'scroll-mode__body--layout-debug': layoutDebug }"
       >
@@ -551,7 +885,7 @@ defineExpose({
               marginBottom: `${paragraphSpacing}px`,
             }"
           >
-            {{ para }}
+            <span class="scroll-mode__text">{{ para }}</span>
           </p>
         </template>
         <div v-else class="scroll-mode__chapter-loading">
@@ -679,6 +1013,15 @@ defineExpose({
   text-rendering: optimizeLegibility;
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
+}
+
+.scroll-mode__text {
+  display: inline;
+}
+
+.scroll-mode__para :deep(.reader-bookmark) {
+  background-color: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
 }
 
 .scroll-mode__para.tts-playing {

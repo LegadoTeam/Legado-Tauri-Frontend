@@ -8,7 +8,7 @@ interface ReaderNavigationControllerOptions {
   navDirection: Ref<NavDirection>;
   hasPrev: ComputedRef<boolean>;
   hasNext: ComputedRef<boolean>;
-  saveDetailedProgress: () => void;
+  saveDetailedProgress: () => Promise<void> | void;
   openChapter: (index: number, options?: OpenChapterOptions) => Promise<void>;
 }
 
@@ -17,7 +17,7 @@ export function createReaderNavigationController(options: ReaderNavigationContro
     if (!options.hasPrev.value) {
       return;
     }
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     options.navDirection.value = 'backward';
     await options.openChapter(options.activeChapterIndex.value - 1, { position: 'first' });
   }
@@ -26,7 +26,7 @@ export function createReaderNavigationController(options: ReaderNavigationContro
     if (!options.hasNext.value) {
       return;
     }
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     options.navDirection.value = 'forward';
     await options.openChapter(options.activeChapterIndex.value + 1, { position: 'first' });
   }
@@ -35,7 +35,7 @@ export function createReaderNavigationController(options: ReaderNavigationContro
     if (!options.hasPrev.value) {
       return;
     }
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     options.navDirection.value = 'backward';
     await options.openChapter(options.activeChapterIndex.value - 1, { position: 'last' });
   }
@@ -44,7 +44,7 @@ export function createReaderNavigationController(options: ReaderNavigationContro
     if (!options.hasNext.value) {
       return;
     }
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     options.navDirection.value = 'forward';
     await options.openChapter(options.activeChapterIndex.value + 1, { position: 'first' });
   }
@@ -53,7 +53,7 @@ export function createReaderNavigationController(options: ReaderNavigationContro
     if (index === options.activeChapterIndex.value) {
       return;
     }
-    options.saveDetailedProgress();
+    await options.saveDetailedProgress();
     options.navDirection.value = index < options.activeChapterIndex.value ? 'backward' : 'forward';
     await options.openChapter(index, { position: 'first' });
   }

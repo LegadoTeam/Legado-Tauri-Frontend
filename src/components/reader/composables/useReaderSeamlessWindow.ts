@@ -1,5 +1,9 @@
-import { ref, watch, type ComputedRef, type Ref } from 'vue';
+/**
+ * 维护上下/漫画三章无缝阅读窗口，并在跨章时保存真实进入章节的位置。
+ */
+import { nextTick, ref, watch, type ComputedRef, type Ref } from 'vue';
 import type { ChapterItem } from '@/stores';
+import type { ReaderPositionSnapshot } from './useReaderPosition';
 
 type LinearSeamlessMode = 'scroll' | 'comic';
 type SeamlessSide = 'prev' | 'next';
@@ -15,6 +19,10 @@ interface SeamlessChapterSlotRefs {
 interface SeamlessReaderModeRef {
   prepareSeamlessSwap?: (sectionHeight: number) => void;
   prepareSeamlessSwapBack?: () => void;
+  getAdjacentScrollRatio?: (side: SeamlessSide) => number;
+  getAdjacentPageIndex?: (side: SeamlessSide) => number;
+  getAdjacentLineAnchor?: (side: SeamlessSide) => number;
+  getAdjacentParagraphIndex?: (side: SeamlessSide) => number;
 }
 
 interface ReaderProgressPayloadLike {
@@ -49,7 +57,7 @@ interface UseReaderSeamlessWindowOptions {
     finalStage: 'reader.content.beforeRender',
     forceNetwork?: boolean,
   ) => Promise<string>;
-  saveDetailedProgress: () => void;
+  saveDetailedProgress: () => Promise<void> | void;
   openChapter: (index: number, options: { position: 'first' | 'last' }) => Promise<unknown>;
   markChapterRead: (index: number) => void;
   updateProgress: (
@@ -58,7 +66,8 @@ interface UseReaderSeamlessWindowOptions {
     chapterUrl: string,
     payload?: ReaderProgressPayloadLike,
   ) => Promise<unknown>;
-  buildProgressPayload: () => ReaderProgressPayloadLike;
+  buildProgressPayload: (snapshot?: ReaderPositionSnapshot) => ReaderProgressPayloadLike;
+  onSeamlessChapterActivated: (snapshot: ReaderPositionSnapshot) => void;
 }
 
 function createSeamlessChapterSlot(): SeamlessChapterSlotRefs {
@@ -93,6 +102,16 @@ function assignSeamlessChapterSlot(
   slot.loading.value = false;
 }
 
+function clampRatio(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : 0;
+}
+
+function normalizePageIndex(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
 export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions) {
   const prevScrollChapterSlot = createSeamlessChapterSlot();
   const nextScrollChapterSlot = createSeamlessChapterSlot();
@@ -112,6 +131,8 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
 
   let prevChapterPrefetchAbort: AbortController | null = null;
   let nextChapterPrefetchAbort: AbortController | null = null;
+  let prevChapterPrefetchTask: Promise<void> | null = null;
+  let nextChapterPrefetchTask: Promise<void> | null = null;
 
   function getLinearSeamlessMode(): LinearSeamlessMode | null {
     if (options.isComicMode.value) {
@@ -151,6 +172,8 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     nextChapterPrefetchAbort?.abort();
     prevChapterPrefetchAbort = null;
     nextChapterPrefetchAbort = null;
+    prevChapterPrefetchTask = null;
+    nextChapterPrefetchTask = null;
     clearSeamlessSlots('scroll');
     clearSeamlessSlots('comic');
   }
@@ -187,6 +210,10 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     const chapter = options.getChapter(index);
     const chapterUrl = chapter?.url ?? '';
     const title = chapter?.name ?? '';
+    slot.chapterIndex.value = index;
+    slot.chapterUrl.value = chapterUrl;
+    slot.title.value = title;
+    slot.content.value = '';
 
     try {
       const text = await options.fetchProcessedChapterText(index, 'reader.content.beforeRender');
@@ -200,9 +227,6 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
       assignSeamlessChapterSlot(slot, index, chapterUrl, text, title);
     } catch {
       if (!controller.signal.aborted && getLinearSeamlessMode() === mode) {
-        return;
-      }
-      if (!controller.signal.aborted && getLinearSeamlessMode() === mode) {
         resetSeamlessChapterSlot(slot);
       }
     } finally {
@@ -210,6 +234,61 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
       if (activeController === controller && !slot.content.value) {
         slot.loading.value = false;
       }
+      if (side === 'prev' && prevChapterPrefetchAbort === controller) {
+        prevChapterPrefetchTask = null;
+      }
+      if (side === 'next' && nextChapterPrefetchAbort === controller) {
+        nextChapterPrefetchTask = null;
+      }
+    }
+  }
+
+  function waitNextFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function isAdjacentSlotStable(slot: SeamlessChapterSlotRefs, index: number): boolean {
+    if (index < 0 || index >= options.getChapterCount()) {
+      return true;
+    }
+    if (slot.loading.value) {
+      return false;
+    }
+    return slotMatchesChapter(slot, index) || !slot.content.value;
+  }
+
+  async function waitForStableWindow(index = options.activeChapterIndex.value): Promise<void> {
+    const mode = getLinearSeamlessMode();
+    if (!options.getShow() || mode !== 'scroll') {
+      return;
+    }
+
+    await syncLinearSeamlessWindow();
+    const slots = getSeamlessModeSlots(mode);
+    const prevIndex = index - 1;
+    const nextIndex = index + 1;
+    const tasks: Promise<void>[] = [];
+    if (prevIndex >= 0 && slots.prev.loading.value && prevChapterPrefetchTask) {
+      tasks.push(prevChapterPrefetchTask);
+    }
+    if (nextIndex < options.getChapterCount() && slots.next.loading.value && nextChapterPrefetchTask) {
+      tasks.push(nextChapterPrefetchTask);
+    }
+    if (tasks.length > 0) {
+      await Promise.allSettled(tasks);
+    }
+
+    for (let frame = 0; frame < 90; frame++) {
+      if (
+        isAdjacentSlotStable(slots.prev, prevIndex) &&
+        isAdjacentSlotStable(slots.next, nextIndex)
+      ) {
+        await nextTick();
+        await waitNextFrame();
+        await waitNextFrame();
+        return;
+      }
+      await waitNextFrame();
     }
   }
 
@@ -230,31 +309,59 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     const { prev, next } = getSeamlessModeSlots(mode);
     const prevIndex = options.activeChapterIndex.value - 1;
     const nextIndex = options.activeChapterIndex.value + 1;
+    const prevMatches = slotMatchesChapter(prev, prevIndex);
+    const nextMatches = slotMatchesChapter(next, nextIndex);
 
     if (prevIndex < 0) {
       prevChapterPrefetchAbort?.abort();
       prevChapterPrefetchAbort = null;
       resetSeamlessChapterSlot(prev);
-    } else if (!slotMatchesChapter(prev, prevIndex) || !prev.content.value) {
-      if (!slotMatchesChapter(prev, prevIndex)) {
+    } else if (!prev.loading.value && (!prevMatches || !prev.content.value)) {
+      if (!prevMatches) {
         resetSeamlessChapterSlot(prev);
       }
-      void prefetchAdjacentChapterForSeamless(mode, 'prev', prevIndex);
+      prevChapterPrefetchTask = prefetchAdjacentChapterForSeamless(mode, 'prev', prevIndex);
+      void prevChapterPrefetchTask;
     }
 
     if (nextIndex >= options.getChapterCount()) {
       nextChapterPrefetchAbort?.abort();
       nextChapterPrefetchAbort = null;
       resetSeamlessChapterSlot(next);
-    } else if (!slotMatchesChapter(next, nextIndex) || !next.content.value) {
-      if (!slotMatchesChapter(next, nextIndex)) {
+    } else if (!next.loading.value && (!nextMatches || !next.content.value)) {
+      if (!nextMatches) {
         resetSeamlessChapterSlot(next);
       }
-      void prefetchAdjacentChapterForSeamless(mode, 'next', nextIndex);
+      nextChapterPrefetchTask = prefetchAdjacentChapterForSeamless(mode, 'next', nextIndex);
+      void nextChapterPrefetchTask;
     }
   }
 
-  async function syncProgressForSeamlessChapter(index: number) {
+  function captureEnteringPosition(
+    mode: LinearSeamlessMode,
+    side: SeamlessSide,
+  ): ReaderPositionSnapshot {
+    const modeRef = getModeRef(mode);
+    const chapterOffset = side === 'next' ? 1 : -1;
+    return {
+      mode,
+      chapterOffset,
+      pageIndex:
+        mode === 'scroll'
+          ? normalizePageIndex(
+              modeRef?.getAdjacentLineAnchor?.(side) ??
+                modeRef?.getAdjacentParagraphIndex?.(side),
+            )
+          : -1,
+      scrollRatio: mode === 'scroll' ? clampRatio(modeRef?.getAdjacentScrollRatio?.(side)) : -1,
+      playbackTime: -1,
+    };
+  }
+
+  async function syncProgressForSeamlessChapter(
+    index: number,
+    position: ReaderPositionSnapshot,
+  ) {
     const chapter = options.getChapter(index);
     if (chapter && options.currentShelfId.value) {
       void options
@@ -262,7 +369,7 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
           options.currentShelfId.value,
           index,
           chapter.url,
-          options.buildProgressPayload(),
+          options.buildProgressPayload(position),
         )
         .catch(() => {});
     }
@@ -279,9 +386,10 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     const enteringSlot = isForward ? slots.next : slots.prev;
     const newIndex = options.activeChapterIndex.value + (isForward ? 1 : -1);
     const newContent = enteringSlot.content.value;
+    const enteringPosition = captureEnteringPosition(mode, side);
 
     if (!newContent) {
-      options.saveDetailedProgress();
+      await options.saveDetailedProgress();
       options.navDirection.value = isForward ? 'forward' : 'backward';
       void syncLinearSeamlessWindow();
       void options.openChapter(newIndex, { position: isForward ? 'first' : 'last' });
@@ -295,7 +403,6 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
       modeRef?.prepareSeamlessSwapBack?.();
     }
 
-    options.saveDetailedProgress();
     options.navDirection.value = isForward ? 'forward' : 'backward';
 
     const oldIndex = options.activeChapterIndex.value;
@@ -314,7 +421,14 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     options.activeChapterIndex.value = newIndex;
     options.content.value = newContent;
     options.markChapterRead(newIndex);
-    await syncProgressForSeamlessChapter(newIndex);
+    options.onSeamlessChapterActivated({
+      ...enteringPosition,
+      chapterOffset: 0,
+    });
+    await syncProgressForSeamlessChapter(newIndex, {
+      ...enteringPosition,
+      chapterOffset: 0,
+    });
     void syncLinearSeamlessWindow();
   }
 
@@ -364,6 +478,7 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     nextComicChapterTitle,
     clearAllSeamlessSlots,
     syncLinearSeamlessWindow,
+    waitForStableWindow,
     onScrollNextChapterEntered,
     onScrollPrevChapterEntered,
     onComicNextChapterEntered,

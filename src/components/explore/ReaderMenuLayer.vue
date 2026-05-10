@@ -1,3 +1,6 @@
+<!--
+  阅读器菜单层，承载顶部栏、底部栏、目录、TTS 控制和换源入口。
+-->
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { Bookmark } from 'lucide-vue-next';
@@ -23,7 +26,7 @@ const {
   sourceSwitchMode,
   menuOpenTime,
 } = storeToRefs(readerUiStore);
-const { activeChapterIndex, readIndices, cachedIndices } = storeToRefs(readerSessionStore);
+const { readIndices, cachedIndices } = storeToRefs(readerSessionStore);
 const {
   addingToShelf,
   bookInfo,
@@ -37,6 +40,7 @@ const {
   hasPrev,
   isOnShelf,
   isVideoMode,
+  readingChapterIndex,
   refreshingToc,
   sourceType,
   ttsProgressText,
@@ -82,7 +86,7 @@ defineExpose({ closeSettings });
     <ReaderTopBar
       v-if="showMenu && !settingsVisible"
       :chapter-name="currentChapterName"
-      :current-index="activeChapterIndex"
+      :current-index="readingChapterIndex"
       :total-chapters="chapters.length"
       :chapter-url="currentChapterUrl"
       :source-type="sourceType"
@@ -127,7 +131,7 @@ defineExpose({ closeSettings });
       v-if="showMenu"
       ref="bottomBarRef"
       :chapters="chapters"
-      :current-index="activeChapterIndex"
+      :current-index="readingChapterIndex"
       :has-prev="hasPrev"
       :has-next="hasNext"
       :source-type="sourceType"
@@ -152,7 +156,7 @@ defineExpose({ closeSettings });
   <ReaderTocPanel
     :show="showToc"
     :chapters="chapters"
-    :current-index="activeChapterIndex"
+    :current-index="readingChapterIndex"
     :book-info="bookInfo"
     :read-indices="readIndices"
     :cached-indices="cachedIndices"
@@ -172,7 +176,7 @@ defineExpose({ closeSettings });
     :file-name="fileName"
     :source-type="sourceType"
     :chapters="chapters"
-    :active-chapter-index="activeChapterIndex"
+    :active-chapter-index="readingChapterIndex"
     :current-chapter-url="currentChapterUrl"
     :current-shelf-id="currentShelfId"
     @update:show="showSourceSwitchDialog = $event"

@@ -15,6 +15,7 @@ interface ReaderSourceSwitchMessage {
 interface ReaderSourceSwitchControllerOptions {
   currentShelfId: ComputedRef<string | undefined>;
   activeChapterIndex: Ref<number>;
+  readingChapterIndex: ComputedRef<number>;
   temporaryChapterOverrides: Ref<Record<number, TemporaryChapterSourceOverride>>;
   currentChapterOverride: ComputedRef<TemporaryChapterSourceOverride | null>;
   sourceSwitchMode: Ref<SourceSwitchMode>;
@@ -47,10 +48,10 @@ export function createReaderSourceSwitchController(options: ReaderSourceSwitchCo
       return;
     }
     const next = { ...options.temporaryChapterOverrides.value };
-    delete next[options.activeChapterIndex.value];
+    delete next[options.readingChapterIndex.value];
     options.temporaryChapterOverrides.value = next;
-    options.clearChapterRuntimeCache(options.activeChapterIndex.value);
-    await options.openChapter(options.activeChapterIndex.value, { forceNetwork: true });
+    options.clearChapterRuntimeCache(options.readingChapterIndex.value);
+    await options.openChapter(options.readingChapterIndex.value, { forceNetwork: true });
     options.message.success('已恢复当前章节的原始正文');
   }
 
@@ -68,7 +69,7 @@ export function createReaderSourceSwitchController(options: ReaderSourceSwitchCo
 
   async function handleWholeBookSourceSwitched(payload: WholeBookSwitchedPayload) {
     options.temporaryChapterOverrides.value = {};
-    options.clearChapterRuntimeCache(options.activeChapterIndex.value);
+    options.clearChapterRuntimeCache(options.readingChapterIndex.value);
     options.emitSourceSwitched(payload);
     await nextTick();
     if (!payload.sourceSwitched) {
@@ -79,7 +80,7 @@ export function createReaderSourceSwitchController(options: ReaderSourceSwitchCo
     await options.openChapter(
       payload.matchedChapterIndex >= 0
         ? payload.matchedChapterIndex
-        : options.activeChapterIndex.value,
+        : options.readingChapterIndex.value,
       { position: 'resume' },
     );
   }

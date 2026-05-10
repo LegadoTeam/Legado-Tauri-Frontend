@@ -1,3 +1,6 @@
+/**
+ * 绑定阅读弹层宿主交互、生命周期、缓存控制和窗口重排恢复。
+ */
 import { computed, nextTick, onBeforeUnmount, onMounted, watch, type ComputedRef, type Ref } from 'vue';
 import type { DialogApiInjection, MessageApiInjection } from 'naive-ui';
 import type { CachedChapter } from '@/types';
@@ -29,6 +32,9 @@ interface ReaderSettingsLike {
 
 interface ReaderModeRefLike {
   scrollToRatio?: (ratio: number) => void;
+  scrollToParagraph?: (index: number) => void;
+  scrollToReadingAnchor?: (anchor: number) => void;
+  restoreToReadingAnchor?: (anchor: number) => Promise<void>;
 }
 
 interface ReaderPagedCacheLike {
@@ -74,6 +80,8 @@ interface UseReaderModalHostOptions {
   getRefreshingToc: () => boolean | undefined;
   getBookInfo: () => ReaderBookInfo | undefined;
   getChapters: () => ChapterItem[];
+  getReadingChapterIndex: () => number;
+  getReadingChapterUrl: () => string;
   emitUpdateShow: (visible: boolean) => void;
   emitAddedToShelf: (shelfId: string) => void;
   emitRefreshToc: () => void;
@@ -197,7 +205,7 @@ interface UseReaderModalHostOptions {
   volumePagePrev: () => void;
   dumpPaginationLayoutDebug: () => void;
   prefetchChapters: (count: number) => Promise<unknown>;
-  saveDetailedProgress: () => void;
+  saveDetailedProgress: () => Promise<void> | void;
   reportReaderSession: (active: boolean) => void;
   triggerReaderProgressSync: () => Promise<unknown>;
   setupReadingConflictListener: () => void;
@@ -232,6 +240,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     refreshingToc: computed(() => options.getRefreshingToc()),
     hasPrev: options.hasPrev,
     hasNext: options.hasNext,
+    readingChapterIndex: computed(() => options.getReadingChapterIndex()),
     currentChapterName: options.currentChapterName,
     currentChapterUrl: options.currentChapterUrl,
     isVideoMode: options.isVideoMode,
@@ -315,10 +324,11 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
 
       options.localAddedShelfId.value = result.id;
 
-      const chapter = options.getChapter(options.activeChapterIndex.value);
+      const readingChapterIndex = options.getReadingChapterIndex();
+      const chapter = options.getChapter(readingChapterIndex);
       if (chapter) {
         await options
-          .updateProgress(result.id, options.activeChapterIndex.value, chapter.url, {
+          .updateProgress(result.id, readingChapterIndex, options.getReadingChapterUrl() || chapter.url, {
             ...options.buildProgressPayload(),
           })
           .catch(() => {});
@@ -335,8 +345,8 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     }
   }
 
-  function close() {
-    options.saveDetailedProgress();
+  async function close() {
+    await options.saveDetailedProgress();
     const info = options.getBookInfo();
     if (!options.isOnShelf.value && info && !options.isVideoMode.value) {
       options.dialog.create({
@@ -361,7 +371,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
   }
 
   async function closeWithBackBehavior() {
-    close();
+    await close();
     if (options.settings.backBehavior === 'desktop') {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
@@ -431,6 +441,54 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     void options.gotoNextBoundary();
   }
 
+  function isTextEditingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return (
+      target.isContentEditable ||
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT'
+    );
+  }
+
+  function handlePageTurnKey(event: KeyboardEvent): boolean {
+    if (
+      !options.getShow() ||
+      options.isVideoMode.value ||
+      options.showMenu.value ||
+      options.showToc.value ||
+      isTextEditingTarget(event.target)
+    ) {
+      return false;
+    }
+
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'd':
+      case 'D':
+        event.preventDefault();
+        options.flipNext();
+        return true;
+      case 'ArrowLeft':
+      case 'a':
+      case 'A':
+        event.preventDefault();
+        options.flipPrev();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function onPageTurnKeyDownCapture(event: KeyboardEvent) {
+    if (event.defaultPrevented) {
+      return;
+    }
+    handlePageTurnKey(event);
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     if (!options.getShow() || event.defaultPrevented) {
       return;
@@ -453,19 +511,11 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
       return;
     }
 
+    if (handlePageTurnKey(event)) {
+      return;
+    }
+
     switch (event.key) {
-      case 'ArrowRight':
-      case 'd':
-      case 'D':
-        event.preventDefault();
-        options.flipNext();
-        break;
-      case 'ArrowLeft':
-      case 'a':
-      case 'A':
-        event.preventDefault();
-        options.flipPrev();
-        break;
       case 'AudioVolumeDown':
         if (options.settings.volumeKeyPageTurnEnabled && !options.isVideoMode.value && !options.showTtsBar.value) {
           event.preventDefault();
@@ -490,6 +540,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
   } = createReaderSourceSwitchController({
     currentShelfId: options.currentShelfId,
     activeChapterIndex: options.activeChapterIndex,
+    readingChapterIndex: computed(() => options.getReadingChapterIndex()),
     temporaryChapterOverrides: options.temporaryChapterOverrides,
     currentChapterOverride: options.currentChapterOverride,
     sourceSwitchMode: options.sourceSwitchMode,
@@ -654,6 +705,20 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
         }
 
         if (options.isScrollMode.value) {
+          const anchor = options.currentPageIndex.value;
+          if (anchor >= 0) {
+            void nextTick(() => {
+              requestAnimationFrame(() => {
+                const restoreAnchor =
+                  options.scrollModeRef.value?.restoreToReadingAnchor ??
+                  options.scrollModeRef.value?.scrollToReadingAnchor ??
+                  options.scrollModeRef.value?.scrollToParagraph;
+                restoreAnchor?.(anchor);
+              });
+            });
+            return;
+          }
+
           const ratio = options.currentScrollRatio.value;
           if (ratio >= 0) {
             void nextTick(() => {
@@ -732,6 +797,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
   );
 
   onMounted(() => {
+    window.addEventListener('keydown', onPageTurnKeyDownCapture, true);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', schedulePagedRepaginate);
     window.addEventListener('orientationchange', schedulePagedRepaginate);
@@ -773,13 +839,14 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
 
   onBeforeUnmount(() => {
     syncNativeVolumeKeyPageTurn(false);
+    window.removeEventListener('keydown', onPageTurnKeyDownCapture, true);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', schedulePagedRepaginate);
     window.removeEventListener('orientationchange', schedulePagedRepaginate);
     document.removeEventListener('visibilitychange', options.onVisibilityChange);
     window.removeEventListener('beforeunload', options.onBeforeUnloadSave);
     options.stopAutoSave();
-    options.saveDetailedProgress();
+    void options.saveDetailedProgress();
     clearRepaginateWork();
     options.clearAllSeamlessSlots();
     options.readerActionsStore.clear();

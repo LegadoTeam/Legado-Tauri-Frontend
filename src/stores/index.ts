@@ -20,6 +20,8 @@ export { useReaderUiStore } from '@/features/reader/stores/readerUi';
 export { useReaderSettingsStore } from '@/features/reader/stores/readerSettings';
 export { useReaderActionsStore } from '@/features/reader/stores/readerActions';
 export { useReaderViewStore } from '@/features/reader/stores/readerView';
+export { useReaderBookmarksStore } from '@/features/reader/stores/readerBookmarks';
+export type { BookmarkEntry } from '@/features/reader/stores/readerBookmarks';
 export { useMusicPlayerStore } from './musicPlayer';
 export type { PlayerTrack, PlayerBookContext, PlayMode } from './musicPlayer';
 export type { BackHandler } from './backStack';
