@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import {
   type AddBookPayload,
   type CachedChapter,
+  type EpisodeProgress,
   type PatchShelfBookPayload,
   type ShelfBook,
   type SourceSwitchRestoreResult,
@@ -214,6 +215,29 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     return new Set(list);
   }
 
+  /** 获取全书各集播放进度 */
+  async function getEpisodeProgress(id: string): Promise<Record<string, EpisodeProgress>> {
+    return invokeWithTimeout<Record<string, EpisodeProgress>>(
+      'bookshelf_get_episode_progress',
+      { id },
+      TIMEOUT,
+    );
+  }
+
+  /** 保存单集播放进度 */
+  async function saveEpisodeProgress(
+    id: string,
+    chapterUrl: string,
+    time: number,
+    duration: number,
+  ): Promise<void> {
+    await invokeWithTimeout<void>(
+      'bookshelf_save_episode_progress',
+      { id, chapterUrl, time, duration },
+      TIMEOUT,
+    );
+  }
+
   /** 判断是否在书架中（同步，基于本地缓存） */
   function isOnShelf(bookUrl: string, fileName: string): boolean {
     return shelfIndex.value.has(`${bookUrl}|${fileName}`);
@@ -264,5 +288,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     isOnShelf,
     getShelfId,
     isPrivateShelfBook,
+    getEpisodeProgress,
+    saveEpisodeProgress,
   };
 });

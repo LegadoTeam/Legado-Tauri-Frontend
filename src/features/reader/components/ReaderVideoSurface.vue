@@ -8,6 +8,8 @@ import VideoPlayerPage from '@/components/reader/modes/VideoPlayerPage.vue';
 defineProps<{
   chapterGroups?: ChapterGroup[];
   initialGroupIndex?: number;
+  inlineGroupTabs?: boolean;
+  episodeProgress?: Record<string, { time: number; duration: number; lastPlayedAt: number }>;
 }>();
 
 const readerActionsStore = useReaderActionsStore();
@@ -48,6 +50,8 @@ defineExpose({ getCurrentTime, getDuration });
     :resume-time="pendingResumePlaybackTime"
     :chapter-groups="chapterGroups"
     :initial-group-index="initialGroupIndex"
+    :inline-group-tabs="inlineGroupTabs"
+    :episode-progress="episodeProgress"
     @close="readerActionsStore.close"
     @goto-chapter="readerActionsStore.gotoChapter"
     @prev-chapter="readerActionsStore.gotoPrevChapter"

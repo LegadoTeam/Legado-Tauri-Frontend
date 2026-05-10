@@ -52,6 +52,7 @@ export type {
   ShelfBook,
   AddBookPayload,
   CachedChapter,
+  EpisodeProgress,
   UpdateShelfBookPayload,
   PatchShelfBookPayload,
 } from '../composables/useBookshelf';

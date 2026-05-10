@@ -90,6 +90,7 @@ interface UseReaderModeBridgeOptions {
   gotoPrevChapter: () => Promise<void>;
   warnLastPage: () => void;
   warnFirstPage: () => void;
+  saveEpisodeProgress?: (shelfId: string, chapterUrl: string, time: number, duration: number) => void;
 }
 
 function onVideoEnded() {
@@ -140,7 +141,7 @@ export function useReaderModeBridge(options: UseReaderModeBridgeOptions) {
     options.currentScrollRatio.value = comicModeRef.value?.getReadingScrollRatio?.() ?? ratio;
   }
 
-  function onVideoProgress(time: number, _duration: number) {
+  function onVideoProgress(time: number, duration: number) {
     const shelfId = options.currentShelfId.value;
     if (shelfId !== undefined && shelfId !== '' && time > 0) {
       const chapter = options.getChapter(options.activeChapterIndex.value);
@@ -153,6 +154,9 @@ export function useReaderModeBridge(options: UseReaderModeBridgeOptions) {
             readerSettings: options.getSettingsJson(),
           })
           .catch(() => {});
+        if (options.saveEpisodeProgress && duration > 0) {
+          options.saveEpisodeProgress(shelfId, chapter.url, time, duration);
+        }
       }
     }
   }

@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
-import type { ChapterItem, ShelfBook } from '@/stores';
+import { computed, ref, watch } from 'vue';
+import type { ChapterItem, EpisodeProgress, ShelfBook } from '@/stores';
 import type { ChapterGroup } from '@/stores';
+import { groupChapters, useBookshelfStore } from '@/stores';
 import type { ReaderBookInfo, WholeBookSwitchedPayload } from '@/components/reader/types';
 import { cachedChaptersToChapterItems, shelfBookToReaderBookInfo } from '../utils/readerBookInfo';
 
@@ -15,9 +16,16 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
   const readerShelfId = ref('');
   const readerBookInfo = ref<ReaderBookInfo | undefined>();
   const readerSourceType = ref('novel');
-  const readerChapterGroups = ref<ChapterGroup[] | undefined>();
+  const readerChapterGroups = computed<ChapterGroup[] | undefined>(() => {
+    const groups = groupChapters(readerChapters.value);
+    return groups.length > 1 ? groups : undefined;
+  });
   const readerActiveGroupIndex = ref<number | undefined>();
   const refreshingToc = ref(false);
+  /** key = chapter URL */
+  const episodeProgressMap = ref<Record<string, EpisodeProgress>>({});
+  let _progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let _pendingProgress: { url: string; time: number; duration: number } | null = null;
 
   function setBookMeta(book: ShelfBook) {
     readerShelfId.value = book.id;
@@ -38,9 +46,9 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
     syncCurrentChapter();
   }
 
-  function setCachedChapters(chapters: { name: string; url: string }[]) {
+  function setCachedChapters(chapters: { name: string; url: string; group?: string }[]) {
     readerChapters.value = cachedChaptersToChapterItems(
-      chapters.map((chapter, index) => ({ index, name: chapter.name, url: chapter.url })),
+      chapters.map((chapter, index) => ({ index, name: chapter.name, url: chapter.url, group: chapter.group })),
     );
     syncCurrentChapter();
   }
@@ -74,6 +82,36 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
     }
   }
 
+  async function loadEpisodeProgress(id: string) {
+    try {
+      const bookshelfStore = useBookshelfStore();
+      episodeProgressMap.value = await bookshelfStore.getEpisodeProgress(id);
+    } catch {
+      episodeProgressMap.value = {};
+    }
+  }
+
+  /** 节流写盘：内存立即更新，磁盘写入最少间隔 10s */
+  function setEpisodeProgress(chapterUrl: string, time: number, duration: number) {
+    const prev = episodeProgressMap.value[chapterUrl];
+    // 已观看完的不再覆盖进度
+    if (prev && prev.duration > 0 && prev.time >= prev.duration * 0.9) return;
+    episodeProgressMap.value = {
+      ...episodeProgressMap.value,
+      [chapterUrl]: { time, duration, lastPlayedAt: Date.now() },
+    };
+    _pendingProgress = { url: chapterUrl, time, duration };
+    if (_progressSaveTimer) return;
+    _progressSaveTimer = setTimeout(() => {
+      _progressSaveTimer = null;
+      const p = _pendingProgress;
+      if (!p || !readerShelfId.value) return;
+      _pendingProgress = null;
+      const bookshelfStore = useBookshelfStore();
+      bookshelfStore.saveEpisodeProgress(readerShelfId.value, p.url, p.time, p.duration).catch(() => {});
+    }, 10_000);
+  }
+
   watch(readerCurrentIndex, syncCurrentChapter);
 
   return {
@@ -97,5 +135,8 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
     openAt,
     applySourceSwitchToReader,
     closeIfReadingShelfBook,
+    episodeProgressMap,
+    loadEpisodeProgress,
+    setEpisodeProgress,
   };
 });

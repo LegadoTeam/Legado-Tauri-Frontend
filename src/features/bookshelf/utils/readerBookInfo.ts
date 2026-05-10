@@ -19,7 +19,7 @@ export function shelfBookToReaderBookInfo(book: ShelfBook): ReaderBookInfo {
 }
 
 export function cachedChaptersToChapterItems(chapters: CachedChapter[]): ChapterItem[] {
-  return chapters.map((chapter) => ({ name: chapter.name, url: chapter.url }));
+  return chapters.map((chapter) => ({ name: chapter.name, url: chapter.url, group: chapter.group }));
 }
 
 export function chapterItemsToCachedChapters(chapters: ChapterItem[]): CachedChapter[] {
@@ -27,5 +27,6 @@ export function chapterItemsToCachedChapters(chapters: ChapterItem[]): CachedCha
     index,
     name: chapter.name,
     url: chapter.url,
+    group: chapter.group,
   }));
 }

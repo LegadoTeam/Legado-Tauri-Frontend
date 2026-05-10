@@ -26,6 +26,8 @@ const settings = controller.settings;
       :ref="controller.videoModeRef"
       :chapter-groups="chapterGroups"
       :initial-group-index="initialGroupIndex"
+      :inline-group-tabs="inlineGroupTabs"
+      :episode-progress="episodeProgress"
     />
 
     <!-- ── 小说 / 漫画模式：沉浸全屏阅读器 ── -->

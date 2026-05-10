@@ -2,9 +2,9 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ChevronLeft, Link, Keyboard, ArrowUp } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChapterItem, ChapterGroup } from '@/types';
-import { useAppConfigStore, groupChapters } from '@/stores';
+import { useAppConfigStore, groupChapters, useScriptBridgeStore } from '@/stores';
 import type { ReaderBookInfo } from '../types';
 import {
   ensureFrontendNamespaceLoaded,
@@ -14,6 +14,7 @@ import {
   setFrontendStorageItem,
 } from '../../../composables/useFrontendStorage';
 import { parseVideoSource } from '../video/types';
+import type { VideoCategoryGroup } from '../video/types';
 import VideoMode from './VideoMode.vue';
 
 const props = defineProps<{
@@ -33,6 +34,10 @@ const props = defineProps<{
   chapterGroups?: ChapterGroup[];
   /** 初始选中的线路索引 */
   initialGroupIndex?: number;
+  /** 将线路标签显示在视频下方（书架模式），而非目录侧边栏 */
+  inlineGroupTabs?: boolean;
+  /** 各集播放进度（key = chapter.url） */
+  episodeProgress?: Record<string, { time: number; duration: number; lastPlayedAt: number }>;
 }>();
 
 const emit = defineEmits<{
@@ -64,6 +69,8 @@ const videoModeRef = ref<{
 
 const _appCfg = useAppConfigStore();
 const { videoAutoNext, videoSeekStepSecs } = storeToRefs(_appCfg);
+
+const _bridge = useScriptBridgeStore();
 
 // ── 分组 & 排序状态 ──────────────────────────────────────────────────────
 
@@ -124,6 +131,11 @@ onMounted(() => {
     if (hasGroups.value) {
       restoreVpTabState();
     }
+    restoreCategories();
+    // 若有已保存的分类选择，在内容加载后自动触发覆盖请求
+    if (Object.keys(selectedCategories.value).length > 0 && props.content) {
+      void fetchWithCategories();
+    }
   });
 });
 
@@ -136,6 +148,25 @@ function onGroupTabClick(idx: number) {
 function toggleVpSort() {
   sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
   saveVpTabState();
+}
+
+/** 获取某集的播放进度信息 */
+function getEpProgress(ch: ChapterItem) {
+  return props.episodeProgress?.[ch.url];
+}
+
+/** 某集是否已看完（>=90%） */
+function isEpWatched(ch: ChapterItem): boolean {
+  const p = getEpProgress(ch);
+  return !!p && p.duration > 0 && p.time >= p.duration * 0.9;
+}
+
+/** 某集播放进度比例（0-1），已看完返回 0 */
+function epProgressRatio(ch: ChapterItem): number {
+  const p = getEpProgress(ch);
+  if (!p || p.duration <= 0 || p.time <= 0) return 0;
+  if (isEpWatched(ch)) return 0;
+  return p.time / p.duration;
 }
 
 /** 当前分组中的章节列表（含排序） */
@@ -168,13 +199,108 @@ function formatTime(ts?: number) {
 
 // ── URL 处理 ──────────────────────────────────────────────────────────────
 
+// ── 通用分类系统 ──────────────────────────────────────────────────────────
+
+/**
+ * 分类覆盖内容：用户选择分类后通过 runChapterContent(url, selectedCategories)
+ * 获取的新内容。若存在则覆盖 props.content。
+ */
+const categoryContent = ref('');
+const categoryFetching = ref(false);
+
+/** 当前用户选中的分类选项（{ [groupId]: optionId }） */
+const selectedCategories = ref<Record<string, string>>({});
+
+/** 实际展示/播放内容（分类覆盖 > 原始内容） */
+const activeContent = computed(() => categoryContent.value || props.content);
+
 /** 尝试从 content 中提取视频流 URL；视频书源的 content 返回值就是实际播放地址 */
 const videoSource = computed(() => {
-  if (!props.content.trim()) {
+  if (!activeContent.value.trim()) {
     return null;
   }
-  return parseVideoSource(props.content);
+  return parseVideoSource(activeContent.value);
 });
+
+/** 当前内容声明的分类维度列表 */
+const availableCategories = computed<VideoCategoryGroup[]>(
+  () => videoSource.value?.categories ?? [],
+);
+
+/** 分类 storage key */
+function vpCatStorageKey() {
+  const bookKey = props.bookInfo?.bookUrl || props.fileName;
+  return `vp-cat-${bookKey}`;
+}
+
+function saveCategories() {
+  setFrontendStorageItem(
+    STORAGE_NAMESPACE,
+    vpCatStorageKey(),
+    JSON.stringify(selectedCategories.value),
+  );
+}
+
+function restoreCategories() {
+  try {
+    const raw = getFrontendStorageItem(STORAGE_NAMESPACE, vpCatStorageKey());
+    if (raw) {
+      selectedCategories.value = JSON.parse(raw) as Record<string, string>;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function fetchWithCategories() {
+  const chapter = props.chapters[props.activeChapterIndex];
+  if (!chapter) return;
+  const params = selectedCategories.value;
+  if (Object.keys(params).length === 0) return;
+  categoryFetching.value = true;
+  try {
+    const raw = await _bridge.runChapterContent(
+      props.fileName,
+      chapter.url,
+      undefined,
+      params,
+    );
+    categoryContent.value = typeof raw === 'string' ? raw : String(raw ?? '');
+  } catch {
+    // 静默失败，保留旧内容
+  } finally {
+    categoryFetching.value = false;
+  }
+}
+
+async function onSelectCategoryOption(groupId: string, optionId: string) {
+  if (selectedCategories.value[groupId] === optionId) return;
+  selectedCategories.value = { ...selectedCategories.value, [groupId]: optionId };
+  saveCategories();
+  await fetchWithCategories();
+}
+
+// 换集时清除分类覆盖内容，但保留选择，然后按保存的分类重新请求
+watch(
+  () => props.activeChapterIndex,
+  () => {
+    categoryContent.value = '';
+    // 保留 selectedCategories，让 fetchWithCategories 在新集重用
+    void fetchWithCategories();
+  },
+);
+
+// watch content 变化（外部重新加载集内容时，若有分类选择则覆盖）
+watch(
+  () => props.content,
+  (newContent) => {
+    if (!newContent) return;
+    // 若当前已有分类选择且没有已覆盖的内容，触发一次覆盖请求
+    if (Object.keys(selectedCategories.value).length > 0 && !categoryContent.value) {
+      void fetchWithCategories();
+    }
+  },
+);
 
 const videoSourceUrl = computed(() => {
   const line = videoSource.value?.url ?? '';
@@ -500,7 +626,7 @@ defineExpose({ getCurrentTime, getDuration });
           <VideoMode
             v-else
             ref="videoModeRef"
-            :content="content"
+            :content="activeContent"
             :file-name="fileName"
             :book-url="bookInfo?.bookUrl ?? ''"
             :chapter-url="activeChapter?.url ?? ''"
@@ -509,6 +635,25 @@ defineExpose({ getCurrentTime, getDuration });
             @ended="handleEnded"
             @next-chapter="emit('next-chapter')"
           />
+          <!-- 分类切换中的加载遮罩 -->
+          <div v-if="categoryFetching && !loading && !error" class="vp__category-fetching">
+            <n-spin :show="true" />
+            <span>切换中…</span>
+          </div>
+        </div>
+
+        <!-- 线路标签（内嵌在视频下方，书架模式） -->
+        <div v-if="props.inlineGroupTabs && hasGroups" class="vp__player-tabs">
+          <button
+            v-for="(g, gi) in groups"
+            :key="g.name"
+            class="vp__tab-btn"
+            :class="{ 'vp__tab-btn--active': gi === activeGroupIndex }"
+            @click="onGroupTabClick(gi)"
+          >
+            {{ g.name }}
+            <span class="vp__tab-count">{{ g.chapters.length }}</span>
+          </button>
         </div>
 
         <!-- 视频信息区 -->
@@ -536,7 +681,30 @@ defineExpose({ getCurrentTime, getDuration });
         </div>
 
         <!-- 移动端选集区域（多集才显示，桌面端通过 CSS 隐藏） -->
-        <div v-if="chapters.length > 1" class="vp__strip">
+        <div v-if="chapters.length > 1 || availableCategories.length > 0" class="vp__strip">
+          <!-- 通用分类面板（移动端） -->
+          <div v-if="availableCategories.length > 0" class="vp__strip-categories">
+            <div
+              v-for="group in availableCategories"
+              :key="group.id"
+              class="vp__cat-group"
+            >
+              <div class="vp__cat-group-label">{{ group.label }}</div>
+              <div class="vp__cat-options app-scrollbar--hidden">
+                <button
+                  v-for="opt in group.options"
+                  :key="opt.id"
+                  class="vp__cat-btn"
+                  :class="{ 'vp__cat-btn--active': selectedCategories[group.id] === opt.id || (!selectedCategories[group.id] && group.defaultSelected === opt.id) }"
+                  @click="onSelectCategoryOption(group.id, opt.id)"
+                >
+                  {{ opt.label }}
+                  <span v-if="opt.badge" class="vp__cat-badge">{{ opt.badge }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-if="chapters.length > 1">
           <div class="vp__strip-header">
             <div class="vp__strip-label">
               选集
@@ -554,7 +722,7 @@ defineExpose({ getCurrentTime, getDuration });
             </n-button>
           </div>
           <!-- 分组标签 -->
-          <div v-if="hasGroups" class="vp__strip-tabs app-scrollbar--hidden">
+          <div v-if="hasGroups && !props.inlineGroupTabs" class="vp__strip-tabs app-scrollbar--hidden">
             <button
               v-for="(g, gi) in groups"
               :key="g.name"
@@ -575,13 +743,41 @@ defineExpose({ getCurrentTime, getDuration });
               @click="emit('goto-chapter', props.chapters.indexOf(ch))"
             >
               {{ ch.name }}
+              <span v-if="isEpWatched(ch)" class="vp__ep-watched">已看</span>
+              <div v-else-if="epProgressRatio(ch) > 0" class="vp__ep-bar">
+                <div class="vp__ep-bar-fill" :style="{ width: (epProgressRatio(ch) * 100) + '%' }"></div>
+              </div>
             </button>
+          </div>
           </div>
         </div>
       </div>
 
-      <!-- 桌面端右侧选集侧边栏（单集时整体隐藏） -->
-      <div v-if="chapters.length > 1" class="vp__sidebar">
+      <!-- 桌面端右侧选集侧边栏（单集且无分类时整体隐藏） -->
+      <div v-if="chapters.length > 1 || availableCategories.length > 0" class="vp__sidebar">
+        <!-- 通用分类面板（桌面端侧边栏） -->
+        <div v-if="availableCategories.length > 0" class="vp__sidebar-categories">
+          <div
+            v-for="group in availableCategories"
+            :key="group.id"
+            class="vp__cat-group"
+          >
+            <div class="vp__cat-group-label">{{ group.label }}</div>
+            <div class="vp__cat-options">
+              <button
+                v-for="opt in group.options"
+                :key="opt.id"
+                class="vp__cat-btn"
+                :class="{ 'vp__cat-btn--active': selectedCategories[group.id] === opt.id || (!selectedCategories[group.id] && group.defaultSelected === opt.id) }"
+                @click="onSelectCategoryOption(group.id, opt.id)"
+              >
+                {{ opt.label }}
+                <span v-if="opt.badge" class="vp__cat-badge">{{ opt.badge }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <template v-if="chapters.length > 1">
         <div class="vp__sidebar-header">
           <div class="vp__sidebar-heading">
             选集
@@ -598,8 +794,7 @@ defineExpose({ getCurrentTime, getDuration });
             />
           </n-button>
         </div>
-        <!-- 分组标签 -->
-        <div v-if="hasGroups" class="vp__sidebar-tabs app-scrollbar--hidden">
+        <div v-if="hasGroups && !props.inlineGroupTabs" class="vp__sidebar-tabs">
           <button
             v-for="(g, gi) in groups"
             :key="g.name"
@@ -625,9 +820,14 @@ defineExpose({ getCurrentTime, getDuration });
             <div class="vp__sidebar-meta">
               <span class="vp__sidebar-name">{{ ch.name }}</span>
               <span v-if="ch.url === activeChapter?.url" class="vp__sidebar-playing">正在播放</span>
+              <span v-else-if="isEpWatched(ch)" class="vp__sidebar-watched">已看</span>
+            </div>
+            <div v-if="!isEpWatched(ch) && epProgressRatio(ch) > 0" class="vp__sidebar-progress">
+              <div class="vp__sidebar-progress-fill" :style="{ width: (epProgressRatio(ch) * 100) + '%' }"></div>
             </div>
           </button>
         </div>
+        </template>
       </div>
     </div>
   </div>
@@ -906,6 +1106,17 @@ defineExpose({ getCurrentTime, getDuration });
   margin-top: 2px;
 }
 
+/* ── 视频下方内嵌线路标签（书架模式） ── */
+.vp__player-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
 /* ── 移动端选集区域 ── */
 .vp__strip {
   flex-shrink: 0;
@@ -951,8 +1162,12 @@ defineExpose({ getCurrentTime, getDuration });
 
 .vp__strip-btn {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   min-width: 40px;
-  height: 34px;
+  height: 40px;
   padding: 0 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -976,6 +1191,29 @@ defineExpose({ getCurrentTime, getDuration });
   border-color: var(--color-accent);
   color: #fff;
   font-weight: 700;
+}
+
+/* 集数条进度指示器 */
+.vp__ep-watched {
+  display: block;
+  font-size: 0.625rem;
+  color: var(--color-accent);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.vp__ep-bar {
+  height: 2px;
+  margin-top: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.vp__ep-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 1px;
 }
 
 /* ── 共用标签按钮（移动端 strip + 桌面端 sidebar 复用） ── */
@@ -1083,10 +1321,10 @@ defineExpose({ getCurrentTime, getDuration });
 
   .vp__sidebar-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 8px 16px;
     flex-shrink: 0;
-    overflow-x: auto;
     border-bottom: 1px solid var(--color-border);
   }
 
@@ -1099,6 +1337,7 @@ defineExpose({ getCurrentTime, getDuration });
     display: flex;
     align-items: flex-start;
     gap: 10px;
+    position: relative;
     width: 100%;
     padding: 11px 16px;
     border: none;
@@ -1172,6 +1411,27 @@ defineExpose({ getCurrentTime, getDuration });
     color: var(--color-accent);
     font-weight: 500;
   }
+
+  .vp__sidebar-watched {
+    font-size: 0.6875rem;
+    color: var(--color-text-tertiary);
+  }
+
+  .vp__sidebar-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(128, 128, 128, 0.2);
+    overflow: hidden;
+  }
+
+  .vp__sidebar-progress-fill {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 0;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1202,5 +1462,103 @@ defineExpose({ getCurrentTime, getDuration });
     padding-top: 0;
     padding-bottom: 7px;
   }
+}
+
+/* ── 通用分类系统 ── */
+.vp__category-fetching {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+/* 侧边栏分类区域 */
+.vp__sidebar-categories {
+  padding: 10px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 10px;
+}
+
+/* 移动端 strip 分类区域 */
+.vp__strip-categories {
+  padding: 10px 14px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* 分类维度通用 */
+.vp__cat-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vp__cat-group-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.vp__cat-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* 桌面端移动端共用的分类选项按钮 */
+.vp__cat-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.vp__cat-btn:hover {
+  background: var(--color-surface-raised2, var(--color-surface-raised));
+  border-color: var(--color-accent);
+}
+
+.vp__cat-btn--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.vp__cat-badge {
+  font-size: 0.65rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 1.4;
+}
+
+.vp__cat-btn--active .vp__cat-badge {
+  background: rgba(255, 255, 255, 0.25);
 }
 </style>

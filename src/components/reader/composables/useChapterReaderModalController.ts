@@ -56,6 +56,11 @@ export interface ChapterReaderModalProps {
   refreshingToc?: boolean;
   chapterGroups?: ChapterGroup[];
   initialGroupIndex?: number;
+  inlineGroupTabs?: boolean;
+  /** 各集播放进度地图（key = chapter URL） */
+  episodeProgress?: Record<string, { time: number; duration: number; lastPlayedAt: number }>;
+  /** 书架视频模式下保存单集播放进度的回调 */
+  saveEpisodeProgress?: (shelfId: string, chapterUrl: string, time: number, duration: number) => void;
 }
 
 export interface ChapterReaderModalEmit {
@@ -447,6 +452,7 @@ export function useChapterReaderModalController(
     warnFirstPage: () => {
       message.warning('已经到最前了');
     },
+    saveEpisodeProgress: props.saveEpisodeProgress,
   });
   void videoModeRef;
 

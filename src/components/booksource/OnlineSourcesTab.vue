@@ -44,6 +44,13 @@ const emits = defineEmits<{
 const message = useMessage();
 const dialog = useDialog();
 
+// 追踪当前状态消息，显示新消息前自动销毁上一条，避免消息堆积
+let statusMsg: ReturnType<typeof message.success> | null = null;
+function showStatusMsg(type: 'success' | 'info' | 'warning' | 'error', content: string) {
+  statusMsg?.destroy();
+  statusMsg = message[type](content);
+}
+
 // ---- 仓库配置 ----
 const REPO_CONFIG_SCOPE = '__app__';
 const REPO_CONFIG_KEY = 'repositories';
@@ -391,7 +398,7 @@ async function runInstalledSyncChecks(sources: RepoSourceInfo[], announce = fals
   const updated = updateAvailableCount.value;
   const failed = checkErrorCount.value;
   if (!updated && !failed) {
-    message.success(`已检查 ${targets.length} 个已安装书源，本地与服务器一致`);
+    // showStatusMsg('success', `已检查 ${targets.length} 个已安装书源，本地与服务器一致`);
     return;
   }
 
@@ -402,7 +409,7 @@ async function runInstalledSyncChecks(sources: RepoSourceInfo[], announce = fals
   if (failed) {
     summary.push(`${failed} 个检查失败`);
   }
-  message.warning(summary.join('，'));
+  showStatusMsg('warning', summary.join('，'));
 }
 
 async function refreshSingleSourceSync(src: RepoSourceInfo) {
@@ -432,10 +439,9 @@ async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCu
   }
   clearSyncStates();
   try {
-    message.success(`正在加载「${repo.name}」...`);
-    message.info('如果书源较多，加载可能需要一些时间，请耐心等待');
+    showStatusMsg('info', `正在加载「${repo.name}」，如果书源较多可能需要一些时间...`);
     const manifest = await fetchRepository(repo.url);
-    message.success(`已加载「${manifest.name}」书源列表，正在处理数据...`);
+    // showStatusMsg('success', `已加载「${manifest.name}」书源列表，正在处理数据...`);
     // 将相对路径的 downloadUrl 解析为绝对 URL，兼容仓库服务端返回相对路径的情况
     manifest.sources = manifest.sources.map((src) => {
       if (src.downloadUrl && !/^https?:\/\//i.test(src.downloadUrl)) {
@@ -454,7 +460,10 @@ async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCu
     onlineSources.value = manifest.sources;
     const installedMatches = manifest.sources.filter((src) => isInstalled(src)).length;
     if (!silentSuccess) {
-      message.success(`已加载「${manifest.name}」共 ${manifest.sources.length} 个书源`);
+      showStatusMsg('success', `已加载「${manifest.name}」共 ${manifest.sources.length} 个书源`);
+    } else {
+      statusMsg?.destroy();
+      statusMsg = null;
     }
     void runInstalledSyncChecks(manifest.sources, installedMatches > 0);
   } catch (e: unknown) {

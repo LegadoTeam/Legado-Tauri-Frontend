@@ -318,6 +318,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
           index,
           name: chapter.name,
           url: chapter.url,
+          group: chapter.group,
         }));
         await options.saveChapters(result.id, cached).catch(() => {});
       }

@@ -59,6 +59,8 @@ const {
   readerShelfId,
   readerBookInfo,
   readerSourceType,
+  readerChapterGroups,
+  episodeProgressMap,
   refreshingToc,
 } = storeToRefs(readerStore);
 const { privacyModeEnabled, privacyExitTick } = storeToRefs(privacyModeStore);
@@ -169,6 +171,10 @@ onMounted(async () => {
       :chapter-name="readerChapterName"
       :file-name="readerFileName"
       :chapters="readerChapters"
+      :chapter-groups="readerChapterGroups"
+      :inline-group-tabs="true"
+      :episode-progress="episodeProgressMap"
+      :save-episode-progress="(sid, url, t, d) => readerStore.setEpisodeProgress(url, t, d)"
       :shelf-book-id="readerShelfId"
       :book-info="readerBookInfo"
       :source-type="readerSourceType"

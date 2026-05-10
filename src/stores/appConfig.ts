@@ -92,7 +92,6 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       return config.value;
     }
     const cfg = await invokeWithTimeout<AppConfig>('app_config_get_all', undefined, TIMEOUT);
-    console.debug('[DEBUG][appConfig] loadConfig: browser_probe_force_visible=', cfg.browser_probe_force_visible, new Error().stack);
     config.value = cfg;
     ready.value = true;
     return cfg;

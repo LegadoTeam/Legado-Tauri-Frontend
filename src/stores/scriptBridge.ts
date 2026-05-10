@@ -209,12 +209,22 @@ export const useScriptBridgeStore = defineStore('scriptBridge', () => {
     }
   }
 
-  async function runChapterContent(fileName: string, chapterUrl: string, sourceDir?: string) {
+  async function runChapterContent(
+    fileName: string,
+    chapterUrl: string,
+    sourceDir?: string,
+    categoryParams?: Record<string, string>,
+  ) {
     const prefs = usePreferencesStore();
     const timeoutMs = (prefs.search.chapterContentTimeoutSecs || 35) * 1000;
     return invokeWithTimeout<unknown>(
       'booksource_chapter_content',
-      { fileName, chapterUrl, sourceDir: sourceDir ?? null },
+      {
+        fileName,
+        chapterUrl,
+        sourceDir: sourceDir ?? null,
+        categoryParams: categoryParams && Object.keys(categoryParams).length > 0 ? categoryParams : null,
+      },
       timeoutMs,
     );
   }
