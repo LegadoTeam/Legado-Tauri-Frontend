@@ -9,6 +9,7 @@ import {
   type UpdateShelfBookPayload,
 } from '@/composables/useBookshelf';
 import { invokeWithTimeout } from '@/composables/useInvoke';
+import { eventListenSync } from '@/composables/useEventBus';
 
 const TIMEOUT = 10_000;
 
@@ -230,6 +231,14 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
 
   /** 通过 ID 查找书籍 */
   const getBookById = computed(() => (id: string) => books.value.find((b) => b.id === id));
+
+  // 监听后台封面下载完成事件，原地更新内存中的 coverUrl，触发 BookCoverImg 重新渲染
+  eventListenSync<{ id: string; localRef: string }>('bookshelf:cover-cached', ({ payload }) => {
+    const book = books.value.find((b) => b.id === payload.id);
+    if (book) {
+      book.coverUrl = payload.localRef;
+    }
+  });
 
   return {
     books,

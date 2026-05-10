@@ -9,8 +9,9 @@ const props = withDefaults(
     book: BookItem;
     showCover?: boolean;
     sourceType?: string;
+    displayMode?: 'card' | 'cover' | 'list';
   }>(),
-  { showCover: true, sourceType: '' },
+  { showCover: true, sourceType: '', displayMode: 'card' },
 );
 
 defineEmits<{ (e: 'select', book: BookItem): void }>();
@@ -21,7 +22,39 @@ const metaLine = computed(() => getBookMetaLine(props.book));
 </script>
 
 <template>
+  <!-- 封面模式：垂直卡片，类似书架 -->
   <div
+    v-if="displayMode === 'cover'"
+    class="book-card book-card--cover"
+    role="button"
+    tabindex="0"
+    :aria-label="book.name || '未知书名'"
+    @click="$emit('select', book)"
+    @keydown.enter.prevent="$emit('select', book)"
+    @keydown.space.prevent="$emit('select', book)"
+  >
+    <div class="book-card__cover-full">
+      <BookCoverImg :src="book.coverUrl" :alt="book.name" :base-url="book.bookUrl" />
+    </div>
+    <div class="book-card__cover-footer">
+      <span
+        class="book-card__name"
+        :class="{ 'book-card__name--placeholder': !book.name }"
+        :title="book.name || '未知书名'"
+        >{{ book.name || '未知书名' }}</span
+      >
+      <span
+        class="book-card__author"
+        :class="{ 'book-card__author--placeholder': !book.author }"
+        :title="book.author || '佚名'"
+        >{{ book.author || '佚名' }}</span
+      >
+    </div>
+  </div>
+
+  <!-- 卡片 / 列表模式：水平卡片 -->
+  <div
+    v-else
     class="book-card"
     role="button"
     tabindex="0"
@@ -69,6 +102,44 @@ const metaLine = computed(() => getBookMetaLine(props.book));
 </template>
 
 <style scoped>
+/* ── 封面模式（垂直卡片）──────────────────────────── */
+.book-card--cover {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  .book-card--cover:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.book-card__cover-full {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.book-card__cover-footer {
+  padding: 5px 7px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* ── 卡片 / 列表模式（水平卡片）────────────────────── */
 .book-card {
   display: flex;
   gap: var(--space-2);

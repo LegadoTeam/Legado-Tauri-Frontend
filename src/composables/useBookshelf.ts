@@ -46,7 +46,7 @@ export interface ShelfBook {
 export interface UpdateShelfBookPayload {
   id: string;
   name: string;
-  author: string;
+  author?: string;
   coverUrl?: string;
   intro?: string;
   kind?: string;
@@ -101,7 +101,7 @@ export interface SourceSwitchRestoreResult {
 
 export interface AddBookPayload {
   name: string;
-  author: string;
+  author?: string;
   coverUrl?: string;
   intro?: string;
   kind?: string;

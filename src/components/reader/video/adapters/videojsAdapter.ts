@@ -138,6 +138,17 @@ export class VideojsAdapter implements IVideoPlayer {
   }
 
   destroy(): void {
+    console.debug('[VideojsAdapter] destroy start');
+    // 先强制停止音频（dispose 内部可能有异步延迟）
+    if (this.videoEl) {
+      try {
+        this.videoEl.pause();
+        this.videoEl.removeAttribute('src');
+        this.videoEl.load();
+      } catch {
+        /* ignore */
+      }
+    }
     this.hlsInstance?.destroy();
     this.hlsInstance = null;
     if (this.player) {
@@ -145,5 +156,6 @@ export class VideojsAdapter implements IVideoPlayer {
       this.player = null;
     }
     this.videoEl = null;
+    console.debug('[VideojsAdapter] destroy done');
   }
 }

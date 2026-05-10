@@ -34,6 +34,15 @@ const isPausedState = ref(true);
 let player: IVideoPlayer | null = null;
 let progressTimer: ReturnType<typeof setInterval> | null = null;
 let currentSource: VideoSource | null = null;
+/** 组件是否已开始卸载，用于防止异步 initPlayer 完成后覆盖已销毁状态 */
+let componentDestroyed = false;
+/**
+ * 初始化代次计数器。
+ * 每次调用 initPlayer 时自增；各异步阶段完成后对比当前值，
+ * 若已落后则说明有更新的调用抢先，当前调用应丢弃已创建的实例并退出，
+ * 以防止并发竞态导致多个播放器同时出声。
+ */
+let initGeneration = 0;
 
 // ── 播放器生命周期 ──────────────────────────────────────────────────────
 
@@ -41,8 +50,13 @@ async function initPlayer(content: string) {
   // 同一资源 URL 不重建播放器（避免切页重布局触发重建）
   const newSource = parseVideoSource(content);
   if (player && currentSource?.url === newSource.url) {
+    console.debug('[VideoMode] initPlayer skip: same url=%s', newSource.url);
     return;
   }
+
+  // 占用当前代次，后续所有异步检查点都必须验证代次一致
+  const myGen = ++initGeneration;
+  console.debug('[VideoMode] initPlayer start gen=%d type=%s url=%s', myGen, videoPlayerType.value, newSource.url);
 
   // 清理旧实例
   destroyPlayer();
@@ -51,15 +65,43 @@ async function initPlayer(content: string) {
   isPausedState.value = true;
 
   if (!content.trim() || !playerContainer.value) {
+    console.debug('[VideoMode] initPlayer abort gen=%d: empty content or no container', myGen);
     return;
   }
 
   try {
     currentSource = parseVideoSource(content);
 
-    player = await createVideoPlayer(videoPlayerType.value as VideoPlayerType);
+    const pendingPlayer = await createVideoPlayer(videoPlayerType.value as VideoPlayerType);
+
+    // 检查点 1：await createVideoPlayer 期间，可能组件已卸载或新的 initPlayer 已发起
+    if (componentDestroyed || myGen !== initGeneration) {
+      console.warn(
+        '[VideoMode] initPlayer discard gen=%d (destroyed=%s currentGen=%d): created player not used, destroying immediately',
+        myGen, componentDestroyed, initGeneration,
+      );
+      pendingPlayer.destroy();
+      return;
+    }
+
+    player = pendingPlayer;
+    console.debug('[VideoMode] initPlayer mounting gen=%d', myGen);
+
     // await mount 确保内部播放器实例已创建，再注册事件
-    await player.mount(playerContainer.value, currentSource);
+    await player.mount(playerContainer.value!, currentSource);
+
+    // 检查点 2：mount 也是异步的，可能在此期间组件已卸载或代次已更新
+    if (componentDestroyed || myGen !== initGeneration) {
+      console.warn(
+        '[VideoMode] initPlayer discard after mount gen=%d (destroyed=%s currentGen=%d)',
+        myGen, componentDestroyed, initGeneration,
+      );
+      player.destroy();
+      player = null;
+      return;
+    }
+
+    console.debug('[VideoMode] initPlayer ready gen=%d', myGen);
 
     // 注册事件
     player.on('play', onPlay);
@@ -73,7 +115,11 @@ async function initPlayer(content: string) {
     // 启动进度定时上报（每 15 秒）
     progressTimer = setInterval(reportProgress, 15_000);
   } catch (err) {
-    playerError.value = `播放器初始化失败: ${err instanceof Error ? err.message : String(err)}`;
+    // 若已被更新代次抢占，不覆盖新实例的错误状态
+    if (myGen === initGeneration) {
+      playerError.value = `播放器初始化失败: ${err instanceof Error ? err.message : String(err)}`;
+      console.error('[VideoMode] initPlayer error gen=%d:', myGen, err);
+    }
   }
 }
 
@@ -85,6 +131,7 @@ function destroyPlayer() {
   if (player) {
     // 上报最终进度
     reportProgress();
+    console.debug('[VideoMode] destroyPlayer: unregistering events and destroying player');
     player.off('play', onPlay);
     player.off('pause', onPause);
     player.off('loadedmetadata', onLoadedMetadata);
@@ -144,6 +191,7 @@ function onEnded() {
 
 function onError() {
   playerError.value = '视频播放出错，请检查视频源是否有效';
+  console.error('[VideoMode] player error event, source url=%s', currentSource?.url);
 }
 
 function reportProgress() {
@@ -231,7 +279,7 @@ watch(
   async (newContent) => {
     if (newContent) {
       await nextTick();
-      initPlayer(newContent);
+      void initPlayer(newContent);
     }
   },
   { immediate: true },
@@ -247,6 +295,8 @@ onMounted(() => {
 // ── 清理 ────────────────────────────────────────────────────────────────
 
 onBeforeUnmount(() => {
+  componentDestroyed = true;
+  console.debug('[VideoMode] onBeforeUnmount: destroying player');
   destroyPlayer();
 });
 </script>

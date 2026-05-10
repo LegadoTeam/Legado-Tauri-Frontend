@@ -13,6 +13,7 @@ import {
   legacyLocalStorageRemove,
   setFrontendStorageItem,
 } from '../../../composables/useFrontendStorage';
+import { parseVideoSource } from '../video/types';
 import VideoMode from './VideoMode.vue';
 
 const props = defineProps<{
@@ -151,18 +152,32 @@ const displayEpisodes = computed(() => {
 
 const activeChapter = computed(() => props.chapters[props.activeChapterIndex]);
 
-// ── URL 处理 ──────────────────────────────────────────────────────────────
+const videoTitle = computed(() => props.bookInfo?.name || activeChapter.value?.name || '视频播放');
+const sourceName = computed(
+  () => props.bookInfo?.sourceName || props.bookInfo?.fileName || props.fileName || '未知书源',
+);
+const pageUrl = computed(() => activeChapter.value?.url || '');
 
-/** 尝试从 content 中提取视频流 URL（取首个非空行） */
-const videoSourceUrl = computed(() => {
-  if (!props.content) {
+function formatTime(ts?: number) {
+  if (!ts) {
     return '';
   }
-  const line =
-    props.content
-      .split('\n')
-      .map((s) => s.trim())
-      .find((s) => s.length > 0) ?? '';
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// ── URL 处理 ──────────────────────────────────────────────────────────────
+
+/** 尝试从 content 中提取视频流 URL；视频书源的 content 返回值就是实际播放地址 */
+const videoSource = computed(() => {
+  if (!props.content.trim()) {
+    return null;
+  }
+  return parseVideoSource(props.content);
+});
+
+const videoSourceUrl = computed(() => {
+  const line = videoSource.value?.url ?? '';
   try {
     const url = new URL(line);
     return url.toString();
@@ -181,8 +196,63 @@ const videoSourceUrlShort = computed(() => {
   return stripped.length > 72 ? stripped.slice(0, 72) + '…' : stripped;
 });
 
-async function openSourceUrl() {
-  const url = videoSourceUrl.value;
+type DetailRow = { label: string; value: string; isUrl?: boolean };
+
+function pushRow(rows: DetailRow[], label: string, value: unknown, isUrl = false) {
+  if (value === undefined || value === null || value === '') {
+    return;
+  }
+  rows.push({ label, value: String(value), isUrl });
+}
+
+const detailRows = computed<DetailRow[]>(() => {
+  const b = props.bookInfo;
+  const rows: DetailRow[] = [];
+  pushRow(rows, '实际播放地址', videoSourceUrl.value, true);
+  pushRow(rows, '页面所在地址', pageUrl.value, true);
+  pushRow(rows, '当前选集', activeChapter.value?.name);
+  pushRow(
+    rows,
+    '选集序号',
+    props.chapters.length ? `${props.activeChapterIndex + 1}/${props.chapters.length}` : '',
+  );
+  pushRow(rows, '视频标题', b?.name);
+  pushRow(rows, '作者', b?.author);
+  pushRow(rows, '书源名字', b?.sourceName);
+  pushRow(rows, '书源文件', b?.fileName || props.fileName);
+  pushRow(rows, '作品地址', b?.bookUrl, true);
+  pushRow(rows, '分类标签', b?.kind);
+  pushRow(rows, '状态', b?.status);
+  pushRow(rows, '最新章节', b?.lastChapter || b?.latestChapter);
+  pushRow(rows, '最新章节地址', b?.latestChapterUrl, true);
+  pushRow(rows, '字数', b?.wordCount);
+  pushRow(rows, '详情章节数', b?.chapterCount ? `${b.chapterCount} 章` : '');
+  pushRow(rows, '目录章节数', b?.totalChapters ? `${b.totalChapters} 章` : '');
+  pushRow(rows, '更新时间', b?.updateTime);
+  pushRow(rows, '加入时间', formatTime(b?.addedAt));
+  pushRow(rows, '最后阅读', formatTime(b?.lastReadAt));
+  pushRow(rows, '播放流类型', videoSource.value?.type);
+  pushRow(
+    rows,
+    '清晰度数量',
+    videoSource.value?.qualities?.length ? `${videoSource.value.qualities.length} 个` : '',
+  );
+  pushRow(
+    rows,
+    '字幕数量',
+    videoSource.value?.subtitles?.length ? `${videoSource.value.subtitles.length} 个` : '',
+  );
+  pushRow(
+    rows,
+    '请求头',
+    videoSource.value?.headers && Object.keys(videoSource.value.headers).length
+      ? JSON.stringify(videoSource.value.headers)
+      : '',
+  );
+  return rows;
+});
+
+async function openExternalUrl(url: string) {
   if (!url) {
     return;
   }
@@ -338,21 +408,7 @@ defineExpose({ getCurrentTime, getDuration });
         </template>
       </n-button>
       <div class="vp__topbar-titles">
-        <span class="vp__topbar-book">{{ bookInfo?.name ?? '视频播放' }}</span>
-        <span v-if="activeChapter" class="vp__topbar-ep">{{ activeChapter.name }}</span>
-        <!-- 视频来源 URL -->
-        <n-tooltip v-if="videoSourceUrl" placement="bottom" :delay="600">
-          <template #trigger>
-            <span class="vp__topbar-url" @click="openSourceUrl">
-              <Link :size="10" :stroke-width="2.5" class="vp__topbar-url-icon" />
-              {{ videoSourceUrlShort }}
-            </span>
-          </template>
-          <div style="max-width: 420px; word-break: break-all; font-size: 0.8rem">
-            {{ videoSourceUrl }}<br />
-            <span style="opacity: 0.6">点击在浏览器中打开</span>
-          </div>
-        </n-tooltip>
+        <span class="vp__topbar-source" :title="sourceName">{{ sourceName }}</span>
       </div>
 
       <!-- 快捷键说明 -->
@@ -367,42 +423,42 @@ defineExpose({ getCurrentTime, getDuration });
         <div class="vp__hotkey-tip">
           <table>
             <tbody>
-            <tr>
-              <td><kbd>Space</kbd> / <kbd>K</kbd></td>
-              <td>播放 / 暂停</td>
-            </tr>
-            <tr>
-              <td><kbd>←</kbd> / <kbd>J</kbd></td>
-              <td>快退</td>
-            </tr>
-            <tr>
-              <td><kbd>→</kbd> / <kbd>L</kbd></td>
-              <td>快进</td>
-            </tr>
-            <tr>
-              <td><kbd>Shift</kbd>+<kbd>←</kbd></td>
-              <td>上一集</td>
-            </tr>
-            <tr>
-              <td><kbd>Shift</kbd>+<kbd>→</kbd></td>
-              <td>下一集</td>
-            </tr>
-            <tr>
-              <td><kbd>F</kbd></td>
-              <td>切换全屏</td>
-            </tr>
-            <tr>
-              <td><kbd>M</kbd></td>
-              <td>静音切换</td>
-            </tr>
-            <tr>
-              <td><kbd>↑</kbd> / <kbd>↓</kbd></td>
-              <td>音量调节</td>
-            </tr>
-            <tr>
-              <td><kbd>Esc</kbd></td>
-              <td>退出全屏 / 关闭</td>
-            </tr>
+              <tr>
+                <td><kbd>Space</kbd> / <kbd>K</kbd></td>
+                <td>播放 / 暂停</td>
+              </tr>
+              <tr>
+                <td><kbd>←</kbd> / <kbd>J</kbd></td>
+                <td>快退</td>
+              </tr>
+              <tr>
+                <td><kbd>→</kbd> / <kbd>L</kbd></td>
+                <td>快进</td>
+              </tr>
+              <tr>
+                <td><kbd>Shift</kbd>+<kbd>←</kbd></td>
+                <td>上一集</td>
+              </tr>
+              <tr>
+                <td><kbd>Shift</kbd>+<kbd>→</kbd></td>
+                <td>下一集</td>
+              </tr>
+              <tr>
+                <td><kbd>F</kbd></td>
+                <td>切换全屏</td>
+              </tr>
+              <tr>
+                <td><kbd>M</kbd></td>
+                <td>静音切换</td>
+              </tr>
+              <tr>
+                <td><kbd>↑</kbd> / <kbd>↓</kbd></td>
+                <td>音量调节</td>
+              </tr>
+              <tr>
+                <td><kbd>Esc</kbd></td>
+                <td>退出全屏 / 关闭</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -413,6 +469,21 @@ defineExpose({ getCurrentTime, getDuration });
     <div class="vp__body">
       <!-- 左 / 主列 -->
       <div class="vp__main">
+        <div class="vp__content-titlebar">
+          <div class="vp__info-heading">
+            <div class="vp__info-title" :title="videoTitle">{{ videoTitle }}</div>
+            <div class="vp__info-meta">
+              <span v-if="bookInfo?.author" class="vp__info-author">{{ bookInfo.author }}</span>
+              <span v-if="bookInfo?.kind" class="vp__info-pill">{{ bookInfo.kind }}</span>
+              <span v-if="bookInfo?.status" class="vp__info-pill">{{ bookInfo.status }}</span>
+              <span class="vp__info-pill">{{ sourceName }}</span>
+            </div>
+          </div>
+          <div v-if="activeChapter" class="vp__info-episode" :title="activeChapter.name">
+            {{ activeChapter.name }}
+          </div>
+        </div>
+
         <!-- 播放器容器（固定 16:9） -->
         <div class="vp__player-wrap">
           <div v-if="loading" class="vp__player-placeholder">
@@ -442,31 +513,26 @@ defineExpose({ getCurrentTime, getDuration });
 
         <!-- 视频信息区 -->
         <div class="vp__info">
-          <div class="vp__info-chapter">{{ activeChapter?.name }}</div>
-          <div class="vp__info-meta">
-            <span class="vp__info-book">{{ bookInfo?.name }}</span>
-            <template v-if="bookInfo?.author">
-              <span class="vp__info-sep">·</span>
-              <span class="vp__info-author">{{ bookInfo.author }}</span>
-            </template>
-          </div>
-          <!-- 来源 URL 行 -->
-          <div v-if="videoSourceUrl" class="vp__info-url">
-            <Link :size="11" :stroke-width="2.5" class="vp__info-url-icon" />
-            <n-tooltip placement="top" :delay="500">
-              <template #trigger>
-                <span class="vp__info-url-text" @click="openSourceUrl">{{
-                  videoSourceUrlShort
-                }}</span>
-              </template>
-              <span style="word-break: break-all; font-size: 0.8rem"
-                >{{ videoSourceUrl }}<br /><span style="opacity: 0.6"
-                  >点击在浏览器中打开</span
-                ></span
-              >
-            </n-tooltip>
-          </div>
           <p v-if="bookInfo?.intro" class="vp__info-intro">{{ bookInfo.intro }}</p>
+
+          <div class="vp__detail-list">
+            <div v-for="row in detailRows" :key="row.label" class="vp__detail-row">
+              <span class="vp__detail-label">{{ row.label }}</span>
+              <a
+                v-if="row.isUrl"
+                class="vp__detail-value vp__detail-link"
+                href="#"
+                :title="row.value"
+                @click.prevent="openExternalUrl(row.value)"
+              >
+                <Link :size="12" :stroke-width="2.3" class="vp__detail-icon" />
+                <span>{{
+                  row.label === '实际播放地址' ? videoSourceUrlShort || row.value : row.value
+                }}</span>
+              </a>
+              <span v-else class="vp__detail-value" :title="row.value">{{ row.value }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- 移动端选集区域（多集才显示，桌面端通过 CSS 隐藏） -->
@@ -601,6 +667,7 @@ defineExpose({ getCurrentTime, getDuration });
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1px;
 }
 
@@ -614,40 +681,14 @@ defineExpose({ getCurrentTime, getDuration });
   line-height: 1.3;
 }
 
-.vp__topbar-ep {
-  font-size: 0.73rem;
-  color: var(--color-text-muted);
+.vp__topbar-source {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.25;
-}
-
-/* 顶栏来源 URL */
-.vp__topbar-url {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.65rem;
-  color: var(--color-text-muted);
-  opacity: 0.65;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-  line-height: 1.2;
-  transition: opacity var(--transition-fast);
-  font-family: 'Consolas', 'Menlo', monospace;
-}
-
-.vp__topbar-url:hover {
-  opacity: 1;
-  color: var(--color-accent);
-}
-
-.vp__topbar-url-icon {
-  flex-shrink: 0;
-  opacity: 0.7;
+  line-height: 1.3;
 }
 
 .vp__hotkey-btn {
@@ -702,6 +743,17 @@ defineExpose({ getCurrentTime, getDuration });
   overflow-y: auto;
 }
 
+.vp__content-titlebar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  background: var(--color-surface);
+}
+
 /* ── 播放器容器（保持 16:9） ── */
 .vp__player-wrap {
   width: 100%;
@@ -729,76 +781,129 @@ defineExpose({ getCurrentTime, getDuration });
 
 /* ── 信息区 ── */
 .vp__info {
-  padding: 14px 16px 12px;
+  padding: 14px 16px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-.vp__info-chapter {
-  font-size: 1.0625rem;
+.vp__info-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.vp__info-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.vp__info-title {
+  font-size: 1.125rem;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 0 0 6px;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vp__info-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   font-size: 0.8125rem;
   color: var(--color-text-muted);
-  margin-bottom: 6px;
 }
 
-.vp__info-sep {
-  opacity: 0.4;
+.vp__info-author {
+  color: var(--color-text-secondary, var(--color-text-muted));
 }
 
-/* 信息区来源 URL */
-.vp__info-url {
-  display: flex;
+.vp__info-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 8px;
+  min-height: 22px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--color-surface-raised);
   color: var(--color-text-muted);
-  font-size: 0.78rem;
-}
-
-.vp__info-url-icon {
-  flex-shrink: 0;
-  opacity: 0.5;
-}
-
-.vp__info-url-text {
-  font-family: 'Consolas', 'Menlo', monospace;
   font-size: 0.75rem;
-  opacity: 0.7;
+  line-height: 1.3;
+}
+
+.vp__info-episode {
+  flex-shrink: 0;
+  max-width: min(34vw, 260px);
+  padding-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
-  transition:
-    opacity var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.vp__info-url-text:hover {
-  opacity: 1;
-  color: var(--color-accent);
 }
 
 .vp__info-intro {
-  margin: 0;
+  margin: 10px 0 0;
   font-size: 0.8125rem;
   color: var(--color-text-secondary, var(--color-text-muted));
   line-height: 1.65;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.vp__detail-list {
+  display: grid;
+  grid-template-columns: minmax(92px, 128px) minmax(0, 1fr);
+  gap: 1px 12px;
+  margin-top: 14px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+
+.vp__detail-row {
+  display: contents;
+}
+
+.vp__detail-label,
+.vp__detail-value {
+  min-width: 0;
+  padding: 5px 0;
+  font-size: 0.765rem;
+  line-height: 1.45;
+}
+
+.vp__detail-label {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.vp__detail-value {
+  color: var(--color-text-secondary, var(--color-text-primary));
+  word-break: break-all;
+}
+
+.vp__detail-link {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.vp__detail-link:hover {
+  text-decoration: underline;
+}
+
+.vp__detail-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* ── 移动端选集区域 ── */
@@ -967,7 +1072,7 @@ defineExpose({ getCurrentTime, getDuration });
     font-size: 0.875rem;
     font-weight: 700;
     color: var(--color-text-primary);
-    letter-spacing: 0.01em;
+    letter-spacing: 0;
   }
 
   .vp__sidebar-count {
@@ -1066,6 +1171,36 @@ defineExpose({ getCurrentTime, getDuration });
     font-size: 0.6875rem;
     color: var(--color-accent);
     font-weight: 500;
+  }
+}
+
+@media (max-width: 520px) {
+  .vp__content-titlebar {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .vp__info-title {
+    white-space: normal;
+  }
+
+  .vp__info-episode {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .vp__detail-list {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .vp__detail-label {
+    padding-bottom: 1px;
+  }
+
+  .vp__detail-value {
+    padding-top: 0;
+    padding-bottom: 7px;
   }
 }
 </style>

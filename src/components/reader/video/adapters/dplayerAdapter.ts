@@ -10,6 +10,8 @@ import { useAppConfig } from '../../../../composables/useAppConfig';
 export class DplayerAdapter implements IVideoPlayer {
   private player: import('dplayer').default | null = null;
   private container: HTMLElement | null = null;
+  /** customHls 回调中创建的 hls.js 实例列表（DPlayer 不负责销毁它们，必须手动管理） */
+  private hlsInstances: import('hls.js').default[] = [];
 
   async mount(container: HTMLElement, source: VideoSource): Promise<void> {
     this.container = container;
@@ -59,6 +61,8 @@ export class DplayerAdapter implements IVideoPlayer {
                   }
                 : undefined,
             });
+            // 保存引用，确保 destroy() 能正确回收（DPlayer 不会销毁 customHls 实例）
+            this.hlsInstances.push(hls);
             hls.loadSource(video.src);
             hls.attachMedia(video);
           },
@@ -143,9 +147,29 @@ export class DplayerAdapter implements IVideoPlayer {
 
   destroy(): void {
     if (this.player) {
+      // 先强制停止音频，防止 DPlayer.destroy() 异步释放期间仍有声音
+      const videoEl = this.player.video;
+      if (videoEl) {
+        try {
+          videoEl.pause();
+          videoEl.removeAttribute('src');
+          videoEl.load();
+        } catch {
+          /* ignore */
+        }
+      }
       this.player.destroy();
       this.player = null;
     }
+    // 销毁 customHls 创建的 HLS 实例（DPlayer 不负责销毁它们，官方文档确认需手动处理）
+    for (const hls of this.hlsInstances) {
+      try {
+        hls.stopLoad();
+        hls.detachMedia();
+        hls.destroy();
+      } catch { /* ignore */ }
+    }
+    this.hlsInstances = [];
     this.container = null;
   }
 }

@@ -27,7 +27,7 @@ const DEFAULT_CONFIG: AppConfig = {
   ui_enable_eruda: false,
   windows_main_window_width: 0,
   windows_main_window_height: 0,
-  video_player_type: 'videojs',
+  video_player_type: 'xgplayer',
   video_default_rate: 1.0,
   video_auto_next: true,
   video_quality_prefer: 'auto',
@@ -38,7 +38,7 @@ const DEFAULT_CONFIG: AppConfig = {
   video_xg_download: false,
   video_dp_danmaku: false,
   video_dp_theme: '#00b1ff',
-  video_autoplay: false,
+  video_autoplay: true,
   web_server_enabled: false,
   web_server_port: 7688,
   web_server_dist_path: '',
@@ -92,6 +92,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       return config.value;
     }
     const cfg = await invokeWithTimeout<AppConfig>('app_config_get_all', undefined, TIMEOUT);
+    console.debug('[DEBUG][appConfig] loadConfig: browser_probe_force_visible=', cfg.browser_probe_force_visible, new Error().stack);
     config.value = cfg;
     ready.value = true;
     return cfg;

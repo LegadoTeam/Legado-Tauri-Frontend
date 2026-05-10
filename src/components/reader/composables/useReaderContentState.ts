@@ -103,18 +103,20 @@ export function useReaderContentState(options: UseReaderContentStateOptions) {
     }
     const chapterOverride = options.temporaryChapterOverrides.value[index];
 
-    if (forceNetwork) {
+    const isVideo = readSource(options.sourceType) === 'video';
+
+    if (forceNetwork || isVideo) {
       rawChapterTextCache.delete(index);
       rawChapterTextRequests.delete(index);
     }
 
     const cached = rawChapterTextCache.get(index);
-    if (!forceNetwork && cached !== undefined) {
+    if (!forceNetwork && !isVideo && cached !== undefined) {
       return cached;
     }
 
     const inflight = rawChapterTextRequests.get(index);
-    if (!forceNetwork && inflight) {
+    if (!forceNetwork && !isVideo && inflight) {
       return inflight;
     }
 
@@ -126,7 +128,8 @@ export function useReaderContentState(options: UseReaderContentStateOptions) {
         text = typeof raw === 'string' ? raw : String(raw ?? '');
       }
 
-      if (!text && !forceNetwork && options.currentShelfId.value) {
+      // 视频类型跳过磁盘缓存读取：m3u8 URL 有时效性，不能复用
+      if (!text && !forceNetwork && !isVideo && options.currentShelfId.value) {
         try {
           const shelfText = await options.getContent(options.currentShelfId.value, index);
           text = typeof shelfText === 'string' ? shelfText : null;
@@ -141,15 +144,19 @@ export function useReaderContentState(options: UseReaderContentStateOptions) {
       if (!text) {
         const raw = await options.runChapterContent(readSource(options.fileName), chapter.url);
         text = typeof raw === 'string' ? raw : String(raw ?? '');
-        if (options.currentShelfId.value && text) {
+        // 视频类型不写入磁盘缓存：m3u8 URL 有时效性
+        if (!isVideo && options.currentShelfId.value && text) {
           void options.saveContent(options.currentShelfId.value, index, text).catch(() => {});
         }
       }
 
       const nextText = text ?? '';
-      rawChapterTextCache.set(index, nextText);
+      // 视频类型不写入内存缓存
+      if (!isVideo) {
+        rawChapterTextCache.set(index, nextText);
+      }
 
-      if (options.currentShelfId.value && nextText) {
+      if (!isVideo && options.currentShelfId.value && nextText) {
         options.cachedIndices.value.add(index);
       }
 
