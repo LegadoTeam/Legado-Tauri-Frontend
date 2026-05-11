@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutGrid, EyeOff, Eye } from 'lucide-vue-next';
+import { LayoutGrid, EyeOff, Eye, FolderInput } from 'lucide-vue-next';
 import type { CardSizeKey } from '@/composables/useViewCardDensity';
 
 defineProps<{
@@ -13,6 +13,7 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'set-size', key: CardSizeKey): void;
   (e: 'toggle-privacy'): void;
+  (e: 'import-txt'): void;
 }>();
 </script>
 
@@ -26,6 +27,15 @@ const emit = defineEmits<{
         </p>
       </div>
       <div class="bs-header__actions">
+        <button
+          class="bs-icon-btn"
+          type="button"
+          title="导入本地 TXT"
+          aria-label="导入本地 TXT"
+          @click="emit('import-txt')"
+        >
+          <FolderInput :size="16" />
+        </button>
         <n-dropdown
           trigger="click"
           :options="cardSizes.map((size) => ({ label: size.label, key: size.key }))"

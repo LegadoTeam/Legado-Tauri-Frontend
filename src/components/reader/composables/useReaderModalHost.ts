@@ -232,7 +232,10 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
   let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let unlistenPluginToast: (() => void) | null = null;
 
-  options.readerViewStore.bind({
+  // 将 bindings 对象保存为局部变量，以便在 show 变为 true 时重新绑定。
+  // 多个 ChapterReaderModal 实例（书架视图 + 发现视图）同时挂载时共享同一个
+  // readerViewStore 单例，每次有弹层打开时需要重新抢占绑定权。
+  const viewStoreBindings = {
     chapters: computed(() => options.getChapters()),
     bookInfo: computed(() => options.getBookInfo()),
     sourceType: computed(() => options.getSourceType()),
@@ -270,7 +273,8 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     nextComicChapterContent: options.nextComicChapterContent,
     nextComicChapterTitle: options.nextComicChapterTitle,
     contentRefs: options.contentRefs,
-  });
+  };
+  options.readerViewStore.bind(viewStoreBindings);
 
   const nativeVolumeKeyPageTurnEnabled = computed(
     () =>
@@ -794,7 +798,14 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
 
   watch(
     () => options.getShow(),
-    (visible) => readerLifecycle.handleVisibilityChange(visible),
+    (visible) => {
+      // 多个 ChapterReaderModal 同时挂载时，只有当前显示的那个拥有 readerViewStore 绑定权。
+      // 每次 show 变为 true 时重新抢占，防止其他视图的弹层在挂载时覆盖本实例的绑定。
+      if (visible) {
+        options.readerViewStore.bind(viewStoreBindings);
+      }
+      readerLifecycle.handleVisibilityChange(visible);
+    },
   );
 
   onMounted(() => {

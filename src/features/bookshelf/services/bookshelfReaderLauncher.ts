@@ -6,6 +6,7 @@ import {
   type ChapterItem,
   type ShelfBook,
 } from '@/stores';
+import { LOCAL_TXT_FILE_NAME } from '@/stores/bookshelf';
 import { useTocAutoUpdate } from '@/composables/useTocAutoUpdate';
 import { useBookshelfReaderStore } from '../stores/bookshelfReader';
 import { useBookshelfUiStore } from '../stores/bookshelfUi';
@@ -32,6 +33,11 @@ export function useBookshelfReaderLauncher(message: MessageApi) {
     readerStore.loadEpisodeProgress(book.id).catch(() => {});
 
     if (!readerStore.readerChapters.length) {
+      // 本地 TXT 书籍没有书源，章节列表丢失时直接提示重新导入
+      if (book.fileName === LOCAL_TXT_FILE_NAME) {
+        message.error('本地书籍章节记录已丢失，请重新导入 TXT 文件');
+        return;
+      }
       if (!book.bookUrl || !book.fileName) {
         message.warning('无法获取书籍地址，请从发现页重新打开');
         return;

@@ -47,6 +47,7 @@ const {
   showBookDetailDialog,
   bookDetailBook,
   bookDetailMode,
+  showTxtImportDialog,
 } = storeToRefs(uiStore);
 const { filteredBooks, menuOptions } = storeToRefs(uiStore);
 const {
@@ -142,6 +143,7 @@ onMounted(async () => {
       :active-size-label="activeSize.label"
       @set-size="(key: CardSizeKey) => setSize(key)"
       @toggle-privacy="togglePrivacyMode"
+      @import-txt="uiStore.showTxtImportDialog = true"
     />
 
     <BookshelfToolbar v-model:search-kw="searchKw" :show="!!books.length" />
@@ -188,6 +190,7 @@ onMounted(async () => {
       v-model:show-cover-generator-dialog="showCoverGeneratorDialog"
       v-model:show-export-dialog="showExportDialog"
       v-model:show-book-detail-dialog="showBookDetailDialog"
+      v-model:show-txt-import-dialog="showTxtImportDialog"
       :switch-target-book="switchTargetBook"
       :switch-target-chapters="switchTargetChapters"
       :cover-generator-book="coverGeneratorBook"
@@ -198,6 +201,7 @@ onMounted(async () => {
       @whole-book-switched="bookshelfActions.handleWholeBookSwitched"
       @cover-applied="readerLauncher.syncOpenReaderBookInfo"
       @book-detail-saved="readerLauncher.syncOpenReaderBookInfo"
+      @txt-imported="bookshelfActions.handleTxtImported"
     />
   </div>
 </template>

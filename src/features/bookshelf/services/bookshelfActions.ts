@@ -161,11 +161,26 @@ export function useBookshelfActions(message: MessageApi) {
       : uiStore.switchTargetChapters;
   }
 
+  async function handleTxtImported(payload: {
+    title: string;
+    author: string;
+    chapters: Array<{ title: string; content: string }>;
+    preface: string;
+  }) {
+    try {
+      await bookshelfStore.importLocalTxt(payload);
+      message.success(`《${payload.title}》已导入书架，共 ${payload.chapters.length} 章`);
+    } catch (error: unknown) {
+      message.error(`导入失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   return {
     handleMenuSelect,
     handleReaderSourceSwitched,
     handleWholeBookSwitched,
     currentChaptersForSwitch,
     syncOpenReaderBookInfo,
+    handleTxtImported,
   };
 }

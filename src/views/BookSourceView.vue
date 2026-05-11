@@ -4,7 +4,6 @@ import { useMessage } from 'naive-ui';
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import type {
-  BookSourceSiteTabInstance,
   DebugSourceTabInstance,
   InstalledSourcesTabInstance,
   OnlineSourcesTabInstance,
@@ -14,7 +13,6 @@ import { invokeWithTimeout } from '@/composables/useInvoke';
 import { useMobileHorizontalSwipe } from '@/composables/useMobileHorizontalSwipe';
 import { useBookSourceStore } from '@/stores';
 import AiSourceTab from '../components/booksource/AiSourceTab.vue';
-import BookSourceSiteTab from '../components/booksource/BookSourceSiteTab.vue';
 import DebugSourceTab from '../components/booksource/DebugSourceTab.vue';
 import InstalledSourcesTab from '../components/booksource/InstalledSourcesTab.vue';
 import OnlineSourcesTab from '../components/booksource/OnlineSourcesTab.vue';
@@ -33,11 +31,10 @@ const bookSourceStore = useBookSourceStore();
 // sources / loading / streamingLoaded 直接响应式引用 store，流式批次到达时自动更新
 const { sources, loading, sourceDirs: storeDirs, streamingLoaded } = storeToRefs(bookSourceStore);
 
-type BookSourceTab = 'installed' | 'online' | 'site' | 'debug' | 'test' | 'ai';
+type BookSourceTab = 'installed' | 'online' | 'debug' | 'test' | 'ai';
 const BOOK_SOURCE_TABS: BookSourceTab[] = [
   'installed',
   'online',
-  'site',
   'debug',
   'test',
   'ai',
@@ -98,7 +95,6 @@ async function loadSources() {
 // ---- 子组件 refs ----
 const installedRef = ref<InstalledSourcesTabInstance | null>(null);
 const onlineRef = ref<OnlineSourcesTabInstance | null>(null);
-const siteRef = ref<BookSourceSiteTabInstance | null>(null);
 const debugRef = ref<DebugSourceTabInstance | null>(null);
 const pendingDebugSource = ref<BookSourceMeta | null>(null);
 
@@ -168,7 +164,6 @@ const onlineMenuOptions = computed(() => [
   { label: '获取列表', key: 'fetch-online' },
   { label: '添加仓库', key: 'add-online-repo' },
   { label: '移除仓库', key: 'remove-online-repo' },
-  // { label: '一键添加社区书源', key: 'add-community-repo' },
   { label: '重新检查', key: 'recheck-online' },
   { label: '批量安装', key: 'install-all-online' },
   { label: '批量更新', key: 'update-all-online' },
@@ -219,9 +214,6 @@ function handleOnlineMenuSelect(key: string) {
       break;
     case 'remove-online-repo':
       onlineRef.value?.removeActiveRepo();
-      break;
-    case 'add-community-repo':
-      void onlineRef.value?.addCommunityRepository();
       break;
     case 'recheck-online':
       void onlineRef.value?.recheckInstalledSources();
@@ -326,7 +318,7 @@ onUnmounted(() => {
         </div>
       </template>
       <template #subtitle>
-        管理已安装书源、浏览在线仓库、体验纯前端书源网站页并为后续前后端接入预留结构
+        管理已安装书源、浏览在线仓库
       </template>
       <template #actions>
         <template v-if="activeTab === 'installed'">
@@ -361,9 +353,6 @@ onUnmounted(() => {
             >
             <n-button size="small" quaternary @click="onlineRef?.openAddRepo()">添加仓库</n-button>
             <n-button size="small" quaternary @click="onlineRef?.removeActiveRepo()">移除</n-button>
-            <n-button size="small" quaternary @click="onlineRef?.addCommunityRepository()"
-              >社区书源</n-button
-            >
             <n-dropdown
               trigger="click"
               :options="onlineBatchOptions"
@@ -372,13 +361,6 @@ onUnmounted(() => {
               <n-button size="small" quaternary>批量操作</n-button>
             </n-dropdown>
           </MobileToolbarMenu>
-        </template>
-        <template v-else-if="activeTab === 'site'">
-          <n-button size="small" quaternary @click="siteRef?.resetFilters()">重置筛选</n-button>
-          <n-button size="small" quaternary @click="siteRef?.refreshMockData()">刷新模拟</n-button>
-          <n-button size="small" type="primary" @click="siteRef?.openUploadDialog()"
-            >上传书源</n-button
-          >
         </template>
       </template>
     </AppPageHeader>
@@ -431,10 +413,6 @@ onUnmounted(() => {
           :active="activeTab === 'online'"
           @reload="loadSources"
         />
-      </n-tab-pane>
-
-      <n-tab-pane name="site" tab="书源网站" display-directive="show">
-        <BookSourceSiteTab ref="siteRef" />
       </n-tab-pane>
 
       <n-tab-pane name="debug" tab="调试书源">

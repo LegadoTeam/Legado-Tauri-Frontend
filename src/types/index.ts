@@ -40,12 +40,10 @@ export type { AgentActivity, TestResult } from '@/composables/useAiAgent';
 
 // ── 书源管理子组件 ref 实例类型 ────────────────────────────────────────
 // （避免格式化工具将运行时组件 import 错误推断为 import type）
-import type BookSourceSiteTab from '@/components/booksource/BookSourceSiteTab.vue';
 import type DebugSourceTab from '@/components/booksource/DebugSourceTab.vue';
 import type InstalledSourcesTab from '@/components/booksource/InstalledSourcesTab.vue';
 import type OnlineSourcesTab from '@/components/booksource/OnlineSourcesTab.vue';
 
-export type BookSourceSiteTabInstance = InstanceType<typeof BookSourceSiteTab>;
 export type DebugSourceTabInstance = InstanceType<typeof DebugSourceTab>;
 export type InstalledSourcesTabInstance = InstanceType<typeof InstalledSourcesTab>;
 export type OnlineSourcesTabInstance = InstanceType<typeof OnlineSourcesTab>;

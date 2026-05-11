@@ -20,7 +20,7 @@ export interface BookSourceMeta {
   modifiedAt: number;
   /** 该书源所在目录的绝对路径 */
   sourceDir: string;
-  /** 书源类型："novel"（默认）| "comic" | "video" */
+  /** 书源类型："novel"（小说，默认）| "comic"（漫画）| "video"（视频）| "music"（音乐/有声书） */
   sourceType: string;
   /** 版本号（用于更新检测） */
   version: string;

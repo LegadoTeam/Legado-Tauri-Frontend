@@ -62,12 +62,6 @@ interface Repository {
   description: string;
 }
 
-const COMMUNITY_REPOSITORY = {
-  name: '社区书源',
-  url: 'https://docs.legadoteam.org/booksources/repository.json',
-  description: 'LegadoTeam 社区公开书源仓库',
-} as const;
-
 const repositories = ref<Repository[]>([]);
 const activeRepoId = ref('');
 const onlineManifest = ref<RepoManifest | null>(null);
@@ -198,34 +192,6 @@ function saveRepo() {
   }
   showRepoModal.value = false;
   void persistRepos();
-
-  if (props.active && activeRepoId.value && previousActiveRepoId === activeRepoId.value) {
-    void fetchOnlineSources({ silentSuccess: true });
-  }
-}
-
-async function addCommunityRepository() {
-  const previousActiveRepoId = activeRepoId.value;
-  const existing = findRepositoryByUrl(COMMUNITY_REPOSITORY.url);
-  if (existing) {
-    existing.name = COMMUNITY_REPOSITORY.name;
-    existing.description = COMMUNITY_REPOSITORY.description;
-    activeRepoId.value = existing.id;
-    message.success('已切换到社区书源仓库');
-  } else {
-    const repo: Repository = {
-      id: safeRandomUUID(),
-      name: COMMUNITY_REPOSITORY.name,
-      url: COMMUNITY_REPOSITORY.url,
-      description: COMMUNITY_REPOSITORY.description,
-    };
-    repositories.value.push(repo);
-    activeRepoId.value = repo.id;
-    message.success('已添加社区书源仓库');
-  }
-
-  showRepoModal.value = false;
-  await persistRepos();
 
   if (props.active && activeRepoId.value && previousActiveRepoId === activeRepoId.value) {
     void fetchOnlineSources({ silentSuccess: true });
@@ -773,7 +739,6 @@ function removeActiveRepo() {
 
 defineExpose({
   openAddRepo,
-  addCommunityRepository,
   fetchOnlineSources,
   removeActiveRepo,
   recheckInstalledSources,

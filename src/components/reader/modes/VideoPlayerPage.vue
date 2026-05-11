@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ChevronLeft, Link, Keyboard, ArrowUp } from 'lucide-vue-next';
+import { ChevronLeft, Link, Keyboard, ArrowUp, Copy, Check } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChapterItem, ChapterGroup } from '@/types';
 import { useAppConfigStore, groupChapters, useScriptBridgeStore } from '@/stores';
 import type { ReaderBookInfo } from '../types';
@@ -71,6 +71,22 @@ const _appCfg = useAppConfigStore();
 const { videoAutoNext, videoSeekStepSecs } = storeToRefs(_appCfg);
 
 const _bridge = useScriptBridgeStore();
+const logScrollRef = ref<HTMLElement | null>(null);
+const contentLoadFinished = ref(false);
+const logStartedAt = ref(Date.now());
+const logCopied = ref(false);
+
+async function copyLogs() {
+  const text = loadingLogs.value.join('\n');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    logCopied.value = true;
+    setTimeout(() => { logCopied.value = false; }, 2000);
+  } catch {
+    // ignore
+  }
+}
 
 // ── 分组 & 排序状态 ──────────────────────────────────────────────────────
 
@@ -180,6 +196,24 @@ const displayEpisodes = computed(() => {
   }
   return sortOrder.value === 'desc' ? [...list].toReversed() : list;
 });
+const hasEpisodeList = computed(() => displayEpisodes.value.length >= 1);
+
+function resolveChapterIndex(chapter: ChapterItem) {
+  const byRef = props.chapters.indexOf(chapter);
+  if (byRef >= 0) {
+    return byRef;
+  }
+  return props.chapters.findIndex(
+    (item) => item.url === chapter.url && (item.group || '') === (chapter.group || ''),
+  );
+}
+
+function emitGotoChapter(chapter: ChapterItem) {
+  const index = resolveChapterIndex(chapter);
+  if (index >= 0) {
+    emit('goto-chapter', index);
+  }
+}
 
 const activeChapter = computed(() => props.chapters[props.activeChapterIndex]);
 
@@ -213,6 +247,68 @@ const selectedCategories = ref<Record<string, string>>({});
 
 /** 实际展示/播放内容（分类覆盖 > 原始内容） */
 const activeContent = computed(() => categoryContent.value || props.content);
+const showPlayerLoading = computed(
+  () => props.loading || (!props.error && !activeContent.value.trim() && !contentLoadFinished.value),
+);
+
+const loadingLogs = computed(() =>
+  _bridge.state.logs
+    .filter((log) => log.time >= logStartedAt.value)
+    .slice(-120)
+    .map((log) => {
+      const d = new Date(log.time);
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+      const source = log.source ? `[${log.source}] ` : '';
+      return `${time} ${source}${log.message}`;
+    }),
+);
+
+watch(
+  () => props.activeChapterIndex,
+  () => {
+    contentLoadFinished.value = false;
+    logStartedAt.value = Date.now();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.loading,
+  (loading, wasLoading) => {
+    if (loading) {
+      contentLoadFinished.value = false;
+      if (!wasLoading) {
+        logStartedAt.value = Date.now();
+      }
+      return;
+    }
+    if (wasLoading) {
+      contentLoadFinished.value = true;
+    }
+  },
+);
+
+watch(
+  () => [props.content, props.error] as const,
+  ([content, error]) => {
+    if (content || error) {
+      contentLoadFinished.value = true;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  loadingLogs,
+  () => {
+    nextTick(() => {
+      if (logScrollRef.value) {
+        logScrollRef.value.scrollTop = logScrollRef.value.scrollHeight;
+      }
+    });
+  },
+  { flush: 'post' },
+);
 
 /** 尝试从 content 中提取视频流 URL；视频书源的 content 返回值就是实际播放地址 */
 const videoSource = computed(() => {
@@ -612,13 +708,28 @@ defineExpose({ getCurrentTime, getDuration });
 
         <!-- 播放器容器（固定 16:9） -->
         <div class="vp__player-wrap">
-          <div v-if="loading" class="vp__player-placeholder">
+          <div v-if="showPlayerLoading" class="vp__player-placeholder">
             <n-spin :show="true" />
             <span>获取播放地址…</span>
+            <span v-if="!hasGroups" class="vp__loading-hint">正在加载线路列表，请稍候…</span>
           </div>
           <div v-else-if="error" class="vp__player-placeholder vp__player-placeholder--error">
             <n-alert type="error" :title="error" style="width: 90%; max-width: 420px">
-              <n-button type="error" size="small" style="margin-top: 8px" @click="emit('retry')">
+              <p v-if="hasGroups" style="margin: 6px 0 8px; font-size: 0.875rem; opacity: 0.85">
+                请尝试切换下方线路后重新播放
+              </p>
+              <n-button type="error" size="small" style="margin-top: 4px" @click="emit('retry')">
+                重试
+              </n-button>
+            </n-alert>
+          </div>
+          <!-- 内容为空（脚本返回空地址）但未抛出错误时的兜底提示 -->
+          <div v-else-if="!content" class="vp__player-placeholder vp__player-placeholder--error">
+            <n-alert type="warning" title="无法获取播放地址" style="width: 90%; max-width: 420px">
+              <p v-if="hasGroups" style="margin: 6px 0 8px; font-size: 0.875rem; opacity: 0.85">
+                请尝试切换下方线路后重新播放
+              </p>
+              <n-button size="small" style="margin-top: 4px" @click="emit('retry')">
                 重试
               </n-button>
             </n-alert>
@@ -639,6 +750,32 @@ defineExpose({ getCurrentTime, getDuration });
           <div v-if="categoryFetching && !loading && !error" class="vp__category-fetching">
             <n-spin :show="true" />
             <span>切换中…</span>
+          </div>
+        </div>
+
+        <div v-if="showPlayerLoading || loadingLogs.length" class="vp__load-log">
+          <div class="vp__load-log-title">
+            书源日志
+            <n-button
+              v-if="loadingLogs.length"
+              text
+              size="tiny"
+              class="vp__log-copy-btn"
+              :title="logCopied ? '已复制' : '复制日志'"
+              @click="copyLogs"
+            >
+              <template #icon>
+                <Check v-if="logCopied" :size="13" />
+                <Copy v-else :size="13" />
+              </template>
+              {{ logCopied ? '已复制' : '复制' }}
+            </n-button>
+          </div>
+          <div ref="logScrollRef" class="vp__load-log-body app-scrollbar app-scrollbar--thin">
+            <div v-if="!loadingLogs.length" class="vp__load-log-empty">等待书源输出日志…</div>
+            <div v-for="(line, i) in loadingLogs" :key="`${i}-${line}`" class="vp__load-log-line">
+              {{ line }}
+            </div>
           </div>
         </div>
 
@@ -681,7 +818,7 @@ defineExpose({ getCurrentTime, getDuration });
         </div>
 
         <!-- 移动端选集区域（多集才显示，桌面端通过 CSS 隐藏） -->
-        <div v-if="chapters.length > 1 || availableCategories.length > 0" class="vp__strip">
+        <div v-if="hasEpisodeList || availableCategories.length > 0" class="vp__strip">
           <!-- 通用分类面板（移动端） -->
           <div v-if="availableCategories.length > 0" class="vp__strip-categories">
             <div
@@ -704,7 +841,7 @@ defineExpose({ getCurrentTime, getDuration });
               </div>
             </div>
           </div>
-          <div v-if="chapters.length > 1">
+          <div v-if="hasEpisodeList">
           <div class="vp__strip-header">
             <div class="vp__strip-label">
               选集
@@ -740,7 +877,7 @@ defineExpose({ getCurrentTime, getDuration });
               :key="`${ch.group || ''}-${ch.url}`"
               class="vp__strip-btn"
               :class="{ 'vp__strip-btn--active': ch.url === activeChapter?.url }"
-              @click="emit('goto-chapter', props.chapters.indexOf(ch))"
+              @click="emitGotoChapter(ch)"
             >
               {{ ch.name }}
               <span v-if="isEpWatched(ch)" class="vp__ep-watched">已看</span>
@@ -754,7 +891,7 @@ defineExpose({ getCurrentTime, getDuration });
       </div>
 
       <!-- 桌面端右侧选集侧边栏（单集且无分类时整体隐藏） -->
-      <div v-if="chapters.length > 1 || availableCategories.length > 0" class="vp__sidebar">
+      <div v-if="hasEpisodeList || availableCategories.length > 0" class="vp__sidebar">
         <!-- 通用分类面板（桌面端侧边栏） -->
         <div v-if="availableCategories.length > 0" class="vp__sidebar-categories">
           <div
@@ -777,7 +914,7 @@ defineExpose({ getCurrentTime, getDuration });
             </div>
           </div>
         </div>
-        <template v-if="chapters.length > 1">
+        <template v-if="hasEpisodeList">
         <div class="vp__sidebar-header">
           <div class="vp__sidebar-heading">
             选集
@@ -812,7 +949,7 @@ defineExpose({ getCurrentTime, getDuration });
             :key="`${ch.group || ''}-${ch.url}`"
             class="vp__sidebar-item"
             :class="{ 'vp__sidebar-item--active': ch.url === activeChapter?.url }"
-            @click="emit('goto-chapter', props.chapters.indexOf(ch))"
+            @click="emitGotoChapter(ch)"
           >
             <span class="vp__sidebar-idx">{{
               sortOrder === 'asc' ? i + 1 : displayEpisodes.length - i
@@ -838,9 +975,8 @@ defineExpose({ getCurrentTime, getDuration });
 .vp {
   display: flex;
   flex-direction: column;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  width: 100%;
+  height: 100%;
   background: var(--color-surface);
   color: var(--color-text-primary);
   overflow: hidden;
@@ -979,6 +1115,64 @@ defineExpose({ getCurrentTime, getDuration });
   background: rgba(0, 0, 0, 0.6);
 }
 
+.vp__loading-hint {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  margin-top: -4px;
+}
+
+.vp__load-log {
+  display: flex;
+  flex-direction: column;
+  min-height: 96px;
+  max-height: 160px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-raised) 82%, #000 18%);
+  flex-shrink: 0;
+}
+
+.vp__load-log-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 5px 16px;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.vp__log-copy-btn {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  gap: 3px;
+  opacity: 0.75;
+  transition: opacity var(--transition-fast);
+}
+
+.vp__log-copy-btn:hover {
+  opacity: 1;
+}
+
+.vp__load-log-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 10px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.vp__load-log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text-secondary, var(--color-text-primary));
+}
+
+.vp__load-log-empty {
+  color: var(--color-text-muted);
+}
+
 /* ── 信息区 ── */
 .vp__info {
   padding: 14px 16px 16px;
@@ -1111,10 +1305,11 @@ defineExpose({ getCurrentTime, getDuration });
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 14px 16px 8px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   flex-shrink: 0;
+  overflow: visible;
 }
 
 /* ── 移动端选集区域 ── */
@@ -1149,8 +1344,9 @@ defineExpose({ getCurrentTime, getDuration });
 .vp__strip-tabs {
   display: flex;
   gap: 6px;
-  padding: 0 16px 8px;
+  padding: 8px 16px 8px;
   overflow-x: auto;
+  overflow-y: visible;
 }
 
 .vp__strip-scroll {
@@ -1218,9 +1414,9 @@ defineExpose({ getCurrentTime, getDuration });
 
 /* ── 共用标签按钮（移动端 strip + 桌面端 sidebar 复用） ── */
 .vp__tab-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   flex-shrink: 0;
   padding: 4px 12px;
   border: 1px solid var(--color-border);
@@ -1247,8 +1443,26 @@ defineExpose({ getCurrentTime, getDuration });
 }
 
 .vp__tab-count {
-  font-size: 0.6875rem;
-  opacity: 0.7;
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--color-text-muted);
+  color: var(--color-surface);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.vp__tab-btn--active .vp__tab-count {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-accent);
 }
 
 /* ── 排序按钮 ── */

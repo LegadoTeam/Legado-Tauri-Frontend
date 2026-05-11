@@ -8,6 +8,7 @@
 
 import { useDynamicConfig } from './useDynamicConfig';
 import { useBookshelfStore } from '@/stores/bookshelf';
+import { LOCAL_TXT_FILE_NAME } from '@/stores/bookshelf';
 import { useScriptBridgeStore } from '@/stores/scriptBridge';
 import { usePreferencesStore } from '@/stores/preferences';
 import type { ShelfBook } from '@/composables/useBookshelf';
@@ -43,10 +44,11 @@ async function refreshBookToc(
     const info = await scriptBridgeStore.runBookInfo(book.fileName, book.bookUrl);
     const tocUrl = (info as { tocUrl?: string }).tocUrl ?? book.bookUrl;
     const raw = await scriptBridgeStore.runChapterList(book.fileName, tocUrl);
-    const fetched = (raw as Array<{ name: string; url: string }>).map((chapter, index) => ({
+    const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map((chapter, index) => ({
       index,
       name: chapter.name,
       url: chapter.url,
+      group: chapter.group,
     }));
 
     const cached = await bookshelfStore.getChapters(book.id);
@@ -89,6 +91,7 @@ export function useTocAutoUpdate() {
   async function refreshOnBookOpen(book: ShelfBook): Promise<number> {
     const cfg = preferencesStore.tocAutoUpdate;
     if (!cfg.enabled || !cfg.onBookOpen) return -1;
+    if (book.fileName === LOCAL_TXT_FILE_NAME) return -1; // 本地 TXT 书籍无需自动更新
     if (!isRefreshDue(book.id)) return -1;
     return refreshBookToc(book, bookshelfStore, scriptBridgeStore);
   }
@@ -103,6 +106,7 @@ export function useTocAutoUpdate() {
 
     for (const book of bookshelfStore.books) {
       if (!book.fileName || !book.bookUrl) continue;
+      if (book.fileName === LOCAL_TXT_FILE_NAME) continue;
       if (!isRefreshDue(book.id)) continue;
       await refreshBookToc(book, bookshelfStore, scriptBridgeStore);
     }
@@ -118,6 +122,7 @@ export function useTocAutoUpdate() {
 
     for (const book of bookshelfStore.books) {
       if (!book.fileName || !book.bookUrl) continue;
+      if (book.fileName === LOCAL_TXT_FILE_NAME) continue;
       if (!isRefreshDue(book.id)) continue;
       await refreshBookToc(book, bookshelfStore, scriptBridgeStore);
     }

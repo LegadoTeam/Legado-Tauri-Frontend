@@ -5,6 +5,7 @@ import BookCoverGeneratorDialog from '@/components/bookshelf/BookCoverGeneratorD
 import BookDetailEditorDialog from '@/components/bookshelf/BookDetailEditorDialog.vue';
 import BookExportDialog from '@/components/bookshelf/BookExportDialog.vue';
 import BookSourceSwitchDialog from '@/components/explore/BookSourceSwitchDialog.vue';
+import TxtImportDialog from '@/features/local-txt/TxtImportDialog.vue';
 
 defineProps<{
   showSourceSwitchDialog: boolean;
@@ -18,6 +19,7 @@ defineProps<{
   showBookDetailDialog: boolean;
   bookDetailBook: ShelfBook | null;
   bookDetailMode: 'view' | 'edit';
+  showTxtImportDialog: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -25,9 +27,19 @@ const emit = defineEmits<{
   (e: 'update:showCoverGeneratorDialog', value: boolean): void;
   (e: 'update:showExportDialog', value: boolean): void;
   (e: 'update:showBookDetailDialog', value: boolean): void;
+  (e: 'update:showTxtImportDialog', value: boolean): void;
   (e: 'whole-book-switched', payload: WholeBookSwitchedPayload): void;
   (e: 'cover-applied', bookId: string): void;
   (e: 'book-detail-saved', bookId: string): void;
+  (
+    e: 'txt-imported',
+    payload: {
+      title: string;
+      author: string;
+      chapters: Array<{ title: string; content: string }>;
+      preface: string;
+    },
+  ): void;
 }>();
 </script>
 
@@ -76,5 +88,11 @@ const emit = defineEmits<{
     :initial-mode="bookDetailMode"
     @update:show="emit('update:showBookDetailDialog', $event)"
     @saved="emit('book-detail-saved', $event)"
+  />
+
+  <TxtImportDialog
+    :show="showTxtImportDialog"
+    @update:show="emit('update:showTxtImportDialog', $event)"
+    @imported="emit('txt-imported', $event)"
   />
 </template>

@@ -19,20 +19,22 @@ const settings = controller.settings;
 </script>
 
 <template>
-  <ReaderModal :show="show" @update:show="emit('update:show', $event)">
-    <!-- ── 视频模式：YouTube 风格独立布局 ── -->
-    <ReaderVideoSurface
-      v-if="isVideoMode"
-      :ref="controller.videoModeRef"
-      :chapter-groups="chapterGroups"
-      :initial-group-index="initialGroupIndex"
-      :inline-group-tabs="inlineGroupTabs"
-      :episode-progress="episodeProgress"
-    />
+  <!-- ── 视频模式：Teleport 到主内容区（保留底部任务栏） ── -->
+  <Teleport v-if="isVideoMode && show" to="#main-content">
+    <div class="video-layer">
+      <ReaderVideoSurface
+        :ref="controller.videoModeRef"
+        :chapter-groups="chapterGroups"
+        :initial-group-index="initialGroupIndex"
+        :inline-group-tabs="inlineGroupTabs"
+        :episode-progress="episodeProgress"
+      />
+    </div>
+  </Teleport>
 
-    <!-- ── 小说 / 漫画模式：沉浸全屏阅读器 ── -->
+  <!-- ── 小说 / 漫画模式：沉浸全屏阅读器 ── -->
+  <ReaderModal v-if="!isVideoMode" :show="show" @update:show="emit('update:show', $event)">
     <ReaderImmersiveSurface
-      v-else
       :ref="controller.menuLayerRef"
       :style-value="effectiveStyle"
       :skin-preset-id="settings.skinPresetId"
@@ -218,5 +220,14 @@ const settings = controller.settings;
   visibility: hidden;
   pointer-events: none;
   z-index: -1;
+}
+
+/* 视频模式：Teleport 到 #main-content 内，覆盖主内容区但不遮挡底部任务栏 */
+.video-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  background: var(--color-content-bg, var(--color-surface));
 }
 </style>
