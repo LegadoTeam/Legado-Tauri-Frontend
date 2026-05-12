@@ -10,6 +10,7 @@ import {
   type SyncStatus,
   type SyncQrPayload,
 } from '@/composables/useSync';
+import { invokeWithTimeout } from '@/composables/useInvoke';
 import { useAppConfigStore } from '@/stores';
 import SettingItem from './SettingItem.vue';
 import SettingSection from './SettingSection.vue';
@@ -32,6 +33,14 @@ const qrRawText = ref('');
 const scanVisible = ref(false);
 const videoRef = ref<HTMLVideoElement | null>(null);
 
+// 百度网盘授权状态
+const baiduAuthVisible = ref(false);
+const baiduDeviceCode = ref('');
+const baiduVerificationUrl = ref('');
+const baiduUserCode = ref('');
+const baiduPolling = ref(false);
+const baiduTokenStatus = ref<{ valid: boolean; expires_at: number; username: string } | null>(null);
+
 const providerOptions = [
   { label: 'WebDAV', value: 'webdav' },
   { label: 'FTP', value: 'ftp' },
@@ -43,6 +52,12 @@ useOverlayBackstack(
   () => scanVisible.value,
   () => {
     scanVisible.value = false;
+  },
+);
+useOverlayBackstack(
+  () => baiduAuthVisible.value,
+  () => {
+    baiduAuthVisible.value = false;
   },
 );
 
@@ -216,11 +231,82 @@ function promptImportText() {
   importQrText(raw).catch((e) => message.error(`导入失败: ${e}`));
 }
 
+// ── 百度网盘授权流程 ──────────────────────────────────────────────
+
+async function loadBaiduTokenStatus() {
+  try {
+    const result = await invokeWithTimeout<{ valid: boolean; expires_at: number; username: string }>(
+      'sync_baidu_token_status',
+      undefined,
+      8000,
+    );
+    baiduTokenStatus.value = result;
+  } catch {
+    baiduTokenStatus.value = null;
+  }
+}
+
+async function startBaiduAuth() {
+  try {
+    const result = await invokeWithTimeout<{
+      device_code: string;
+      verification_url: string;
+      user_code: string;
+      expires_in: number;
+      interval: number;
+    }>('sync_baidu_start_auth', undefined, 15000);
+    baiduDeviceCode.value = result.device_code;
+    baiduUserCode.value = result.user_code;
+    const base = result.verification_url.split('?')[0];
+    baiduVerificationUrl.value = `${base}?code=${encodeURIComponent(result.user_code)}`;
+    baiduAuthVisible.value = true;
+  } catch (e: unknown) {
+    message.error(`启动授权失败: ${e}`);
+  }
+}
+
+async function pollBaiduToken() {
+  if (!baiduDeviceCode.value) return;
+  baiduPolling.value = true;
+  try {
+    const result = await invokeWithTimeout<{ status: string }>(
+      'sync_baidu_poll_token',
+      { deviceCode: baiduDeviceCode.value },
+      15000,
+    );
+    if (result.status === 'authorized') {
+      baiduAuthVisible.value = false;
+      baiduDeviceCode.value = '';
+      message.success('百度网盘授权成功');
+      await loadBaiduTokenStatus();
+    } else {
+      message.info('授权尚未完成，请在浏览器中完成授权后再点击此按钮');
+    }
+  } catch (e: unknown) {
+    message.error(`轮询授权失败: ${e}`);
+  } finally {
+    baiduPolling.value = false;
+  }
+}
+
+async function revokeBaiduAuth() {
+  try {
+    await invokeWithTimeout<void>('sync_baidu_revoke_auth', undefined, 8000);
+    baiduTokenStatus.value = null;
+    message.success('已退出百度网盘授权');
+  } catch (e: unknown) {
+    message.error(`退出授权失败: ${e}`);
+  }
+}
+
 onMounted(async () => {
   await loadConfig();
   const credentials = await sync.getCredentials().catch(() => ({ password: '' }));
   password.value = credentials.password;
   await refresh();
+  if (config.value.sync_provider === 'baidu_netdisk') {
+    await loadBaiduTokenStatus();
+  }
 });
 </script>
 
@@ -274,6 +360,7 @@ onMounted(async () => {
         <SettingItem
           label="密码 / Token"
           desc="当前实现存储在本机同步目录；生成二维码时会明文包含此值"
+          v-if="config.sync_provider === 'webdav'"
         >
           <n-input
             v-model:value="password"
@@ -288,7 +375,8 @@ onMounted(async () => {
 
         <SettingItem
           label="远端目录"
-          desc="当前 WebDAV 可用；FTP / 百度网盘驱动入口已预留，真实连接实现继续接入中"
+          desc="WebDAV 根目录；百度网盘为 /apps/{应用名}/{此目录}"
+          v-if="config.sync_provider === 'webdav'"
         >
           <n-input
             :value="config.sync_webdav_root_dir"
@@ -304,6 +392,46 @@ onMounted(async () => {
           />
           <span class="sync-inline-hint">允许 HTTP</span>
         </SettingItem>
+
+        <!-- ── 百度网盘配置 ── -->
+        <template v-if="config.sync_provider === 'baidu_netdisk'">
+          <SettingItem label="App Name" desc="应用名称，用于构建远端目录 /apps/{name}/…">
+            <n-input
+              :value="config.sync_baidu_app_name"
+              size="small"
+              placeholder="legado-tauri"
+              @update:value="(v: string) => handleSet('sync_baidu_app_name', v.trim() || 'legado-tauri')"
+            />
+          </SettingItem>
+
+          <SettingItem label="同步目录" desc="百度网盘远端目录叶名，完整路径 /apps/{name}/{目录}">
+            <n-input
+              :value="config.sync_webdav_root_dir"
+              size="small"
+              placeholder="legado-sync"
+              @update:value="(v: string) => handleSet('sync_webdav_root_dir', v.trim() || 'legado-sync')"
+            />
+          </SettingItem>
+
+          <SettingItem label="授权状态">
+            <span v-if="baiduTokenStatus?.valid" class="sync-baidu-status sync-baidu-status--ok">
+              已授权：{{ baiduTokenStatus.username || '已登录' }}
+            </span>
+            <span v-else-if="baiduTokenStatus" class="sync-baidu-status sync-baidu-status--err">
+              令牌已过期
+            </span>
+            <span v-else class="sync-baidu-status sync-baidu-status--none">未授权</span>
+
+            <n-button size="small" type="primary" @click="startBaiduAuth">授权百度网盘</n-button>
+            <n-button
+              v-if="baiduTokenStatus?.valid"
+              size="small"
+              type="warning"
+              @click="revokeBaiduAuth"
+            >退出授权</n-button>
+            <n-button size="small" quaternary @click="loadBaiduTokenStatus">刷新状态</n-button>
+          </SettingItem>
+        </template>
 
         <SettingItem label="同步范围" :vertical="true">
           <n-checkbox-group v-model:value="enabledScopeKeys">
@@ -383,7 +511,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <n-modal v-model:show="qrVisible" preset="card" title="同步配置二维码" class="sync-modal">
+    <n-modal v-model:show="qrVisible" preset="card" title="同步配置二维码" class="sync-modal sync-modal--qr">
       <p class="sync-risk">此二维码包含明文 WebDAV 密码或 Token。不要截图发送给不可信的人。</p>
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="同步配置二维码" class="sync-qr" />
       <div v-if="qrRawText" class="sync-qr-raw">
@@ -404,8 +532,30 @@ onMounted(async () => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="scanVisible" preset="card" title="扫码导入同步配置" class="sync-modal">
+    <n-modal v-model:show="scanVisible" preset="card" title="扫码导入同步配置" class="sync-modal sync-modal--scan">
       <video ref="videoRef" class="sync-video" muted playsinline />
+    </n-modal>
+
+    <!-- 百度网盘设备码授权弹层 -->
+    <n-modal v-model:show="baiduAuthVisible" preset="card" title="百度网盘授权" class="sync-modal sync-modal--baidu">
+      <p class="sync-risk">
+        请在浏览器中打开下方链接，登录百度账号并点击授权，完成后回来点击"已完成授权"。
+      </p>
+      <div class="sync-baidu-code-block">
+        <div>
+          <span class="sync-baidu-label">授权地址：</span>
+          <a :href="baiduVerificationUrl" target="_blank" rel="noopener">{{ baiduVerificationUrl }}</a>
+        </div>
+        <div>
+          <span class="sync-baidu-label">用户码：</span>
+          <code class="sync-baidu-user-code">{{ baiduUserCode }}</code>
+          <n-button size="tiny" quaternary @click="() => navigator.clipboard.writeText(baiduUserCode)">复制</n-button>
+        </div>
+      </div>
+      <template #footer>
+        <n-button type="primary" :loading="baiduPolling" @click="pollBaiduToken">已完成授权</n-button>
+        <n-button @click="baiduAuthVisible = false">取消</n-button>
+      </template>
     </n-modal>
   </SettingSection>
 </template>
@@ -439,8 +589,38 @@ onMounted(async () => {
   color: var(--color-text-soft);
 }
 
+.sync-baidu-status {
+  font-size: var(--fs-13);
+  padding: 2px 8px;
+  border-radius: var(--radius-1);
+}
+.sync-baidu-status--ok { color: var(--color-success, #18a058); }
+.sync-baidu-status--err { color: var(--color-error, #d03050); }
+.sync-baidu-status--none { color: var(--color-text-muted); }
+
+.sync-baidu-code-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  font-size: var(--fs-13);
+}
+.sync-baidu-label { color: var(--color-text-muted); margin-right: 4px; }
+.sync-baidu-user-code {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  letter-spacing: 2px;
+  padding: 2px 8px;
+  background: var(--color-fill, rgba(128,128,128,0.1));
+  border-radius: var(--radius-1);
+}
+
 .sync-modal {
-  width: min(560px, calc(100vw - 48px));
+  width: min(420px, calc(100vw - 48px));
+}
+
+.sync-modal--qr {
+  width: min(480px, calc(100vw - 48px));
 }
 
 .sync-modal :deep(.n-card) {
@@ -491,7 +671,8 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
-  .sync-modal {
+  .sync-modal,
+  .sync-modal--qr {
     width: calc(100vw - 24px);
   }
 

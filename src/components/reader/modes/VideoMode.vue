@@ -43,14 +43,21 @@ let componentDestroyed = false;
  * 以防止并发竞态导致多个播放器同时出声。
  */
 let initGeneration = 0;
+/** 当前由 m3u8 内容创建的 Blob URL，销毁播放器时必须释放 */
+let currentBlobUrl: string | null = null;
 
 // ── 播放器生命周期 ──────────────────────────────────────────────────────
 
 async function initPlayer(content: string) {
-  // 同一资源 URL 不重建播放器（避免切页重布局触发重建）
+  // 同一资源不重建播放器（避免切页重布局触发重建）
   const newSource = parseVideoSource(content);
-  if (player && currentSource?.url === newSource.url) {
-    console.debug('[VideoMode] initPlayer skip: same url=%s', newSource.url);
+  const isSameSource = player && (
+    newSource.m3u8Content
+      ? currentSource?.m3u8Content === newSource.m3u8Content
+      : currentSource?.url === newSource.url
+  );
+  if (isSameSource) {
+    console.debug('[VideoMode] initPlayer skip: same source');
     return;
   }
 
@@ -88,6 +95,15 @@ async function initPlayer(content: string) {
     console.debug('[VideoMode] initPlayer mounting gen=%d', myGen);
 
     // await mount 确保内部播放器实例已创建，再注册事件
+    // 若书源直接返回 m3u8 内容，创建 Blob URL 供播放器使用
+    if (currentSource.m3u8Content) {
+      const blob = new Blob([currentSource.m3u8Content], { type: 'application/vnd.apple.mpegurl' });
+      const blobUrl = URL.createObjectURL(blob);
+      currentBlobUrl = blobUrl;
+      currentSource = { ...currentSource, url: blobUrl };
+      console.debug('[VideoMode] created blob URL for inline m3u8 content');
+    }
+
     await player.mount(playerContainer.value!, currentSource);
 
     // 检查点 2：mount 也是异步的，可能在此期间组件已卸载或代次已更新
@@ -127,6 +143,11 @@ function destroyPlayer() {
   if (progressTimer) {
     clearInterval(progressTimer);
     progressTimer = null;
+  }
+  // 释放内联 m3u8 内容对应的 Blob URL
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
   }
   if (player) {
     // 上报最终进度

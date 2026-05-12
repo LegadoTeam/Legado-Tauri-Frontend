@@ -76,6 +76,7 @@ const DEFAULT_CONFIG: AppConfig = {
   sync_mobile_pause_on_low_battery: true,
   sync_mobile_startup_delay_ms: 5000,
   sync_mobile_resume_delay_ms: 1500,
+  sync_baidu_app_name: 'legado-tauri',
 };
 
 export const useAppConfigStore = defineStore('appConfig', () => {

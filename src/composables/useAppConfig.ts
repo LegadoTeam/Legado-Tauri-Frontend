@@ -122,6 +122,7 @@ export interface AppConfig {
   sync_mobile_pause_on_low_battery: boolean;
   sync_mobile_startup_delay_ms: number;
   sync_mobile_resume_delay_ms: number;
+  sync_baidu_app_name: string;
 }
 
 /** 内置默认 User-Agent（与 Rust BUILTIN_USER_AGENT 保持一致） */
@@ -206,6 +207,8 @@ const config = ref<AppConfig>({
   sync_mobile_pause_on_low_battery: true,
   sync_mobile_startup_delay_ms: 5000,
   sync_mobile_resume_delay_ms: 1500,
+  sync_baidu_app_key: '',
+  sync_baidu_app_name: 'legado-tauri',
 });
 
 /** 正在保存中的配置 key（用于 UI loading 状态） */
