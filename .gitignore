@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-Legado-Tauri-Harmony-main/**
-node_modules/**
-dist/**
-=======
 # 日志
 logs
 *.log
@@ -42,4 +37,3 @@ dist-ssr
 # Claude 相关文件
 .claude/
 .vscode/sftp.json
->>>>>>> cacebb8f141cd58c2c10feaa5c3430a523b00b02
