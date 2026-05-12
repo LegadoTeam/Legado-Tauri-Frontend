@@ -87,28 +87,6 @@ export interface SyncV2ProgressResult {
   remote?: unknown;
 }
 
-export interface SyncV2ScriptFilesResult {
-  domain: string;
-  uploaded: string[];
-  downloaded: string[];
-  conflicts: string[];
-  skipped: string[];
-}
-
-export interface SyncV2BookshelfResult {
-  uploaded: string[];
-  downloaded: string[];
-  applied: string[];
-  deleted: string[];
-  skipped: string[];
-}
-
-export interface SyncV2BookSettingsResult {
-  uploaded: string[];
-  applied: string[];
-  skipped: string[];
-}
-
 function readLocalJson(key: string): unknown {
   try {
     const raw =
@@ -250,26 +228,11 @@ export function useSync() {
     conflictStrategy?: 'local' | 'remote',
   ): Promise<SyncRunSummary> {
     await pushClientState();
-    const summary = await invokeWithTimeout<SyncRunSummary>(
+    return invokeWithTimeout<SyncRunSummary>(
       'sync_now',
       { mode, domains: null, conflictStrategy: conflictStrategy ?? null },
       120000,
     );
-    if (summary.status !== 'conflict') {
-      if (config.value.sync_scope_bookshelf) {
-        await syncBookshelf().catch(() => undefined);
-      }
-      if (config.value.sync_scope_reader_settings) {
-        await syncBookSettings().catch(() => undefined);
-      }
-      if (config.value.sync_scope_booksources) {
-        await syncScriptFiles('booksources').catch(() => undefined);
-      }
-      if (config.value.sync_scope_extensions) {
-        await syncScriptFiles('plugins').catch(() => undefined);
-      }
-    }
-    return summary;
   }
 
   function listConflicts(): Promise<SyncConflict[]> {
@@ -370,26 +333,6 @@ export function useSync() {
     );
   }
 
-  function syncScriptFiles(domain: 'booksources' | 'plugins'): Promise<SyncV2ScriptFilesResult> {
-    return invokeWithTimeout<SyncV2ScriptFilesResult>(
-      'sync_v2_sync_script_files',
-      { domain },
-      120000,
-    );
-  }
-
-  function syncBookshelf(): Promise<SyncV2BookshelfResult> {
-    return invokeWithTimeout<SyncV2BookshelfResult>('sync_v2_sync_bookshelf', undefined, 120000);
-  }
-
-  function syncBookSettings(): Promise<SyncV2BookSettingsResult> {
-    return invokeWithTimeout<SyncV2BookSettingsResult>(
-      'sync_v2_sync_book_settings',
-      undefined,
-      120000,
-    );
-  }
-
   function notifyLifecycle(event: 'startup' | 'resume' | 'background'): Promise<void> {
     return invokeWithTimeout<void>('sync_notify_lifecycle', { event }, 10000).catch(() => {});
   }
@@ -413,9 +356,6 @@ export function useSync() {
     scanQrFromVideo,
     reportReaderSession,
     syncCurrentReadingProgress,
-    syncScriptFiles,
-    syncBookshelf,
-    syncBookSettings,
     notifyLifecycle,
     listenReadingConflict,
   };

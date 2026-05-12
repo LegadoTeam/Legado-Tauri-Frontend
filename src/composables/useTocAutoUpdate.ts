@@ -115,17 +115,33 @@ export function useTocAutoUpdate() {
   /**
    * 切换到书架视图时对所有书架书籍触发自动检测（逐本串行）。
    * 仅在设置 enabled + onShelfView 开启，且单本书距离上次超过最小间隔时才执行。
+   * @returns 刷新结果摘要 { success: 成功数, failed: 失败数, updated: 新增章节总数 }
    */
-  async function refreshAllOnShelfView(): Promise<void> {
+  async function refreshAllOnShelfView(): Promise<{ success: number; failed: number; updated: number }> {
     const cfg = preferencesStore.tocAutoUpdate;
-    if (!cfg.enabled || !cfg.onShelfView) return;
+    const result = { success: 0, failed: 0, updated: 0 };
 
-    for (const book of bookshelfStore.books) {
-      if (!book.fileName || !book.bookUrl) continue;
-      if (book.fileName === LOCAL_TXT_FILE_NAME) continue;
-      if (!isRefreshDue(book.id)) continue;
-      await refreshBookToc(book, bookshelfStore, scriptBridgeStore);
+    // 如果设置未开启，仍允许手动刷新（忽略间隔限制）
+    const booksToRefresh = bookshelfStore.books.filter((b) => {
+      if (!b.fileName || !b.bookUrl) return false;
+      if (b.fileName === LOCAL_TXT_FILE_NAME) return false; // 本地 TXT 书籍无需自动更新
+      // 如果自动刷新未开启，则刷新所有书
+      if (!cfg.enabled || !cfg.onShelfView) return true;
+      // 否则检查间隔
+      return isRefreshDue(b.id);
+    });
+
+    for (const book of booksToRefresh) {
+      const count = await refreshBookToc(book, bookshelfStore, scriptBridgeStore);
+      if (count >= 0) {
+        result.success++;
+        result.updated += count;
+      } else {
+        result.failed++;
+      }
     }
+
+    return result;
   }
 
   return {

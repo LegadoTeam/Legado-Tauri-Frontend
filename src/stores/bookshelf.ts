@@ -275,6 +275,7 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
         coverUrl: patch.coverUrl ?? current.coverUrl,
         intro: patch.intro ?? current.intro,
         kind: patch.kind ?? current.kind,
+        groupId: patch.groupId ?? current.groupId,
         bookUrl: patch.bookUrl ?? current.bookUrl,
         fileName: patch.fileName ?? current.fileName,
         sourceName: patch.sourceName ?? current.sourceName,
