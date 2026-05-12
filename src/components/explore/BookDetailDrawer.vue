@@ -75,6 +75,8 @@ const sortOrder = ref<'asc' | 'desc'>('asc');
 
 /** 是否需要显示分组标签页 */
 const hasGroups = computed(() => chapterGroups.value.length > 1);
+/** 线路数量较多（>= 4）时使用紧凑尺寸 */
+const manyGroups = computed(() => chapterGroups.value.length >= 4);
 /** 当前标签页下的章节列表（含排序） */
 const displayChapters = computed(() => {
   let list: ChapterItem[];
@@ -327,6 +329,7 @@ async function handleAddToShelf() {
         index: i,
         name: ch.name,
         url: ch.url,
+        group: ch.group,
       }));
       await saveChapters(result.id, cached);
     }
@@ -515,12 +518,12 @@ async function handleAddToShelf() {
               </div>
 
               <!-- 视频多线路标签页 -->
-              <div v-if="hasGroups" class="bd-chapters__tabs app-scrollbar--hidden">
+              <div v-if="hasGroups" class="bd-chapters__tabs" :class="{ 'bd-chapters__tabs--many': manyGroups }">
                 <button
                   v-for="(g, gi) in chapterGroups"
                   :key="g.name"
                   class="bd-tab-btn"
-                  :class="{ 'bd-tab-btn--active': gi === activeGroupIndex }"
+                  :class="{ 'bd-tab-btn--active': gi === activeGroupIndex, 'bd-tab-btn--sm': manyGroups }"
                   @click="onGroupChange(gi)"
                 >
                   {{ g.name }}
@@ -774,15 +777,18 @@ async function handleAddToShelf() {
 }
 .bd-chapters__tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 8px 0;
   flex-shrink: 0;
-  overflow-x: auto;
+}
+.bd-chapters__tabs--many {
+  gap: 4px;
 }
 .bd-tab-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   flex-shrink: 0;
   padding: 4px 12px;
   border: 1px solid var(--color-border);
@@ -806,8 +812,30 @@ async function handleAddToShelf() {
   font-weight: 600;
 }
 .bd-tab-btn__count {
-  font-size: 0.6875rem;
-  opacity: 0.7;
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--color-text-muted);
+  color: var(--color-surface);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.bd-tab-btn--active .bd-tab-btn__count {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-accent);
+}
+.bd-tab-btn--sm {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  border-radius: calc(var(--radius-sm) - 1px);
 }
 .bd-chapters__list {
   flex: 1;

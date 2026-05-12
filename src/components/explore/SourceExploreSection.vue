@@ -20,6 +20,8 @@ const props = defineProps<{
   active?: boolean;
   prefetch?: boolean;
   showCovers?: boolean;
+  /** 显示模式：card=卡片网格，cover=封面书架，list=列表单列 */
+  displayMode?: 'card' | 'cover' | 'list';
   /** 仅当版本变化时才触发重载 */
   reloadVersion?: number;
 }>();
@@ -377,13 +379,21 @@ watch(
         />
 
         <!-- 标准书籍列表模式 -->
-        <div v-else-if="books.length" class="ses__grid">
+        <div
+          v-else-if="books.length"
+          class="ses__grid"
+          :class="{
+            'ses__grid--cover': displayMode === 'cover',
+            'ses__grid--list': displayMode === 'list',
+          }"
+        >
           <BookCard
             v-for="book in books"
             :key="book.bookUrl"
             :book="book"
-            :show-cover="showCovers ?? true"
+            :show-cover="displayMode === 'cover' ? true : (showCovers ?? true)"
             :source-type="source.sourceType"
+            :display-mode="displayMode ?? 'card'"
             @select="emit('select', book, source.fileName)"
           />
         </div>
@@ -518,6 +528,16 @@ watch(
   grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 210px), 1fr));
   gap: 6px;
   padding: 8px 0;
+}
+
+.ses__grid--cover {
+  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-cover-col-min, 110px), 1fr));
+  gap: 8px;
+}
+
+.ses__grid--list {
+  grid-template-columns: 1fr;
+  gap: 4px;
 }
 
 .ses__empty {

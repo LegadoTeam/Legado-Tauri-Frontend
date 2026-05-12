@@ -15,8 +15,6 @@ import { storeToRefs } from 'pinia';
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useAppConfigStore } from '@/stores';
 import { comicDownloadImages, comicGetPageSizes } from '../../../composables/useBookSource';
-import { usePullToLoad } from '../composables/usePullToLoad';
-import PullBubble from '../PullBubble.vue';
 
 const props = defineProps<{
   content: string;
@@ -30,6 +28,14 @@ const props = defineProps<{
   chapterIndex: number;
   hasPrev: boolean;
   hasNext: boolean;
+  /** 预加载的上一章图片内容（JSON 数组或换行分隔 URL），空字符串表示尚未加载 */
+  prevChapterContent?: string;
+  /** 预加载的上一章章节名 */
+  prevChapterTitle?: string;
+  /** 预加载的下一章图片内容（JSON 数组或换行分隔 URL），空字符串表示尚未加载 */
+  nextChapterContent?: string;
+  /** 预加载的下一章章节名 */
+  nextChapterTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +43,10 @@ const emit = defineEmits<{
   (e: 'progress', ratio: number): void;
   (e: 'prevChapter'): void;
   (e: 'nextChapter'): void;
+  /** 用户向上滚动进入上一章区域（无缝向前翻章） */
+  (e: 'prevChapterEntered'): void;
+  /** 用户向下滚动进入下一章区域，携带当前章节内容区高度（用于无缝滚动位置补偿） */
+  (e: 'nextChapterEntered', sectionHeight: number): void;
 }>();
 
 interface ComicPage {
@@ -78,6 +88,77 @@ let unlistenComicPageCached: (() => void) | null = null;
 let unlistenComicPageFailed: (() => void) | null = null;
 let observer: IntersectionObserver | null = null;
 let restoreCorrectionRaf = 0;
+
+const currentSectionRef = ref<HTMLDivElement | null>(null);
+const prevSectionRef = ref<HTMLDivElement | null>(null);
+const nextSectionRef = ref<HTMLDivElement | null>(null);
+const nextChapterSentinelRef = ref<HTMLDivElement | null>(null);
+const prevPages = ref<ComicPage[]>([]);
+const nextPages = ref<ComicPage[]>([]);
+
+// ── 无缝切章 ────────────────────────────────────────────────────────
+let seamlessSwapAnchorOffset: number | null = null;
+let seamlessSwapFallbackOffset = -1;
+/** 向上无缝翻章标志：不重置 scrollTop */
+let isBackwardSeamless = false;
+/** 上一章进入事件是否已触发（每次 prevContent 变化后重置） */
+let prevChapterEnteredFired = false;
+const atTop = ref(true);
+const atBottom = ref(false);
+let prevBoundaryFallbackFired = false;
+let nextBoundaryFallbackFired = false;
+
+function prepareSeamlessSwap(prevSectionHeight: number) {
+  const el = containerRef.value;
+  const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+  if (el && typeof nextTop === 'number') {
+    seamlessSwapAnchorOffset = el.scrollTop - nextTop;
+    seamlessSwapFallbackOffset = -1;
+    return;
+  }
+  seamlessSwapAnchorOffset = null;
+  seamlessSwapFallbackOffset = prevSectionHeight;
+}
+
+function prepareSeamlessSwapBack() {
+  isBackwardSeamless = true;
+}
+
+// ── 哨兵观察器（独立于图片懒加载 observer） ────────────────────────
+let sentinelObserver: IntersectionObserver | null = null;
+
+function teardownSentinel() {
+  sentinelObserver?.disconnect();
+  sentinelObserver = null;
+}
+
+function setupSentinel() {
+  teardownSentinel();
+  const el = nextChapterSentinelRef.value;
+  const root = containerRef.value;
+  if (!el || !root) {
+    return;
+  }
+  sentinelObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const rootEl = containerRef.value;
+          const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+          if (rootEl && typeof nextTop === 'number' && rootEl.scrollTop < nextTop - 1) {
+            return;
+          }
+          teardownSentinel();
+          const sectionH = currentSectionRef.value?.offsetHeight ?? 0;
+          emit('nextChapterEntered', sectionH);
+        }
+      }
+    },
+    { root, rootMargin: '0px 0px -40% 0px' },
+  );
+  sentinelObserver.observe(el);
+}
+
 /** loadImages 完成时 resolve，供 restoreToScrollRatio 等待数据就绪 */
 let loadResolve: (() => void) | null = null;
 let loadComplete: Promise<void> = Promise.resolve();
@@ -258,12 +339,85 @@ async function loadImages() {
 
 watch(
   () => [props.content, props.fileName, props.chapterUrl, comicCacheEnabled.value],
-  loadImages,
+  async () => {
+    const anchorOffset = seamlessSwapAnchorOffset;
+    const fallbackOffset = seamlessSwapFallbackOffset;
+    seamlessSwapAnchorOffset = null;
+    seamlessSwapFallbackOffset = -1;
+    const backward = isBackwardSeamless;
+    isBackwardSeamless = false;
+    prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
+    nextBoundaryFallbackFired = false;
+    atTop.value = true;
+    atBottom.value = false;
+
+    await loadImages();
+
+    const el = containerRef.value;
+    if (!el) {
+      return;
+    }
+
+    if (anchorOffset !== null || fallbackOffset >= 0) {
+      // 向下无缝翻章：恢复到进入下一章时的相对位置，避免章节高度变化导致瞬移。
+      await nextTick();
+      if (anchorOffset !== null) {
+        const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+        el.scrollTop = Math.max(0, currentTop + anchorOffset);
+      } else {
+        el.scrollTop = Math.max(0, el.scrollTop - fallbackOffset);
+      }
+    } else if (backward) {
+      // 向上无缝翻章：旧上一章内容现在是 current，位置不变
+    } else {
+      // 普通翻章：滚到当前章节起始（跳过上方预渲染的上一章区域）
+      await nextTick();
+      el.scrollTop = prevSectionRef.value?.offsetHeight ?? 0;
+    }
+  },
+  { immediate: true },
+);
+
+// ── 上一章内容变化：预渲染到顶部，补偿 scrollTop ─────────────────────────
+watch(
+  () => props.prevChapterContent,
+  async (val, oldVal) => {
+    const wasEmpty = !oldVal;
+    const isNowFilled = !!val;
+    prevPages.value = val ? createPages(parseImageUrls(val)) : [];
+    prevChapterEnteredFired = false;
+    prevBoundaryFallbackFired = false;
+
+    if (wasEmpty && isNowFilled) {
+      const el = containerRef.value;
+      const savedTop = el?.scrollTop ?? 0;
+      await nextTick();
+      const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+      if (prevH > 0 && el) {
+        el.scrollTop = savedTop + prevH;
+      }
+    }
+  },
+  { immediate: true },
+);
+
+// ── 下一章内容变化 ──────────────────────────────────────────────────
+watch(
+  () => props.nextChapterContent,
+  async (val) => {
+    nextPages.value = val ? createPages(parseImageUrls(val)) : [];
+    nextBoundaryFallbackFired = false;
+    teardownSentinel();
+    if (val) {
+      await nextTick();
+      setupSentinel();
+    }
+  },
   { immediate: true },
 );
 
 /* ── 滚动状态 ── */
-const atBottom = ref(false);
 
 function onScroll() {
   const el = containerRef.value;
@@ -271,64 +425,79 @@ function onScroll() {
     return;
   }
   const { scrollTop, scrollHeight, clientHeight } = el;
-  atBottom.value = scrollHeight - scrollTop - clientHeight < 2;
-  // 发射滚动进度
-  const ratio = scrollHeight <= clientHeight ? 1 : scrollTop / (scrollHeight - clientHeight);
+  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
+
+  // 进度按当前章节区域计算（不含上/下章预渲染部分）
+  const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
+  const adjustedScrollTop = Math.max(0, scrollTop - prevH);
+  const ratio =
+    currentSectionH <= clientHeight
+      ? 1
+      : adjustedScrollTop / (currentSectionH - clientHeight);
   emit('progress', Math.min(1, Math.max(0, ratio)));
+
+  const prevAtTop = atTop.value;
+  const prevAtBottom = atBottom.value;
+  atTop.value = scrollTop <= 0;
+  atBottom.value = scrollTop + clientHeight >= scrollHeight - 8;
+
+  if (!atTop.value) {
+    prevBoundaryFallbackFired = false;
+  }
+  if (!atBottom.value) {
+    nextBoundaryFallbackFired = false;
+  }
+
+  // 检测向上翻章：滚到上一章区域前 60% 时触发一次
+  if (!prevChapterEnteredFired && prevH > 0 && hasPrevChapterContent.value) {
+    if (scrollTop <= prevH * 0.6) {
+      prevChapterEnteredFired = true;
+      emit('prevChapterEntered');
+    }
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    hasNextChapterContent.value &&
+    props.hasNext &&
+    scrollTop >= nextTop - 1
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('nextChapterEntered', currentSectionRef.value?.offsetHeight ?? 0);
+  }
+
+  if (
+    !prevBoundaryFallbackFired &&
+    !hasPrevChapterContent.value &&
+    props.hasPrev &&
+    !prevAtTop &&
+    atTop.value
+  ) {
+    prevBoundaryFallbackFired = true;
+    emit('prevChapterEntered');
+  }
+
+  if (
+    !nextBoundaryFallbackFired &&
+    !hasNextChapterContent.value &&
+    props.hasNext &&
+    !prevAtBottom &&
+    atBottom.value
+  ) {
+    nextBoundaryFallbackFired = true;
+    emit('nextChapterEntered', currentSectionRef.value?.offsetHeight ?? 0);
+  }
 }
 
-// ── 上拉/下拉加载（共用 usePullToLoad composable） ──────────────────
-const {
-  pullProgress,
-  bubbleBottomPx,
-  isReady,
-  dismissing,
-  boundaryMsg,
-  isDragging,
-  onTouchStart,
-  onTouchMove,
-  onTouchEnd,
-  onMouseDown,
-  onWheel,
-  isMouseDragMoved,
-  resetOnContentChange,
-  cleanup,
-} = usePullToLoad({
-  containerRef,
-  atBottom,
-  hasNext: () => props.hasNext,
-  emitNext: () => emit('nextChapter'),
-});
-
 /* ── 触控区域 ── */
-function onTapContainer(e: MouseEvent | TouchEvent) {
-  // 鼠标拖拽超过 5px 后不算点击
-  if (!('touches' in e) && isMouseDragMoved()) {
-    return;
-  }
-  // 漫画滚动模式不支持左右点击翻章，任意区域均切换菜单
+function onTapContainer() {
   emit('tap', 'center');
 }
 
-/** 鼠标拖拽时光标样式 */
-const containerStyle = computed(() =>
-  isDragging.value ? { cursor: 'grabbing', userSelect: 'none' as const } : {},
-);
-
-// 内容变化时重置上拉状态，并瞬间回到顶部
-watch(
-  () => props.content,
-  () => {
-    resetOnContentChange();
-    nextTick(() => {
-      if (containerRef.value) {
-        containerRef.value.scrollTop = 0;
-      }
-    });
-  },
-);
-
-onBeforeUnmount(() => cleanup());
+onBeforeUnmount(() => {
+  teardownSentinel();
+});
 
 /* ── 图片懒加载观察器 ── */
 function setupObserver() {
@@ -474,12 +643,87 @@ function goToPage(idx: number) {
 }
 
 function getScrollRatio(): number {
+  return getReadingScrollRatio();
+}
+
+function getReadingChapterOffset(): number {
   const el = containerRef.value;
   if (!el) {
+    return 0;
+  }
+  const currentTop = currentSectionRef.value?.offsetTop ?? 0;
+  const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
+  if (hasPrevChapterContent.value && el.scrollTop < currentTop - 1) {
     return -1;
   }
-  const max = el.scrollHeight - el.clientHeight;
-  return max <= 0 ? 1 : Math.min(1, Math.max(0, el.scrollTop / max));
+  if (hasNextChapterContent.value && el.scrollTop >= nextTop - 1) {
+    return 1;
+  }
+  return 0;
+}
+
+function getSectionRatio(section: HTMLElement | null): number {
+  const el = containerRef.value;
+  if (!el || !section) {
+    return -1;
+  }
+  const sectionTop = section.offsetTop;
+  const sectionHeight = section.offsetHeight;
+  const adjustedScrollTop = Math.max(0, el.scrollTop - sectionTop);
+  const max = Math.max(0, sectionHeight - el.clientHeight);
+  return max <= 0 ? 1 : Math.min(1, Math.max(0, adjustedScrollTop / max));
+}
+
+function getReadingScrollRatio(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getSectionRatio(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getSectionRatio(nextSectionRef.value);
+  }
+  return getSectionRatio(currentSectionRef.value);
+}
+
+function getAdjacentScrollRatio(side: 'prev' | 'next'): number {
+  return side === 'prev' ? getSectionRatio(prevSectionRef.value) : getSectionRatio(nextSectionRef.value);
+}
+
+function getPageIndexWithin(section: HTMLElement | null): number {
+  const container = containerRef.value;
+  if (!container || !section) {
+    return 0;
+  }
+  const pageEls = section.querySelectorAll<HTMLElement>('.comic-mode__page');
+  if (pageEls.length === 0) {
+    return 0;
+  }
+  const containerTop = container.getBoundingClientRect().top;
+  for (let i = 0; i < pageEls.length; i++) {
+    const rect = pageEls[i]?.getBoundingClientRect();
+    if (!rect) {
+      continue;
+    }
+    if (rect.bottom > containerTop + 1) {
+      return i;
+    }
+  }
+  return Math.max(0, pageEls.length - 1);
+}
+
+function getReadingPageIndex(): number {
+  const offset = getReadingChapterOffset();
+  if (offset < 0) {
+    return getPageIndexWithin(prevSectionRef.value);
+  }
+  if (offset > 0) {
+    return getPageIndexWithin(nextSectionRef.value);
+  }
+  return currentPage.value;
+}
+
+function getAdjacentPageIndex(side: 'prev' | 'next'): number {
+  return side === 'prev' ? getPageIndexWithin(prevSectionRef.value) : getPageIndexWithin(nextSectionRef.value);
 }
 
 /** 是否正在恢复阅读位置（显示 loading 遮罩期间为 true） */
@@ -565,8 +809,10 @@ function scrollToRatio(ratio: number) {
   if (!el || ratio < 0) {
     return;
   }
-  const maxScroll = el.scrollHeight - el.clientHeight;
-  el.scrollTop = ratio * maxScroll;
+  const prevH = prevSectionRef.value?.offsetHeight ?? 0;
+  const currentH = currentSectionRef.value?.offsetHeight ?? Math.max(0, el.scrollHeight - prevH);
+  const maxScroll = Math.max(0, currentH - el.clientHeight);
+  el.scrollTop = prevH + ratio * maxScroll;
 }
 
 /** 手动重新加载某页（后台下载失败后用户触发） */
@@ -599,11 +845,23 @@ async function retryPage(idx: number) {
   }
 }
 
+const hasPrevChapterContent = computed(() => !!props.prevChapterContent);
+const hasNextChapterContent = computed(() => !!props.nextChapterContent);
+/** 无下一章且无预加载内容时显示结束画面 */
+const showEndScreen = computed(() => !props.hasNext && !hasNextChapterContent.value);
+
 defineExpose({
   goToPage,
   restoreToScrollRatio,
   scrollToRatio,
   getScrollRatio,
+  getReadingChapterOffset,
+  getReadingScrollRatio,
+  getReadingPageIndex,
+  getAdjacentScrollRatio,
+  getAdjacentPageIndex,
+  prepareSeamlessSwap,
+  prepareSeamlessSwapBack,
   get currentPage() {
     return currentPage.value;
   },
@@ -617,15 +875,8 @@ defineExpose({
   <div
     ref="containerRef"
     class="comic-mode"
-    :style="containerStyle"
     @click="onTapContainer"
     @scroll.passive="onScroll"
-    @wheel="onWheel"
-    @mousedown="onMouseDown"
-    @touchstart.passive="onTouchStart"
-    @touchmove.passive="onTouchMove"
-    @touchend.passive="onTouchEnd"
-    @touchcancel.passive="onTouchEnd"
   >
     <div v-if="loading && totalPages === 0" class="comic-mode__loading">
       <n-spin size="large" />
@@ -641,59 +892,118 @@ defineExpose({
         <n-alert type="warning" :title="error" />
       </div>
 
-      <div
-        v-for="(page, idx) in pages"
-        :key="idx"
-        :ref="(el) => observeImg(el as Element, idx)"
-        class="comic-mode__page"
-        :style="pageStyle(idx)"
-      >
-        <template v-if="shouldShow(idx)">
-          <!-- 书源需要解码时显示占位，等待 Rust 处理完成 -->
-          <template v-if="page.pending">
-            <div class="comic-mode__placeholder comic-mode__placeholder--overlay">
-              <n-spin size="small" />
-              <span>第 {{ idx + 1 }} 页解码中...</span>
-            </div>
-          </template>
-          <template v-else>
+      <!-- ── 上一章预览区域（顶部预渲染，无缝向上翻章） ── -->
+      <template v-if="hasPrevChapterContent">
+        <div ref="prevSectionRef">
+          <div
+            v-for="(page, idx) in prevPages"
+            :key="`prev-${idx}`"
+            class="comic-mode__page comic-mode__page--prev"
+          >
             <img
               :src="page.src"
-              :alt="`第 ${idx + 1} 页`"
-              :class="['comic-mode__img', { 'comic-mode__img--ready': page.loaded }]"
+              :alt="`上一章第 ${idx + 1} 页`"
+              class="comic-mode__img comic-mode__img--ready"
               loading="lazy"
-              @load="onImageLoad(idx, $event)"
-              @error="onImageError(idx)"
             />
-            <div
-              v-if="!page.loaded"
-              class="comic-mode__placeholder comic-mode__placeholder--overlay"
-            >
-              <n-spin v-if="!page.failed" size="small" />
-              <template v-if="page.retryFailed">
-                <span class="comic-mode__fail-text">第 {{ idx + 1 }} 页下载失败</span>
-                <n-button
-                  size="small"
-                  type="primary"
-                  style="margin-top: 4px"
-                  @click.stop="retryPage(idx)"
-                >
-                  重新加载
-                </n-button>
-              </template>
-              <span v-else>{{ page.failed ? '图片加载失败' : `第 ${idx + 1} 页加载中...` }}</span>
-            </div>
+          </div>
+        </div>
+        <!-- 章节分隔线（上一章 → 当前章） -->
+        <div class="comic-mode__chapter-sep">
+          <div class="comic-mode__chapter-sep-line" />
+          <p class="comic-mode__chapter-sep-title">{{ prevChapterTitle || '上一章' }}结束</p>
+        </div>
+      </template>
+
+      <!-- ── 当前章节页面展示区域 ── -->
+      <div ref="currentSectionRef">
+        <div
+          v-for="(page, idx) in pages"
+          :key="idx"
+          :ref="(el) => observeImg(el as Element, idx)"
+          class="comic-mode__page"
+          :style="pageStyle(idx)"
+        >
+          <template v-if="shouldShow(idx)">
+            <!-- 书源需要解码时显示占位，等待 Rust 处理完成 -->
+            <template v-if="page.pending">
+              <div class="comic-mode__placeholder comic-mode__placeholder--overlay">
+                <n-spin size="small" />
+                <span>第 {{ idx + 1 }} 页解码中...</span>
+              </div>
+            </template>
+            <template v-else>
+              <img
+                :src="page.src"
+                :alt="`第 ${idx + 1} 页`"
+                :class="['comic-mode__img', { 'comic-mode__img--ready': page.loaded }]"
+                loading="lazy"
+                @load="onImageLoad(idx, $event)"
+                @error="onImageError(idx)"
+              />
+              <div
+                v-if="!page.loaded"
+                class="comic-mode__placeholder comic-mode__placeholder--overlay"
+              >
+                <n-spin v-if="!page.failed" size="small" />
+                <template v-if="page.retryFailed">
+                  <span class="comic-mode__fail-text">第 {{ idx + 1 }} 页下载失败</span>
+                  <n-button
+                    size="small"
+                    type="primary"
+                    style="margin-top: 4px"
+                    @click.stop="retryPage(idx)"
+                  >
+                    重新加载
+                  </n-button>
+                </template>
+                <span v-else>{{ page.failed ? '图片加载失败' : `第 ${idx + 1} 页加载中...` }}</span>
+              </div>
+            </template>
           </template>
-        </template>
-        <div v-else class="comic-mode__placeholder">
-          {{ idx + 1 }}
+          <div v-else class="comic-mode__placeholder">
+            {{ idx + 1 }}
+          </div>
+        </div>
+
+        <!-- 底部提示（无下一章预加载时显示） -->
+        <div v-if="!hasNextChapterContent" class="comic-mode__footer">
+          <span v-if="!hasNext">已是最后一章</span>
+          <span v-else class="comic-mode__footer-hint">继续滚动加载下一章</span>
         </div>
       </div>
 
-      <!-- 底部提示 -->
-      <div class="comic-mode__footer">
-        <span v-if="!hasNext">已是最后一章</span>
-        <span v-else class="comic-mode__footer-hint">继续滚动加载下一章</span>
+      <!-- ── 下一章预览区域（无缝拼接） ── -->
+      <template v-if="hasNextChapterContent">
+        <!-- 章节分隔线 + 标题 -->
+        <div class="comic-mode__chapter-sep">
+          <div class="comic-mode__chapter-sep-line" />
+          <p class="comic-mode__chapter-sep-title">{{ nextChapterTitle || '下一章' }}</p>
+        </div>
+        <!-- 哨兵元素：进入视口时触发章节切换 -->
+        <div ref="nextChapterSentinelRef" class="comic-mode__sentinel" aria-hidden="true" />
+        <!-- 下一章图片（直接显示，不经过内容缓存） -->
+        <div ref="nextSectionRef">
+          <div
+            v-for="(page, idx) in nextPages"
+            :key="`next-${idx}`"
+            class="comic-mode__page comic-mode__page--next"
+          >
+            <img
+              :src="page.src"
+              :alt="`下一章第 ${idx + 1} 页`"
+              class="comic-mode__img comic-mode__img--ready"
+              loading="lazy"
+            />
+          </div>
+        </div>
+      </template>
+
+      <!-- ── 结束画面（无下一章） ── -->
+      <div v-if="showEndScreen" class="chapter-end-screen">
+        <div class="chapter-end-screen__icon">📖</div>
+        <p class="chapter-end-screen__title">已读完最后一章</p>
+        <p class="chapter-end-screen__sub">全书完，感谢阅读</p>
       </div>
     </template>
 
@@ -702,18 +1012,6 @@ defineExpose({
       <n-spin size="large" />
       <span>正在定位阅读位置...</span>
     </div>
-
-    <!-- 上拉气泡 + 边界提示（共享组件） -->
-    <PullBubble
-      :visible="atBottom"
-      :bubble-bottom-px="bubbleBottomPx"
-      :is-ready="isReady"
-      :dismissing="dismissing"
-      :has-next="hasNext"
-      :boundary-msg="boundaryMsg"
-      :pull-progress="pullProgress"
-      :is-dragging="isDragging"
-    />
 
     <!-- 页码指示器 -->
     <div v-if="totalPages > 0" class="comic-mode__indicator">
@@ -728,12 +1026,12 @@ defineExpose({
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #111;
+  /* 漫画背景必须固定白色，避免透明漫画在深色主题/皮肤下出现脏底。 */
+  background: #ffffff;
   -webkit-overflow-scrolling: touch;
-  /* 防止原生过度滚动（iOS 橡皮筋/Android 发光）与上拉气泡动效竞争 */
-  overscroll-behavior-y: none;
-  /* 启用滚动锚定：图片加载后浏览器自动补偿滚动位置，防止内容被顶走 */
-  overflow-anchor: auto;
+  overscroll-behavior-y: contain;
+  /* 禁用浏览器自动滚动锚定，改为手动精确补偿 */
+  overflow-anchor: none;
 }
 
 .comic-mode__loading {
@@ -801,7 +1099,7 @@ defineExpose({
   height: auto;
   gap: 10px;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(17, 17, 17, 0.58), rgba(17, 17, 17, 0.72));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.92));
   font-size: 0.95rem;
   opacity: 1;
 }
@@ -818,7 +1116,7 @@ defineExpose({
 .comic-mode__footer {
   padding: 16px 24px 28px;
   text-align: center;
-  color: var(--color-text-muted);
+  color: rgba(32, 32, 32, 0.55);
   font-size: 0.875rem;
 }
 
@@ -831,7 +1129,7 @@ defineExpose({
   position: fixed;
   bottom: 16px;
   right: 16px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.88);
   color: #fff;
   padding: 4px 10px;
   border-radius: 12px;
@@ -848,10 +1146,41 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: rgba(17, 17, 17, 0.88);
-  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(32, 32, 32, 0.7);
   font-size: 0.9rem;
   z-index: 30;
   pointer-events: all;
+}
+
+/* 章节分隔 */
+.comic-mode__chapter-sep {
+  padding: 22px 24px 8px;
+  text-align: center;
+}
+
+.comic-mode__chapter-sep-line {
+  width: min(180px, 46vw);
+  height: 2px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.04));
+}
+
+.comic-mode__chapter-sep-title {
+  text-align: center;
+  color: rgba(28, 28, 28, 0.7);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0 12px 6px;
+  text-transform: uppercase;
+}
+
+/* 哨兵 */
+.comic-mode__sentinel {
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 </style>

@@ -49,6 +49,7 @@ const {
   showBookDetailDialog,
   bookDetailBook,
   bookDetailMode,
+  showTxtImportDialog,
 } = storeToRefs(uiStore);
 const { filteredBooks: uiFilteredBooks, menuOptions } = storeToRefs(uiStore);
 const {
@@ -61,6 +62,8 @@ const {
   readerShelfId,
   readerBookInfo,
   readerSourceType,
+  readerChapterGroups,
+  episodeProgressMap,
   refreshingToc,
 } = storeToRefs(readerStore);
 const { privacyModeEnabled, privacyExitTick } = storeToRefs(privacyModeStore);
@@ -258,6 +261,7 @@ onMounted(async () => {
       @toggle-privacy="togglePrivacyMode"
       @toggle-group-menu="showGroupMenu = !showGroupMenu"
       @select-group="(id: string) => selectGroup(id)"
+      @import-txt="uiStore.showTxtImportDialog = true"
     />
 
     <BookshelfToolbar v-model:search-kw="searchKw" :show="!!books.length" />
@@ -304,6 +308,10 @@ onMounted(async () => {
       :chapter-name="readerChapterName"
       :file-name="readerFileName"
       :chapters="readerChapters"
+      :chapter-groups="readerChapterGroups"
+      :inline-group-tabs="true"
+      :episode-progress="episodeProgressMap"
+      :save-episode-progress="(sid, url, t, d) => readerStore.setEpisodeProgress(url, t, d)"
       :shelf-book-id="readerShelfId"
       :book-info="readerBookInfo"
       :source-type="readerSourceType"
@@ -317,6 +325,7 @@ onMounted(async () => {
       v-model:show-cover-generator-dialog="showCoverGeneratorDialog"
       v-model:show-export-dialog="showExportDialog"
       v-model:show-book-detail-dialog="showBookDetailDialog"
+      v-model:show-txt-import-dialog="showTxtImportDialog"
       :switch-target-book="switchTargetBook"
       :switch-target-chapters="switchTargetChapters"
       :cover-generator-book="coverGeneratorBook"
@@ -327,6 +336,7 @@ onMounted(async () => {
       @whole-book-switched="bookshelfActions.handleWholeBookSwitched"
       @cover-applied="readerLauncher.syncOpenReaderBookInfo"
       @book-detail-saved="readerLauncher.syncOpenReaderBookInfo"
+      @txt-imported="bookshelfActions.handleTxtImported"
     />
   </div>
 </template>

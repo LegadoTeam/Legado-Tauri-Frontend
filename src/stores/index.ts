@@ -3,7 +3,7 @@
  */
 export { useNavigationStore } from './navigation';
 export { useBookSourceStore } from './bookSource';
-export { useBookshelfStore } from './bookshelf';
+export { useBookshelfStore, LOCAL_TXT_FILE_NAME, LOCAL_TXT_SOURCE_NAME, isLocalTxtBook } from './bookshelf';
 export { useAppConfigStore } from './appConfig';
 export { usePreferencesStore } from './preferences';
 export { usePrivacyModeStore } from './privacyMode';
@@ -18,6 +18,10 @@ export { useBookshelfReaderStore } from '@/features/bookshelf/stores/bookshelfRe
 export { useReaderSessionStore } from '@/features/reader/stores/readerSession';
 export { useReaderUiStore } from '@/features/reader/stores/readerUi';
 export { useReaderSettingsStore } from '@/features/reader/stores/readerSettings';
+export { useReaderActionsStore } from '@/features/reader/stores/readerActions';
+export { useReaderViewStore } from '@/features/reader/stores/readerView';
+export { useReaderBookmarksStore } from '@/features/reader/stores/readerBookmarks';
+export type { BookmarkEntry } from '@/features/reader/stores/readerBookmarks';
 export { useMusicPlayerStore } from './musicPlayer';
 export type { PlayerTrack, PlayerBookContext, PlayMode } from './musicPlayer';
 export type { BackHandler } from './backStack';
@@ -48,6 +52,7 @@ export type {
   ShelfBook,
   AddBookPayload,
   CachedChapter,
+  EpisodeProgress,
   UpdateShelfBookPayload,
   PatchShelfBookPayload,
 } from '../composables/useBookshelf';

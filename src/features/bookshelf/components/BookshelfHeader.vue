@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { LayoutGrid, EyeOff, Eye, FolderPlus } from 'lucide-vue-next';
+import { LayoutGrid, EyeOff, Eye, FolderPlus, FilePlus } from 'lucide-vue-next';
 import type { CardSizeKey } from '@/composables/useViewCardDensity';
 import type { ShelfGroup } from '@/types/shelfGroup';
 
@@ -20,6 +20,7 @@ const emit = defineEmits<{
   (e: 'toggle-privacy'): void;
   (e: 'toggle-group-menu'): void;
   (e: 'select-group', groupId: string): void;
+  (e: 'import-txt'): void;
 }>();
 
 // 启用的分组（排除禁用的）
@@ -53,6 +54,16 @@ const showGroupBar = computed(() => {
           @click="emit('toggle-group-menu')"
         >
           <FolderPlus :size="16" />
+        </button>
+        <!-- TXT 导入按钮 -->
+        <button
+          class="bs-icon-btn"
+          type="button"
+          title="导入本地 TXT"
+          aria-label="导入本地 TXT"
+          @click="emit('import-txt')"
+        >
+          <FilePlus :size="16" />
         </button>
         <n-dropdown
           trigger="click"

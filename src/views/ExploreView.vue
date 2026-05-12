@@ -3,9 +3,11 @@ import {
   Search,
   RefreshCw,
   AlignJustify,
-  Image,
-  ImageOff,
+  Eye,
+  EyeOff,
   LayoutGrid,
+  Image,
+  List,
 } from 'lucide-vue-next';
 import { useDialog, useMessage } from 'naive-ui';
 import { storeToRefs } from 'pinia';
@@ -219,12 +221,40 @@ async function handleForceReload() {
 // 封面显示开关
 const showCovers = ref(true);
 
+// 显示模式：card=卡片网格，cover=封面书架，list=列表单列
+type ExploreDisplayMode = 'card' | 'cover' | 'list';
+const displayModeStore = useDynamicConfig<{ mode: ExploreDisplayMode }>({
+  namespace: 'explore.displayMode',
+  version: 1,
+  defaults: () => ({ mode: 'card' }),
+  migrate: () => null,
+  legacyKeys: [],
+});
+const displayMode = computed<ExploreDisplayMode>({
+  get: () => displayModeStore.state.mode,
+  set: (v) => displayModeStore.replace({ mode: v }),
+});
+
 // ── 移动端三点菜单 ──────────────────────────────────────────────────────
 const exploreMobileMenuOptions = computed(() => [
   {
-    label: showCovers.value ? '隐藏封面' : '显示封面',
-    key: 'toggle-covers',
+    label: '卡片模式',
+    key: 'mode-card',
+    disabled: displayMode.value === 'card',
   },
+  {
+    label: '封面模式',
+    key: 'mode-cover',
+    disabled: displayMode.value === 'cover',
+  },
+  {
+    label: '列表模式',
+    key: 'mode-list',
+    disabled: displayMode.value === 'list',
+  },
+  ...(displayMode.value !== 'cover'
+    ? [{ label: showCovers.value ? '隐藏封面' : '显示封面', key: 'toggle-covers' }]
+    : []),
   ...CARD_SIZES.map((s) => ({
     label: `卡片大小：${s.label}`,
     key: `size-${s.key}`,
@@ -245,7 +275,13 @@ const exploreMobileMenuOptions = computed(() => [
 ]);
 
 function handleExploreMobileMenuSelect(key: string) {
-  if (key === 'toggle-covers') {
+  if (key === 'mode-card') {
+    displayMode.value = 'card';
+  } else if (key === 'mode-cover') {
+    displayMode.value = 'cover';
+  } else if (key === 'mode-list') {
+    displayMode.value = 'list';
+  } else if (key === 'toggle-covers') {
     showCovers.value = !showCovers.value;
   } else if (key.startsWith('size-')) {
     setSize(normalizeCardSizeKey(key.slice(5), activeSizeKey.value));
@@ -647,13 +683,57 @@ watch(
           :options="exploreMobileMenuOptions"
           @select="handleExploreMobileMenuSelect"
         >
-          <!-- 封面开关 -->
+          <!-- 显示模式切换 -->
           <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ev-mode-btn"
+                :class="{ 'ev-mode-btn--active': displayMode === 'card' }"
+                @click="displayMode = 'card'"
+              >
+                <template #icon><LayoutGrid :size="14" /></template>
+              </n-button>
+            </template>
+            卡片模式
+          </n-tooltip>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ev-mode-btn"
+                :class="{ 'ev-mode-btn--active': displayMode === 'cover' }"
+                @click="displayMode = 'cover'"
+              >
+                <template #icon><Image :size="14" /></template>
+              </n-button>
+            </template>
+            封面模式
+          </n-tooltip>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ev-mode-btn"
+                :class="{ 'ev-mode-btn--active': displayMode === 'list' }"
+                @click="displayMode = 'list'"
+              >
+                <template #icon><List :size="14" /></template>
+              </n-button>
+            </template>
+            列表模式
+          </n-tooltip>
+
+          <!-- 封面开关（仅卡片/列表模式） -->
+          <n-tooltip v-if="displayMode !== 'cover'" trigger="hover">
             <template #trigger>
               <n-button size="small" quaternary @click="showCovers = !showCovers">
                 <template #icon>
-                  <Image v-if="showCovers" :size="14" />
-                  <ImageOff v-else :size="14" />
+                  <Eye v-if="showCovers" :size="14" />
+                  <EyeOff v-else :size="14" />
                 </template>
               </n-button>
             </template>
@@ -797,6 +877,7 @@ watch(
                 :active="activeSourceTab === src.fileName"
                 :prefetch="prefetchedSourceTabs.has(src.fileName)"
                 :show-covers="showCovers"
+                :display-mode="displayMode"
                 :reload-version="sourceRefreshVersion[src.fileName] ?? 0"
                 @select="openDetail"
                 @open-book="(url: string) => handleOpenBookByUrl(url, src.fileName)"
@@ -903,6 +984,11 @@ watch(
   font-size: var(--fs-12);
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+/* 模式切换按钮激活态 */
+.ev-mode-btn--active {
+  color: var(--color-accent) !important;
 }
 .ev-source-tab {
   display: inline-flex;

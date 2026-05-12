@@ -1,9 +1,16 @@
+/**
+ * 负责阅读进度的本地保存、同步上报与冲突处理。
+ */
 import type { DialogApi } from 'naive-ui';
 import type { ComputedRef, Ref } from 'vue';
 import type { ChapterItem } from '@/stores';
 import type { AppConfig } from '../../../composables/useAppConfig';
 import type { OpenChapterOptions } from './useReaderChapterOpen';
-import type { ReaderPositionSnapshot, ReaderProgressPayload } from './useReaderPosition';
+import type {
+  ReaderPositionSnapshot,
+  ReaderProgressPayload,
+  ReaderProgressTarget,
+} from './useReaderPosition';
 
 interface ReaderConflictPayload {
   bookId?: string;
@@ -42,12 +49,10 @@ interface UseReaderProgressSyncOptions {
   dialog: DialogApi;
   sync: ReaderSyncApi;
   currentShelfId: ComputedRef<string | undefined>;
-  activeChapterIndex: Ref<number>;
   shouldIgnorePositionEvents: () => boolean;
   getChapter: (index: number) => ChapterItem | undefined;
-  fallbackChapterName: string;
-  fallbackChapterUrl: string;
   readCurrentPosition: () => ReaderPositionSnapshot;
+  resolveReadingProgressTarget: (snapshot?: ReaderPositionSnapshot) => ReaderProgressTarget;
   buildProgressPayload: (snapshot?: ReaderPositionSnapshot) => ReaderProgressPayload;
   updateProgress: (
     shelfId: string,
@@ -70,10 +75,14 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
   let readerSyncRunning = false;
   let lastReaderSyncAt = 0;
   let lastSavedChapterIndex = -1;
+  let lastDetailedSaveAt = 0;
+  let detailedSaveInFlight: Promise<void> | null = null;
   let unlistenReadingConflict: (() => void) | null = null;
 
   function resetProgressSyncState() {
     lastSavedChapterIndex = -1;
+    lastDetailedSaveAt = 0;
+    detailedSaveInFlight = null;
     lastReaderSyncAt = 0;
     readerSyncRunning = false;
   }
@@ -83,55 +92,72 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
     if (bookId === undefined || bookId === '') {
       return;
     }
-    const chapter = options.getChapter(options.activeChapterIndex.value);
     const position = options.readCurrentPosition();
+    const target = options.resolveReadingProgressTarget(position);
     void options.sync
       .reportReaderSession({
         active,
         bookId,
-        chapterIndex: options.activeChapterIndex.value,
-        chapterName: chapter?.name ?? options.fallbackChapterName,
-        chapterUrl: chapter?.url ?? options.fallbackChapterUrl,
-        pageIndex: position.pageIndex,
-        scrollRatio: position.scrollRatio,
-        playbackTime: position.playbackTime,
+        chapterIndex: target.chapterIndex,
+        chapterName: target.chapterName,
+        chapterUrl: target.chapterUrl,
+        pageIndex: target.position.pageIndex,
+        scrollRatio: target.position.scrollRatio,
+        playbackTime: target.position.playbackTime,
         updatedAt: Date.now(),
       })
       .catch(() => {});
   }
 
-  function saveDetailedProgress() {
+  async function saveDetailedProgress(): Promise<void> {
+    if (detailedSaveInFlight) {
+      return detailedSaveInFlight;
+    }
+    if (Date.now() - lastDetailedSaveAt < 1200) {
+      return;
+    }
+
+    detailedSaveInFlight = doSaveDetailedProgress().finally(() => {
+      detailedSaveInFlight = null;
+    });
+    return detailedSaveInFlight;
+  }
+
+  async function doSaveDetailedProgress(): Promise<void> {
     const shelfId = options.currentShelfId.value;
     if (shelfId === undefined || shelfId === '' || options.shouldIgnorePositionEvents()) {
       return;
     }
 
-    const chapter = options.getChapter(options.activeChapterIndex.value);
-    if (!chapter) {
+    const position = options.readCurrentPosition();
+    const target = options.resolveReadingProgressTarget(position);
+
+    if (target.chapterIndex < 0 || !target.chapterUrl) {
       return;
     }
 
-    const position = options.readCurrentPosition();
-
     if (
-      options.activeChapterIndex.value === lastSavedChapterIndex &&
-      position.pageIndex < 0 &&
-      position.scrollRatio < 0 &&
-      position.playbackTime < 0
+      target.chapterIndex === lastSavedChapterIndex &&
+      target.position.pageIndex < 0 &&
+      target.position.scrollRatio < 0 &&
+      target.position.playbackTime < 0
     ) {
       return;
     }
 
-    lastSavedChapterIndex = options.activeChapterIndex.value;
-    void options
-      .updateProgress(
+    lastSavedChapterIndex = target.chapterIndex;
+    try {
+      await options.updateProgress(
         shelfId,
-        options.activeChapterIndex.value,
-        chapter.url,
-        options.buildProgressPayload(position),
-      )
-      .catch(() => {});
-    reportReaderSession(true);
+        target.chapterIndex,
+        target.chapterUrl,
+        options.buildProgressPayload(target.position),
+      );
+      lastDetailedSaveAt = Date.now();
+      reportReaderSession(true);
+    } catch {
+      // 保存失败不阻断退出或翻章；下次自动保存/同步会继续尝试。
+    }
   }
 
   function canSyncReaderProgress() {
@@ -199,7 +225,7 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
             }
           },
           onNegativeClick: () => {
-            saveDetailedProgress();
+            void saveDetailedProgress();
           },
         });
       })
@@ -217,7 +243,7 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
   function startAutoSave() {
     stopAutoSave();
     autoSaveTimer = setInterval(() => {
-      saveDetailedProgress();
+      void saveDetailedProgress();
     }, 30_000);
   }
 
@@ -233,14 +259,14 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
       void options.updateSessionVisibility(!document.hidden);
     }
     if (document.hidden && options.getShow()) {
-      saveDetailedProgress();
+      void saveDetailedProgress();
     } else if (!document.hidden && options.getShow()) {
       void triggerReaderProgressSync();
     }
   }
 
   function onBeforeUnloadSave() {
-    saveDetailedProgress();
+    void saveDetailedProgress();
   }
 
   return {

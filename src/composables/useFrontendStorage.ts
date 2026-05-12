@@ -195,6 +195,8 @@ export async function setFrontendStorageItemAsync(
   value: string,
 ): Promise<void> {
   const state = getNamespaceState(namespace);
+  const hadPreviousValue = Object.prototype.hasOwnProperty.call(state.values, key);
+  const previousValue = state.values[key];
   state.values[key] = value;
   state.loaded = true;
   emitStorageChange(namespace, key);
@@ -204,6 +206,12 @@ export async function setFrontendStorageItemAsync(
     await invokeWithTimeout<void>('frontend_storage_set', { namespace, key, value }, TIMEOUT);
     dbgLog(`[Storage] set ${namespace}/${key}: 后端写入成功`);
   } catch (err) {
+    if (hadPreviousValue) {
+      state.values[key] = previousValue;
+    } else {
+      delete state.values[key];
+    }
+    emitStorageChange(namespace, key);
     dbgLog(`[Storage] set ${namespace}/${key}: 后端写入失败 → ` + String(err), true);
     throw err;
   }

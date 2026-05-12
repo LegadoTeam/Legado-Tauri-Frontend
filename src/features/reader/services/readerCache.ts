@@ -7,7 +7,7 @@ import { comicCacheClear, comicCacheClearChapter } from '@/composables/useBookSo
 
 export interface ReaderPrefetchControllerOptions {
   currentShelfId: ComputedRef<string | undefined>;
-  fileName: string;
+  getFileName: () => string;
   message: MessageApi;
   getBookUrl: () => string;
   getBookName: () => string;
@@ -21,7 +21,7 @@ export function createReaderPrefetchController(options: ReaderPrefetchController
   function buildPrefetchPayload(startIndex: number, count: number): PrefetchPayload {
     return {
       id: options.currentShelfId.value ?? '',
-      fileName: options.fileName,
+      fileName: options.getFileName(),
       bookUrl: options.getBookUrl(),
       bookName: options.getBookName(),
       sourceType: options.getSourceType(),
@@ -83,7 +83,7 @@ export function createReaderPrefetchController(options: ReaderPrefetchController
 
 export interface ReaderCacheControllerOptions {
   currentShelfId: ComputedRef<string | undefined>;
-  fileName: string;
+  getFileName: () => string;
   message: MessageApi;
   activeChapterIndex: Ref<number>;
   cachedIndices: Ref<Set<number>>;
@@ -128,7 +128,7 @@ export function createReaderCacheController(options: ReaderCacheControllerOption
     if (options.isComicMode.value) {
       try {
         await comicCacheClearChapter(
-          options.fileName,
+          options.getFileName(),
           options.getBookUrl(),
           options.getBookName(),
           index,
@@ -174,7 +174,7 @@ export function createReaderCacheController(options: ReaderCacheControllerOption
     if (options.isComicMode.value) {
       try {
         await comicCacheClearChapter(
-          options.fileName,
+          options.getFileName(),
           options.getBookUrl(),
           options.getBookName(),
           index,
@@ -203,7 +203,7 @@ export function createReaderCacheController(options: ReaderCacheControllerOption
 
     if (options.isComicMode.value) {
       try {
-        await comicCacheClear(options.fileName);
+        await comicCacheClear(options.getFileName());
       } catch (cause) {
         options.message.error(`清理漫画缓存失败: ${cause}`);
         return;

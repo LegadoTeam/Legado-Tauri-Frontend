@@ -1158,6 +1158,12 @@ defineExpose({
   transition: background-color 0.2s ease;
 }
 
+/* 书签高亮 */
+.paged-mode__page :deep(.reader-bookmark) {
+  background-color: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
+}
+
 .paged-mode__page--layout-debug :deep(.reader-block) {
   position: relative;
   box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.9);

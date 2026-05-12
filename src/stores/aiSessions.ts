@@ -203,7 +203,7 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
       testResults: [...testResults],
       drafts: newDrafts,
       name: newName,
-      status: testResults.every((r) => r.pass) ? 'tested_ok' : 'tested_fail',
+      status: testResults.every((r) => r.status === 'ok') ? 'tested_ok' : 'tested_fail',
       updatedAt: Date.now(),
     };
     persistAllSessions(sessions.value);

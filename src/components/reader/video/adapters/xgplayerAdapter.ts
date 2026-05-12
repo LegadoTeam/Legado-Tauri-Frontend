@@ -133,6 +133,14 @@ export class XgplayerAdapter implements IVideoPlayer {
 
   destroy(): void {
     if (this.player) {
+      // 先暂停，再清空 src，确保音频立即停止（xgplayer.destroy() 异步释放资源可能有延迟）
+      this.player.pause();
+      const videoEl = this.player.video as HTMLVideoElement | undefined;
+      if (videoEl) {
+        videoEl.pause();
+        videoEl.removeAttribute('src');
+        try { videoEl.load(); } catch { /* ignore */ }
+      }
       this.player.destroy();
       this.player = null;
     }

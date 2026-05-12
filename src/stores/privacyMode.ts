@@ -43,10 +43,15 @@ export const usePrivacyModeStore = defineStore('privacyMode', () => {
     };
     const onPageHide = () => exitPrivacyMode('close');
     const onBeforeUnload = () => exitPrivacyMode('close');
+    // Android WebView 中 visibilitychange:hidden 会在恢复时才触发，时机偏晚。
+    // MainActivity.kt 在 onWindowFocusChanged(false) 时直接向 WebView 派发此事件，
+    // 确保切换到后台时立即退出隐私模式。
+    const onAppPaused = () => exitPrivacyMode('background');
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('legado:app-paused', onAppPaused);
 
     if (isTauri) {
       try {

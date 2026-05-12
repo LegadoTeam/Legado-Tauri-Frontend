@@ -48,7 +48,7 @@ export interface ShelfBook {
 export interface UpdateShelfBookPayload {
   id: string;
   name: string;
-  author: string;
+  author?: string;
   coverUrl?: string;
   intro?: string;
   kind?: string;
@@ -105,7 +105,7 @@ export interface SourceSwitchRestoreResult {
 
 export interface AddBookPayload {
   name: string;
-  author: string;
+  author?: string;
   coverUrl?: string;
   intro?: string;
   kind?: string;
@@ -120,6 +120,16 @@ export interface CachedChapter {
   index: number;
   name: string;
   url: string;
+  group?: string;
+}
+
+export interface EpisodeProgress {
+  /** 已播放时长（秒） */
+  time: number;
+  /** 总时长（秒），0 表示未知 */
+  duration: number;
+  /** 最后播放时间戳（毫秒） */
+  lastPlayedAt: number;
 }
 
 // ── 全局状态（单例） ──────────────────────────────────────────────────────
@@ -363,6 +373,29 @@ export function useBookshelf() {
     return new Set(list);
   }
 
+  /** 获取全书各集播放进度 */
+  async function getEpisodeProgress(id: string): Promise<Record<string, EpisodeProgress>> {
+    return invokeWithTimeout<Record<string, EpisodeProgress>>(
+      'bookshelf_get_episode_progress',
+      { id },
+      TIMEOUT,
+    );
+  }
+
+  /** 保存单集播放进度 */
+  async function saveEpisodeProgress(
+    id: string,
+    chapterUrl: string,
+    time: number,
+    duration: number,
+  ): Promise<void> {
+    await invokeWithTimeout<void>(
+      'bookshelf_save_episode_progress',
+      { id, chapterUrl, time, duration },
+      TIMEOUT,
+    );
+  }
+
   /** 判断是否在书架中（同步，基于本地缓存） */
   function isOnShelf(bookUrl: string, fileName: string): boolean {
     return shelfIndex.value.has(`${bookUrl}|${fileName}`);
@@ -400,5 +433,7 @@ export function useBookshelf() {
     isOnShelf,
     getShelfId,
     isPrivateShelfBook,
+    getEpisodeProgress,
+    saveEpisodeProgress,
   };
 }

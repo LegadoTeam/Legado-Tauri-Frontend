@@ -30,6 +30,7 @@ export const useBookshelfUiStore = defineStore('bookshelfUi', () => {
   const showBookDetailDialog = ref(false);
   const bookDetailBook = ref<ShelfBook | null>(null);
   const bookDetailMode = ref<'view' | 'edit'>('view');
+  const showTxtImportDialog = ref(false);
 
   const filteredBooks = computed(() => {
     const kw = searchKw.value.trim().toLowerCase();
@@ -142,6 +143,7 @@ export const useBookshelfUiStore = defineStore('bookshelfUi', () => {
     showBookDetailDialog,
     bookDetailBook,
     bookDetailMode,
+    showTxtImportDialog,
     filteredBooks,
     menuOptions,
     openContextMenu,

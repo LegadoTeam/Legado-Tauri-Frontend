@@ -25,6 +25,7 @@ import {
   type ReaderTypography,
   type ReaderTheme,
   type FlipMode,
+  type PaginationEngine,
   DEFAULT_SETTINGS,
 } from '@/components/reader/types';
 
@@ -33,11 +34,18 @@ const BOOK_STORAGE_PREFIX = 'legado-reader-settings-book-';
 const BOOK_STORAGE_NAMESPACE = 'reader.book-settings';
 const TAP_ZONE_DEBUG_AUTO_CLOSE_MS = 1200;
 const READER_DEFAULTS_NAMESPACE = 'reader.defaults.lastEffective';
+const READER_DEFAULTS_STORAGE_NAMESPACE = `dynamic-config.${READER_DEFAULTS_NAMESPACE}`;
+const READER_DEFAULTS_STATE_KEY = 'state';
 const READER_DEFAULTS_VERSION = 1;
 const BOOK_LEVEL_GLOBAL_FIELDS: (keyof ReaderSettings)[] = ['paginationEngine'];
 
 type StoredReaderSettings = Partial<ReaderSettings> & {
   debugMode?: boolean;
+};
+
+type DynamicConfigEnvelope<T> = {
+  version: number;
+  data: T;
 };
 
 interface ReaderDefaultsSnapshot {
@@ -168,7 +176,42 @@ function getReaderDefaultsStore() {
   });
 }
 
+function readCachedGlobalSettings(): StoredReaderSettings | null {
+  try {
+    const raw = getFrontendStorageItem(
+      READER_DEFAULTS_STORAGE_NAMESPACE,
+      READER_DEFAULTS_STATE_KEY,
+    );
+    if (!raw) {
+      return null;
+    }
+
+    const envelope = JSON.parse(raw) as DynamicConfigEnvelope<unknown>;
+    if (envelope.version !== READER_DEFAULTS_VERSION) {
+      return null;
+    }
+
+    return extractStoredReaderSettings(envelope.data);
+  } catch {
+    return null;
+  }
+}
+
 function loadGlobalSettings(): ReaderSettings {
+  const cachedSettings = readCachedGlobalSettings();
+  if (cachedSettings) {
+    return mergeSettings(cloneDefaults(), cachedSettings);
+  }
+
+  const legacyRaw = legacyLocalStorageGet(LEGACY_STORAGE_KEY);
+  if (legacyRaw) {
+    try {
+      return mergeSettings(cloneDefaults(), JSON.parse(legacyRaw) as StoredReaderSettings);
+    } catch {
+      /* 损坏数据则回退 */
+    }
+  }
+
   const store = getReaderDefaultsStore();
   return mergeSettings(cloneDefaults(), store.state.values);
 }
@@ -212,7 +255,9 @@ function runWithoutPersistence(task: () => void) {
   try {
     task();
   } finally {
-    _suspendPersistenceDepth -= 1;
+    queueMicrotask(() => {
+      _suspendPersistenceDepth -= 1;
+    });
   }
 }
 
@@ -226,8 +271,16 @@ function applySettings(target: ReaderSettings, next: ReaderSettings) {
 }
 
 export function useReaderSettings() {
+  const readerDefaultsStore = getReaderDefaultsStore();
+
+  async function persistSettingsSnapshot(nextSettings: ReaderSettings) {
+    await readerDefaultsStore.replace(createReaderDefaultsSnapshot(nextSettings));
+    if (_activeBookId) {
+      saveBookSettings(_activeBookId, nextSettings);
+    }
+  }
+
   if (!_settings) {
-    const readerDefaultsStore = getReaderDefaultsStore();
     _settings = reactive(loadGlobalSettings());
     watch(
       _settings,
@@ -236,10 +289,7 @@ export function useReaderSettings() {
           return;
         }
         const nextSettings = cloneSettings(val as ReaderSettings);
-        readerDefaultsStore.replace(createReaderDefaultsSnapshot(nextSettings));
-        if (_activeBookId) {
-          saveBookSettings(_activeBookId, nextSettings);
-        }
+        void persistSettingsSnapshot(nextSettings);
       },
       { deep: true },
     );
@@ -291,6 +341,26 @@ export function useReaderSettings() {
   /** 切换翻页模式 */
   function setFlipMode(mode: FlipMode) {
     settings.flipMode = mode;
+  }
+
+  async function setPaginationEngine(engine: PaginationEngine) {
+    if (settings.paginationEngine === engine) {
+      return;
+    }
+
+    const previousEngine = settings.paginationEngine;
+    runWithoutPersistence(() => {
+      settings.paginationEngine = engine;
+    });
+
+    try {
+      await persistSettingsSnapshot(cloneSettings(settings));
+    } catch (error) {
+      runWithoutPersistence(() => {
+        settings.paginationEngine = previousEngine;
+      });
+      throw error;
+    }
   }
 
   /** 重置为默认设置 */
@@ -411,6 +481,7 @@ export function useReaderSettings() {
     updatePagePadding,
     setTheme,
     setFlipMode,
+    setPaginationEngine,
     resetSettings,
     activateBookSettings,
     deactivateBookSettings,

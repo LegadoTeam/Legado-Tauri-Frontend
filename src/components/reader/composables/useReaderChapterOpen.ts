@@ -30,6 +30,9 @@ interface ComicModeApi {
 
 interface ScrollModeApi {
   scrollToRatio?: (ratio: number) => void;
+  scrollToParagraph?: (index: number) => void;
+  scrollToReadingAnchor?: (anchor: number) => void;
+  restoreToReadingAnchor?: (anchor: number) => Promise<void>;
   getScrollRatio?: () => number;
 }
 
@@ -79,6 +82,7 @@ interface UseReaderChapterOpenOptions {
     chapterUrl: string,
     payload: ReaderProgressPayload,
   ) => Promise<unknown>;
+  waitForLinearSeamlessWindowStable: (index: number) => Promise<void>;
   reportLoadError: (message: string) => void;
   clearRepaginateWork: () => void;
 }
@@ -188,6 +192,7 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
   function writeRestoredPosition(pageIndex: number, scrollRatio: number) {
     options.writePositionSnapshot({
       mode: options.getPositionMode(),
+      chapterOffset: 0,
       pageIndex,
       scrollRatio,
       playbackTime: -1,
@@ -208,29 +213,30 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
 
     options.restoringPosition.value = true;
     try {
-      if (options.isComicMode.value && scrollRatio >= 0) {
-        const ready = await waitUntilReady(() => options.comicModeRef.value?.restoreToScrollRatio);
-        if (ready && options.comicModeRef.value?.restoreToScrollRatio) {
-          await options.comicModeRef.value.restoreToScrollRatio(clampReaderRatio(scrollRatio));
-          const page = options.comicModeRef.value.currentPage;
-          writeRestoredPosition(
-            typeof page === 'number' ? page : pageIndex,
-            options.comicModeRef.value.getScrollRatio?.() ?? clampReaderRatio(scrollRatio),
-          );
-        }
+      if (options.isComicMode.value) {
+        writeRestoredPosition(-1, -1);
         return;
       }
 
-      if (options.isComicMode.value && pageIndex >= 0) {
-        const ready = await waitUntilReady(() => options.comicModeRef.value?.goToPage);
-        if (ready && options.comicModeRef.value?.goToPage) {
+      if (options.isScrollMode.value && pageIndex >= 0) {
+        const ready = await waitUntilReady(
+          () =>
+            options.scrollModeRef.value?.restoreToReadingAnchor ??
+            options.scrollModeRef.value?.scrollToReadingAnchor ??
+            options.scrollModeRef.value?.scrollToParagraph,
+        );
+        if (ready && options.scrollModeRef.value) {
+          await options.waitForLinearSeamlessWindowStable(options.activeChapterIndex.value);
           await nextTick();
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-          options.comicModeRef.value.goToPage(pageIndex);
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          const restoreAnchor =
+            options.scrollModeRef.value.restoreToReadingAnchor ??
+            options.scrollModeRef.value.scrollToReadingAnchor ??
+            options.scrollModeRef.value.scrollToParagraph;
+          await Promise.resolve(restoreAnchor?.(pageIndex));
           writeRestoredPosition(
             pageIndex,
-            options.comicModeRef.value.getScrollRatio?.() ?? options.currentScrollRatio.value,
+            options.scrollModeRef.value.getScrollRatio?.() ?? options.currentScrollRatio.value,
           );
         }
         return;
@@ -239,6 +245,9 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
       if (scrollRatio >= 0) {
         const ready = await waitUntilReady(() => options.scrollModeRef.value?.scrollToRatio);
         if (ready && options.scrollModeRef.value?.scrollToRatio) {
+          if (options.isScrollMode.value) {
+            await options.waitForLinearSeamlessWindowStable(options.activeChapterIndex.value);
+          }
           await nextTick();
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
           options.scrollModeRef.value.scrollToRatio(clampReaderRatio(scrollRatio));
@@ -387,6 +396,13 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
       options.activeChapterIndex.value !== index;
 
     try {
+      if (options.isScrollMode.value) {
+        options.activeChapterIndex.value = index;
+        options.content.value = '';
+        options.currentPageIndex.value = -1;
+        options.currentScrollRatio.value = restore.scrollRatio >= 0 ? clampReaderRatio(restore.scrollRatio) : 0;
+      }
+
       const text = await options.fetchProcessedChapterText(
         index,
         'reader.content.beforeRender',
@@ -435,19 +451,6 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
 
       await restoreLinearPosition(restore);
       await options.updateReaderSession(options.buildReaderSessionSnapshot({ content: text }));
-
-      const shelfId = options.currentShelfId.value;
-      if (shelfId !== undefined && shelfId !== '' && !options.isVideoMode.value) {
-        // 章节内容刚切换时，滚动/漫画子组件需要一帧完成 DOM 更新；
-        // 再读取位置可避免拿到上一章的滚动容器状态。
-        await nextTick();
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        void options
-          .updateProgress(shelfId, index, chapter.url, {
-            ...options.buildProgressPayload(),
-          })
-          .catch(() => {});
-      }
     } catch (cause) {
       if (token !== openChapterToken) {
         return;

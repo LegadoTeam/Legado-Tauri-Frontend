@@ -11,18 +11,19 @@ type CardDensityPreset = {
   coverW?: string;
   coverH?: string;
   mobileColMin?: string;
+  coverColMin?: string;
 };
 
 const CARD_SIZE_KEYS: CardSizeKey[] = ['xs', 's', 'm', 'l', 'xl', 'xxl'];
 
 const CARD_DENSITY_PRESETS: Record<CardDensityView, CardDensityPreset[]> = {
   explore: [
-    { key: 'xs', label: '极小', colMin: '130px', coverW: '32px', coverH: '44px' },
-    { key: 's', label: '小', colMin: '170px', coverW: '36px', coverH: '48px' },
-    { key: 'm', label: '中', colMin: '210px', coverW: '42px', coverH: '56px' },
-    { key: 'l', label: '大', colMin: '270px', coverW: '52px', coverH: '70px' },
-    { key: 'xl', label: '特大', colMin: '340px', coverW: '64px', coverH: '86px' },
-    { key: 'xxl', label: '超大', colMin: '440px', coverW: '80px', coverH: '108px' },
+    { key: 'xs', label: '极小', colMin: '130px', coverW: '32px', coverH: '44px', coverColMin: '80px' },
+    { key: 's', label: '小', colMin: '170px', coverW: '36px', coverH: '48px', coverColMin: '96px' },
+    { key: 'm', label: '中', colMin: '210px', coverW: '42px', coverH: '56px', coverColMin: '110px' },
+    { key: 'l', label: '大', colMin: '270px', coverW: '52px', coverH: '70px', coverColMin: '130px' },
+    { key: 'xl', label: '特大', colMin: '340px', coverW: '64px', coverH: '86px', coverColMin: '160px' },
+    { key: 'xxl', label: '超大', colMin: '440px', coverW: '80px', coverH: '108px', coverColMin: '200px' },
   ],
   search: [
     { key: 'xs', label: '极小', colMin: '180px', coverW: '32px', coverH: '44px' },
@@ -88,6 +89,9 @@ export function useViewCardDensity(view: CardDensityView, fallback: CardSizeKey 
       : {}),
     ...(activeSize.value.coverW ? { '--book-card-cover-w': activeSize.value.coverW } : {}),
     ...(activeSize.value.coverH ? { '--book-card-cover-h': activeSize.value.coverH } : {}),
+    ...(activeSize.value.coverColMin
+      ? { '--book-card-cover-col-min': activeSize.value.coverColMin }
+      : {}),
   }));
 
   function setSize(key: CardSizeKey) {

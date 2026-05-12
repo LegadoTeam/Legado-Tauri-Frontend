@@ -4,6 +4,36 @@
  * 提供统一的播放器接口 `IVideoPlayer`，使前端可在 video.js / xgplayer / DPlayer 之间无缝切换。
  */
 
+/**
+ * 通用分类系统：单个选项（如"4K线路"、"国语"、"1080P"）
+ *
+ * 设计为通用，不限于"线路"这一语义——书源可以用它表示
+ * 线路、清晰度、语言、字幕等任何维度的切换。
+ */
+export interface VideoCategoryOption {
+  /** 选项唯一 ID，用于回传书源 */
+  id: string;
+  /** 展示标签 */
+  label: string;
+  /** 可选角标（如集数提示、"热"、"新"等） */
+  badge?: string;
+}
+
+/**
+ * 通用分类维度（一组互斥的选项）。
+ * 例如：{ id:"route", label:"切换线路", options:[...] }
+ */
+export interface VideoCategoryGroup {
+  /** 维度唯一 ID，回传时作为 selectedCategories 的 key */
+  id: string;
+  /** 维度展示名称 */
+  label: string;
+  /** 该维度下的选项列表 */
+  options: VideoCategoryOption[];
+  /** 书源可指定的默认选中项（可选） */
+  defaultSelected?: string;
+}
+
 /** 视频书源 chapterContent 返回的视频源信息 */
 export interface VideoSource {
   /** 视频播放地址 */
@@ -16,6 +46,12 @@ export interface VideoSource {
   qualities?: VideoQuality[];
   /** 外挂字幕列表 */
   subtitles?: VideoSubtitle[];
+  /**
+   * 通用分类选项组（线路/清晰度/语言等）。
+   * 若存在，App 会在播放器侧边栏展示分类选择面板。
+   * 用户选择后，App 将 selectedCategories 作为第二参数传回 chapterContent 重新请求。
+   */
+  categories?: VideoCategoryGroup[];
 }
 
 export interface VideoQuality {

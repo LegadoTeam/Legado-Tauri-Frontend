@@ -48,15 +48,15 @@ const {
 const allSearchableSources = computed(() => bookSourceStore.searchableSources);
 
 const ALL_SOURCES_VALUE = '__all__';
-type SearchSourceType = 'all' | 'novel' | 'comic' | 'video';
+type SearchSourceType = 'all' | 'novel' | 'comic' | 'video' | 'music';
 
 const selectedSearchType = ref<SearchSourceType>('all');
 const sourceTypeLabels: Record<SearchSourceType, string> = {
   all: '全部',
   novel: '小说',
   comic: '漫画',
-  //TODO: 还需要加入音乐
   video: '视频',
+  music: '音乐',
 };
 const sourceTypeOptions = computed(() => {
   const counts = allSearchableSources.value.reduce(
@@ -66,17 +66,18 @@ const sourceTypeOptions = computed(() => {
       acc.all += 1;
       return acc;
     },
-    { all: 0, novel: 0, comic: 0, video: 0 } satisfies Record<SearchSourceType, number>,
+    { all: 0, novel: 0, comic: 0, video: 0, music: 0 } satisfies Record<SearchSourceType, number>,
   );
 
-  return (['all', 'novel', 'comic', 'video'] as const).map((type) => ({
+  return (['all', 'novel', 'comic', 'video', 'music'] as const).map((type) => ({
     label: `${sourceTypeLabels[type]}（${counts[type]}）`,
     value: type,
   }));
 });
 
 function normalizeSourceType(sourceType?: string | null): Exclude<SearchSourceType, 'all'> {
-  return sourceType === 'comic' || sourceType === 'video' ? sourceType : 'novel';
+  if (sourceType === 'comic' || sourceType === 'video' || sourceType === 'music') return sourceType;
+  return 'novel';
 }
 
 const searchableSources = computed(() => {
