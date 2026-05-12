@@ -1,6 +1,7 @@
 ﻿import type { MessageApi } from 'naive-ui';
 import type { WholeBookSwitchedPayload } from '@/components/reader/types';
 import { invokeWithTimeout } from '@/composables/useInvoke';
+import { useShelfGroups } from '@/composables/useShelfGroups';
 import {
   useBookshelfStore,
   useFrontendPluginsStore,
@@ -10,11 +11,14 @@ import {
 import { useBookshelfReaderStore } from '../stores/bookshelfReader';
 import { useBookshelfUiStore } from '../stores/bookshelfUi';
 
+const GROUP_KEY_PREFIX = 'move-to-group:';
+
 export function useBookshelfActions(message: MessageApi) {
   const bookshelfStore = useBookshelfStore();
   const frontendPluginsStore = useFrontendPluginsStore();
   const uiStore = useBookshelfUiStore();
   const readerStore = useBookshelfReaderStore();
+  const shelfGroups = useShelfGroups();
 
   function syncOpenReaderBookInfo(bookId: string) {
     readerStore.syncOpenReaderBookInfo(bookshelfStore.books.find((book) => book.id === bookId));
@@ -140,6 +144,26 @@ export function useBookshelfActions(message: MessageApi) {
       } catch (error: unknown) {
         message.error(`恢复失败: ${error instanceof Error ? error.message : String(error)}`);
       }
+      return;
+    }
+    if (key.startsWith(GROUP_KEY_PREFIX)) {
+      const groupId = key.slice(GROUP_KEY_PREFIX.length);
+      try {
+        await shelfGroups.addBookToGroup(book.id, groupId);
+        message.success('已移动到分组');
+      } catch (error: unknown) {
+        message.error(`移动失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
+    if (key === 'remove-from-group') {
+      try {
+        await shelfGroups.removeBookFromGroup(book.id);
+        message.success('已移出分组');
+      } catch (error: unknown) {
+        message.error(`操作失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
     }
   }
 
