@@ -212,9 +212,7 @@ function handleToggleAllGroup() {
 
 // 下拉刷新处理
 async function handleRefresh() {
-  console.log('[Bookshelf] 开始下拉刷新');
   const result = await tocAutoUpdate.refreshAllOnShelfView();
-  console.log('[Bookshelf] 刷新结果:', result);
 
   if (result.updated > 0) {
     message.success(`发现 ${result.updated} 个新章节`);
