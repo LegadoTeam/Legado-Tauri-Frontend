@@ -2,6 +2,8 @@ import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import type { ReaderAppearancePatch } from '@/composables/useFrontendPlugins';
 import { useFrontendPlugins } from '@/composables/useFrontendPlugins';
 import { invokeWithTimeout } from '@/composables/useInvoke';
+import { isTauri } from '@/composables/useEnv';
+import { useUserFonts } from '@/composables/useUserFonts';
 import { useReaderSettingsStore } from '@/stores';
 import { PRESET_THEMES, type ReaderTapAction } from '@/components/reader/types';
 import {
@@ -28,7 +30,8 @@ type SubPage =
   | 'pagePadding'
   | 'tapControls'
   | 'more'
-  | 'customFont';
+  | 'customFont'
+  | 'uploadedFont';
 
 interface SysFont {
   name: string;
@@ -224,11 +227,34 @@ export function useReaderSettingsPanelModel(options: {
     try {
       const result = await invokeWithTimeout<SysFont[]>('list_system_fonts', {}, 15000);
       systemFonts.value = result;
+      // TF-42: 在浏览器模式（iOS Safari 等）下，将服务端字体通过 @font-face 注入到页面，
+      // 使 CSS font-family 能正确找到并下载字体文件，避免回退到系统默认字体。
+      if (!isTauri && result.length > 0) {
+        injectWebFontFaces(result);
+      }
     } catch (e) {
       systemFontsError.value = String(e);
     } finally {
       systemFontsLoading.value = false;
     }
+  }
+
+  /** TF-42: 为浏览器客户端注入 @font-face CSS，让 iOS Safari 等设备能下载并渲染服务端字体 */
+  function injectWebFontFaces(fonts: SysFont[]) {
+    const styleId = 'legado-server-font-faces';
+    let el = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!el) {
+      el = document.createElement('style');
+      el.id = styleId;
+      document.head.appendChild(el);
+    }
+    // 使用相对 URL（同源），浏览器按需懒加载
+    el.textContent = fonts
+      .map(
+        (f) =>
+          `@font-face { font-family: "${f.name.replace(/"/g, '\\"')}"; src: url("/api/fonts/data?family=${encodeURIComponent(f.name)}"); font-display: swap; }`,
+      )
+      .join('\n');
   }
 
   const filteredSystemFonts = computed(() => {
@@ -443,5 +469,6 @@ export function useReaderSettingsPanelModel(options: {
     onDividerPointerDown,
     onTapZoneBarPointerMove,
     onTapZoneBarPointerUp,
+    ...useUserFonts(),
   };
 }

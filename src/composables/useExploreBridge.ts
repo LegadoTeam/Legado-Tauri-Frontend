@@ -39,6 +39,7 @@ export const BRIDGE_METHODS = [
   'openBook',
   'search',
   'log',
+  'installSource',
 ] as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
@@ -172,6 +173,12 @@ function generateBridgeScript(): string {
     // 控制台日志
     log: function(msg) {
       request('log', [String(msg)]);
+    },
+
+    // 安装书源（弹出确认安装对话框）
+    // url 可以是 legado:// 链接或 https:// 直链
+    installSource: function(url) {
+      request('installSource', [String(url)]);
     }
   };
 })();
@@ -369,4 +376,38 @@ export function isHtmlExploreResult(
   }
   const obj = value as Record<string, unknown>;
   return obj.type === 'html' && typeof obj.html === 'string';
+}
+
+/**
+ * 检测 explore() 返回值是否为 URL 跳转类型（网页发现源）。
+ *
+ * 支持两种格式：
+ * - 纯字符串 URL：`"https://example.com"`
+ * - 对象格式：`{ type: 'url', url: string }`
+ */
+export function isUrlExploreResult(value: unknown): boolean {
+  if (typeof value === 'string') {
+    const s = value.trim();
+    return s.startsWith('http://') || s.startsWith('https://');
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return obj.type === 'url' && typeof obj.url === 'string';
+  }
+  return false;
+}
+
+/**
+ * 从 explore() 返回值中提取 URL 字符串。
+ *
+ * 支持纯字符串或 `{ type: 'url', url: string }` 对象格式。
+ * 若无法提取则返回空字符串。
+ */
+export function getUrlFromExploreResult(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.url === 'string') return obj.url;
+  }
+  return '';
 }

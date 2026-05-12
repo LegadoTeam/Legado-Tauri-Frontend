@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LayoutGrid, EyeOff, Eye, FolderInput } from 'lucide-vue-next';
+import { LayoutGrid, EyeOff, Eye, FolderInput, RefreshCw } from 'lucide-vue-next';
 import type { CardSizeKey } from '@/composables/useViewCardDensity';
 
 defineProps<{
@@ -8,12 +8,14 @@ defineProps<{
   cardSizes: { key: CardSizeKey; label: string }[];
   activeSizeKey: CardSizeKey;
   activeSizeLabel: string;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'set-size', key: CardSizeKey): void;
   (e: 'toggle-privacy'): void;
   (e: 'import-txt'): void;
+  (e: 'refresh'): void;
 }>();
 </script>
 
@@ -27,6 +29,17 @@ const emit = defineEmits<{
         </p>
       </div>
       <div class="bs-header__actions">
+        <button
+          class="bs-icon-btn"
+          :class="{ 'bs-icon-btn--spinning': loading }"
+          type="button"
+          title="刷新书架"
+          aria-label="刷新书架"
+          :disabled="loading"
+          @click="emit('refresh')"
+        >
+          <RefreshCw :size="16" />
+        </button>
         <button
           class="bs-icon-btn"
           type="button"
@@ -120,6 +133,13 @@ const emit = defineEmits<{
   color: var(--color-accent);
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.bs-icon-btn--spinning svg {
+  animation: bs-spin 0.8s linear infinite;
+}
+@keyframes bs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 @media (pointer: coarse), (max-width: 640px) {
   .bs-header {

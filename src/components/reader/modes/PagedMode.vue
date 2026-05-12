@@ -40,6 +40,20 @@ let boundaryTimer = 0;
 let animationTimer: number | null = null;
 let deferredActionToken = 0;
 let animationRunId = 0;
+
+// ── Simulation rAF 优化：拖拽阶段绕过 Vue 响应式，直接操作 DOM ──
+// 这些 plain 变量在 touchmove 热路径中使用，不会触发 Vue 重渲染
+let pendingRafId = 0;
+let cachedContainerWidth = 0;
+let rawPointerX = 0;
+let rawDragDir: Exclude<DragDir, null> = 'left';
+
+// simulation 阶段各层 DOM 引用
+const simulationRevealEl = ref<HTMLElement | null>(null);
+const simulationCurrentEl = ref<HTMLElement | null>(null);
+const simulationCurlEl = ref<HTMLElement | null>(null);
+const simulationCurlContentEl = ref<HTMLElement | null>(null);
+const simulationShadowEl = ref<HTMLElement | null>(null);
 /** 翻章锁：从发出 request-next/prev-chapter 到新章内容载入期间，鸟所有微手势都不再触发翻章事件 */
 let chapterChanging = false;
 /**
@@ -418,17 +432,20 @@ function getProgressByVisualEdge(edgeX: number, width: number) {
 function updateSimulationPointer(event: MouseEvent | TouchEvent) {
   if (props.mode !== 'simulation') {
     simulationPointerX.value = null;
+    rawPointerX = 0;
     return;
   }
 
   const el = containerRef.value;
   if (!el) {
     simulationPointerX.value = null;
+    rawPointerX = 0;
     return;
   }
 
   const rect = el.getBoundingClientRect();
-  simulationPointerX.value = clamp(getClientX(event) - rect.left, 0, rect.width);
+  // 拖拽热路径：只写 plain 变量，不触发 Vue 响应式
+  rawPointerX = clamp(getClientX(event) - rect.left, 0, rect.width);
 }
 
 function getSimulationProgressByPointer(
@@ -441,15 +458,106 @@ function getSimulationProgressByPointer(
   return getProgressByVisualEdge(edgeX, width);
 }
 
-function syncSimulationOffsetFromPointer(direction: Exclude<DragDir, null>) {
-  if (props.mode !== 'simulation') {
-    simulationPointerX.value = null;
+/**
+ * 在 rAF 回调中直接写 DOM style，完全绕过 Vue 响应式，
+ * 是低端机上仿真翻页流畅度的关键优化路径。
+ */
+function applySimulationDragStyles() {
+  pendingRafId = 0;
+  const width = cachedContainerWidth || getContainerWidth();
+  if (width <= 0) {
+    return;
+  }
+  const direction = rawDragDir;
+  const pointerX = rawPointerX;
+  const progress = getSimulationProgressByPointer(pointerX, width, direction);
+  const foldX = width * (1 - progress);
+  const foldW = width - foldX;
+  const curlScale = getCurlScale(progress);
+  const edgeX = getVisualEdgeX(foldX, foldW, progress);
+  const curlWidth =
+    direction === 'left' ? Math.max(0, foldX - edgeX) : Math.max(0, width - edgeX - foldW);
+
+  const revealEl = simulationRevealEl.value;
+  const currentEl = simulationCurrentEl.value;
+  const curlEl = simulationCurlEl.value;
+  const curlContentEl = simulationCurlContentEl.value;
+  const shadowEl = simulationShadowEl.value;
+  if (!revealEl || !currentEl || !curlEl || !curlContentEl || !shadowEl) {
     return;
   }
 
-  const width = getContainerWidth();
-  const pointerX = simulationPointerX.value;
-  if (width <= 0 || pointerX === null) {
+  revealEl.style.clipPath =
+    direction === 'left'
+      ? `inset(0 0 0 ${foldX}px)`
+      : `inset(0 ${Math.max(0, width - foldW)}px 0 0)`;
+
+  currentEl.style.clipPath =
+    direction === 'left' ? `inset(0 ${foldW}px 0 0)` : `inset(0 0 0 ${foldW}px)`;
+
+  curlEl.style.left = `${direction === 'left' ? edgeX : foldW}px`;
+  curlEl.style.width = `${curlWidth}px`;
+  curlEl.style.opacity = progress > 0 ? '1' : '0';
+
+  if (direction === 'left') {
+    curlContentEl.style.left = `${width * curlScale + 8}px`;
+    curlContentEl.style.right = '';
+    curlContentEl.style.transform = `scaleX(${-curlScale})`;
+    curlContentEl.style.transformOrigin = 'left center';
+  } else {
+    curlContentEl.style.right = `${width * curlScale + 8}px`;
+    curlContentEl.style.left = '';
+    curlContentEl.style.transform = `scaleX(${-curlScale})`;
+    curlContentEl.style.transformOrigin = 'right center';
+  }
+
+  shadowEl.style.left = `${direction === 'left' ? Math.max(0, foldX - 12) : Math.max(0, foldW)}px`;
+  shadowEl.style.opacity = `${Math.min(0.38, progress * 0.38)}`;
+}
+
+function scheduleSimulationFrame() {
+  if (pendingRafId === 0) {
+    pendingRafId = requestAnimationFrame(applySimulationDragStyles);
+  }
+}
+
+/** 清除直接 DOM 写入的 simulation 拖拽 inline style（交还给 Vue 响应式 / snap CSS transition） */
+function clearSimulationDragStyles() {
+  if (pendingRafId !== 0) {
+    cancelAnimationFrame(pendingRafId);
+    pendingRafId = 0;
+  }
+  rawPointerX = 0;
+  const revealEl = simulationRevealEl.value;
+  const currentEl = simulationCurrentEl.value;
+  const curlEl = simulationCurlEl.value;
+  const curlContentEl = simulationCurlContentEl.value;
+  const shadowEl = simulationShadowEl.value;
+  if (revealEl) revealEl.style.cssText = '';
+  if (currentEl) currentEl.style.cssText = '';
+  if (curlEl) curlEl.style.cssText = '';
+  if (curlContentEl) curlContentEl.style.cssText = '';
+  if (shadowEl) shadowEl.style.cssText = '';
+}
+
+function syncSimulationOffsetFromPointer(direction: Exclude<DragDir, null>) {
+  if (props.mode !== 'simulation') {
+    simulationPointerX.value = null;
+    rawPointerX = 0;
+    return;
+  }
+
+  // 取消未执行的 rAF，避免 snap 开始后还有一帧直接 DOM 写入覆盖 Vue 设置的值
+  if (pendingRafId !== 0) {
+    cancelAnimationFrame(pendingRafId);
+    pendingRafId = 0;
+  }
+
+  const width = cachedContainerWidth || getContainerWidth();
+  const pointerX = rawPointerX;
+  // 先清除直接 DOM 写入，让 snap CSS transition 从 Vue 设置的 inline style 起始
+  clearSimulationDragStyles();
+  if (width <= 0 || pointerX === 0) {
     simulationPointerX.value = null;
     return;
   }
@@ -535,6 +643,8 @@ function resetVisualState() {
   layerSnapTarget.value = 0;
   dragDir.value = null;
   simulationPointerX.value = null;
+  // 清除直接 DOM 写入的拖拽样式
+  clearSimulationDragStyles();
 }
 
 function getClientX(e: MouseEvent | TouchEvent): number {
@@ -587,6 +697,8 @@ function onPointerDown(e: MouseEvent | TouchEvent) {
   startX = getClientX(e);
   startY = getClientY(e);
   startTime = Date.now();
+  // 缓存容器宽度，避免拖拽热路径重复读取 layout
+  cachedContainerWidth = containerRef.value?.clientWidth ?? window.innerWidth;
   resetVisualState();
   updateSimulationPointer(e);
   if ('pointerId' in e) {
@@ -637,7 +749,7 @@ function onPointerMove(e: MouseEvent | TouchEvent) {
 
   hasMoved = true;
   updateSimulationPointer(e);
-  const width = getContainerWidth();
+  const width = cachedContainerWidth || getContainerWidth();
   const atPrevBoundary = dx > 0 && !hasPrevPage.value && !props.hasPrevChapter;
   const atNextBoundary = dx < 0 && !hasNextPage.value && !props.hasNextChapter;
   const offset =
@@ -645,6 +757,13 @@ function onPointerMove(e: MouseEvent | TouchEvent) {
 
   if (props.mode === 'slide') {
     slideDragOffset.value = offset;
+    return;
+  }
+
+  // simulation 模式：用 rAF 直接写 DOM，不走 Vue 响应式
+  if (props.mode === 'simulation') {
+    rawDragDir = dx < 0 ? 'left' : 'right';
+    scheduleSimulationFrame();
     return;
   }
 
@@ -871,23 +990,26 @@ defineExpose({
         ]"
       >
         <div
+          ref="simulationRevealEl"
           class="paged-mode__page paged-mode__bg paged-mode__simulation-reveal"
           :class="{ 'paged-mode__page--layout-debug': layoutDebug }"
-          :style="simulationState.revealStyle"
+          :style="isAnimating ? simulationState.revealStyle : undefined"
           v-html="simulationState.revealHtml"
         />
         <div
+          ref="simulationCurrentEl"
           class="paged-mode__page paged-mode__fg paged-mode__simulation-current"
           :class="{ 'paged-mode__page--layout-debug': layoutDebug }"
-          :style="simulationState.currentStyle"
+          :style="isAnimating ? simulationState.currentStyle : undefined"
           v-html="currentPageHtml"
         />
-        <div class="paged-mode__simulation-shadow" :style="simulationState.shadowStyle" />
-        <div class="paged-mode__simulation-curl" :style="simulationState.curlStyle">
+        <div ref="simulationShadowEl" class="paged-mode__simulation-shadow" :style="isAnimating ? simulationState.shadowStyle : undefined" />
+        <div ref="simulationCurlEl" class="paged-mode__simulation-curl" :style="isAnimating ? simulationState.curlStyle : undefined">
           <div
+            ref="simulationCurlContentEl"
             class="paged-mode__page paged-mode__simulation-curl-page"
             :class="{ 'paged-mode__page--layout-debug': layoutDebug }"
-            :style="simulationState.curlContentStyle"
+            :style="isAnimating ? simulationState.curlContentStyle : undefined"
             v-html="currentPageHtml"
           />
           <div class="paged-mode__simulation-curl-gloss" />
@@ -964,8 +1086,7 @@ defineExpose({
 }
 
 .paged-mode--simulation {
-  perspective: 1800px;
-  transform-style: preserve-3d;
+  /* 3D context 已移除：仿真翻页全用 clip-path + scaleX 实现，保留 perspective/preserve-3d 无调但有性能开销 */
 }
 
 .paged-mode__gesture {
@@ -1028,15 +1149,16 @@ defineExpose({
 .paged-mode__simulation-stage {
   position: absolute;
   inset: 0;
-  transform-style: preserve-3d;
 }
 
 .paged-mode__simulation-reveal {
   z-index: 0;
+  will-change: clip-path;
 }
 
 .paged-mode__simulation-current {
   z-index: 1;
+  will-change: clip-path;
 }
 
 .paged-mode__simulation-curl {
@@ -1047,7 +1169,7 @@ defineExpose({
   overflow: hidden;
   pointer-events: none;
   border-radius: 0 0 18px 0;
-  transform: translateZ(2px);
+  will-change: left, width, opacity;
   box-shadow:
     -8px 0 10px rgba(0, 0, 0, 0.08),
     inset 6px 0 8px rgba(0, 0, 0, 0.04);
@@ -1065,6 +1187,7 @@ defineExpose({
   top: 0;
   height: 100%;
   color: var(--reader-text-color, var(--color-text-primary));
+  will-change: transform;
 }
 
 .paged-mode__simulation-curl-gloss {
@@ -1092,6 +1215,7 @@ defineExpose({
   height: 100%;
   z-index: 2;
   pointer-events: none;
+  will-change: left, opacity;
   background: linear-gradient(
     to left,
     rgba(0, 0, 0, 0.16) 0%,

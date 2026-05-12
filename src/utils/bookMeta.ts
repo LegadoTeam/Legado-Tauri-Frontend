@@ -20,6 +20,7 @@ const TYPE_LABELS: Record<string, string> = {
   comic: '漫画',
   video: '视频',
   music: '音乐',
+  webpage: '网页',
 };
 
 function cleanText(value: unknown): string {

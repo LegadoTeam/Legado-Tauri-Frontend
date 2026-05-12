@@ -141,9 +141,11 @@ onMounted(async () => {
       :card-sizes="CARD_SIZES"
       :active-size-key="activeSizeKey"
       :active-size-label="activeSize.label"
+      :loading="loading"
       @set-size="(key: CardSizeKey) => setSize(key)"
       @toggle-privacy="togglePrivacyMode"
       @import-txt="uiStore.showTxtImportDialog = true"
+      @refresh="bookshelfStore.loadBooks()"
     />
 
     <BookshelfToolbar v-model:search-kw="searchKw" :show="!!books.length" />

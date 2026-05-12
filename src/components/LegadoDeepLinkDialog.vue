@@ -14,6 +14,12 @@ const currentRawLink = ref('');
 const currentParseError = ref('');
 
 let unlisten: (() => void) | null = null;
+let unlistenInApp: (() => void) | null = null;
+
+function handleInAppInstall(e: Event) {
+  const url = (e as CustomEvent<{ url: string }>).detail?.url;
+  if (url) enqueueLinks([url]);
+}
 
 function enqueueLinks(urls: string[]) {
   for (const url of urls) {
@@ -53,11 +59,16 @@ async function onInstalled() {
 
 onMounted(async () => {
   unlisten = await installLegadoDeepLinkListener(enqueueLinks);
+  // 接收来自 iframe bridge 的应用内安装请求（用 CustomEvent 而非 Tauri 事件，避免 Rust 不回发的问题）
+  window.addEventListener('app:install-source', handleInAppInstall);
+  unlistenInApp = () => window.removeEventListener('app:install-source', handleInAppInstall);
 });
 
 onUnmounted(() => {
   unlisten?.();
   unlisten = null;
+  unlistenInApp?.();
+  unlistenInApp = null;
 });
 </script>
 

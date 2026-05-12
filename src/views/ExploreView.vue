@@ -1081,6 +1081,8 @@ watch(
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 16px;
+  display: flex;
+  flex-direction: column;
 }
 /* ── 移动端适配 ─────────────────────────── */
 @media (pointer: coarse), (max-width: 640px) {
