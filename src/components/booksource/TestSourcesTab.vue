@@ -1,15 +1,24 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, computed, onMounted, onUnmounted } from 'vue';
+import { useDialog } from 'naive-ui';
 import { eventListen } from '../../composables/useEventBus';
 import {
   type BookSourceMeta,
   type TestStepResult,
   runBookSourceTests,
+  deleteBookSource,
 } from '../../composables/useBookSource';
 
 const props = defineProps<{
   sources: BookSourceMeta[];
 }>();
+
+const emits = defineEmits<{
+  reload: [];
+}>();
+
+const dialog = useDialog();
+const deletingSet = ref(new Set<string>());
 
 // ---- 测试状态 ----
 interface TestSourceState {
@@ -273,6 +282,30 @@ function clearLogs() {
   batchLogs.value = [];
   for (const state of testStates.value.values()) state.logs = [];
 }
+
+function confirmDeleteSource(src: BookSourceMeta) {
+  dialog.warning({
+    title: '删除书源',
+    content: `确认删除「${src.name || src.fileName}」？此操作将删除磁盘文件，不可恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      deletingSet.value.add(src.fileName);
+      try {
+        await deleteBookSource(src.fileName, src.sourceDir);
+        emits('reload');
+      } catch (e: unknown) {
+        dialog.error({
+          title: '删除失败',
+          content: e instanceof Error ? e.message : String(e),
+          positiveText: '确定',
+        });
+      } finally {
+        deletingSet.value.delete(src.fileName);
+      }
+    },
+  });
+}
 </script>
 
 <template>
@@ -346,14 +379,26 @@ function clearLogs() {
         >
           <div class="bv-test__item-header">
             <span class="bv-test__item-name">{{ src.name || src.fileName }}</span>
-            <n-button
-              size="tiny"
-              quaternary
-              :disabled="testRunning"
-              @click="runSingleTest(src.fileName)"
-            >
-              测试
-            </n-button>
+            <div class="bv-test__item-actions">
+              <n-button
+                size="tiny"
+                quaternary
+                type="error"
+                :loading="deletingSet.has(src.fileName)"
+                :disabled="testRunning"
+                @click="confirmDeleteSource(src)"
+              >
+                删除
+              </n-button>
+              <n-button
+                size="tiny"
+                quaternary
+                :disabled="testRunning"
+                @click="runSingleTest(src.fileName)"
+              >
+                测试
+              </n-button>
+            </div>
           </div>
           <!-- 步骤进度指示 -->
           <div v-if="testStates.has(src.fileName)" class="bv-test__steps">
@@ -495,6 +540,12 @@ function clearLogs() {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.bv-test__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .bv-test__item-name {
   font-size: 0.8125rem;

@@ -51,6 +51,65 @@ const dialog = useDialog();
 const { exploreDisabled, searchDisabled } = storeToRefs(bookSourceStore);
 const { setExploreUserEnabled, setSearchUserEnabled, getPendingUpdate } = bookSourceStore;
 
+// ---- 批量选择 ----
+const multiSelectMode = ref(false);
+const selectedKeys = ref(new Set<string>());
+
+function toggleMultiSelectMode() {
+  multiSelectMode.value = !multiSelectMode.value;
+  if (!multiSelectMode.value) {
+    selectedKeys.value.clear();
+  }
+}
+
+function toggleSelect(fileName: string) {
+  if (selectedKeys.value.has(fileName)) {
+    selectedKeys.value.delete(fileName);
+  } else {
+    selectedKeys.value.add(fileName);
+  }
+}
+
+function selectAll() {
+  selectedKeys.value = new Set(filtered.value.map((s) => s.fileName));
+}
+
+function selectNone() {
+  selectedKeys.value.clear();
+}
+
+async function deleteSelected() {
+  if (!selectedKeys.value.size) return;
+  const count = selectedKeys.value.size;
+  dialog.warning({
+    title: '批量删除书源',
+    content: `确认删除选中的 ${count} 个书源？此操作将删除磁盘文件，不可恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      let success = 0;
+      let failed = 0;
+      for (const fileName of selectedKeys.value) {
+        const src = props.sources.find((s) => s.fileName === fileName);
+        try {
+          await deleteBookSource(fileName, src?.sourceDir);
+          success++;
+        } catch {
+          failed++;
+        }
+      }
+      selectedKeys.value.clear();
+      multiSelectMode.value = false;
+      emits('reload');
+      if (failed > 0) {
+        message.warning(`删除完成：成功 ${success} 个，失败 ${failed} 个`);
+      } else {
+        message.success(`已删除 ${success} 个书源`);
+      }
+    },
+  });
+}
+
 // ---- 搜索过滤 ----
 const searchQuery = ref('');
 const filtered = computed(() => {
@@ -453,6 +512,8 @@ defineExpose({
   exportSources,
   openEditor,
   reloadAllSources,
+  toggleMultiSelectMode,
+  deleteSelected,
 });
 </script>
 
@@ -478,6 +539,22 @@ defineExpose({
           >，{{ sourceDirs.length }} 个目录</template
         >
       </span>
+      <div class="bv-toolbar__spacer" />
+      <!-- 多选模式工具栏 -->
+      <template v-if="multiSelectMode">
+        <span class="bv-select-count">{{ selectedKeys.size }} 已选</span>
+        <n-button size="small" quaternary @click="selectAll">全选</n-button>
+        <n-button size="small" quaternary @click="selectNone">取消</n-button>
+        <n-button
+          size="small"
+          type="error"
+          :disabled="!selectedKeys.size"
+          @click="deleteSelected"
+        >
+          删除
+        </n-button>
+        <n-button size="small" quaternary @click="toggleMultiSelectMode">取消</n-button>
+      </template>
     </div>
     <!-- 列表 -->
     <n-spin :show="loading" class="bv-source-list-wrap">
@@ -494,6 +571,8 @@ defineExpose({
           :delay-override="sourceDelayOverrides.get(src.fileName) ?? 0"
           :update-info="getPendingUpdate(src.uuid)"
           :update-busy="updatingSourceSet.has(src.uuid)"
+          :selectable="multiSelectMode"
+          :selected="selectedKeys.has(src.fileName)"
           @toggle="onToggle(src)"
           @edit="openEditor(src)"
           @reload="reloadSingleSource(src)"
@@ -505,6 +584,7 @@ defineExpose({
           @load-delay="loadDelayOverride(src.fileName)"
           @save-delay="saveDelayOverride(src, $event)"
           @apply-update="applySourceUpdate(src)"
+          @select="toggleSelect(src.fileName)"
         />
         <n-empty
           v-if="!filtered.length && !loading"
@@ -621,6 +701,16 @@ defineExpose({
   font-size: 0.75rem;
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+.bv-toolbar__spacer {
+  flex: 1;
+}
+
+.bv-select-count {
+  font-size: 0.75rem;
+  color: var(--color-accent);
+  font-weight: 500;
 }
 
 /* ---- Pane ---- */

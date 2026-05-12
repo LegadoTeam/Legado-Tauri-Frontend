@@ -151,14 +151,19 @@ const newSourceOptions = [
   { label: '视频书源', key: 'new-video' },
 ];
 
-const mobileMenuOptions = computed(() => [
+const installedMenuOptions = computed(() => [
   { label: '目录管理', key: 'dir' },
   { label: '导入本地', key: 'import-file' },
   { label: '导入在线', key: 'import-online' },
   { label: '导出书源', key: 'export-file' },
+  { type: 'divider' },
   { label: '新建书源', key: 'new', children: newSourceOptions },
+  { label: '批量删除', key: 'multi-select' },
+  { type: 'divider' },
   { label: '全部重载', key: 'reload', disabled: loading.value },
 ]);
+
+const mobileMenuOptions = computed(() => installedMenuOptions.value);
 
 const onlineMenuOptions = computed(() => [
   { label: '获取列表', key: 'fetch-online' },
@@ -197,6 +202,9 @@ function handleMobileMenuSelect(key: string) {
       break;
     case 'new-video':
       installedRef.value?.openEditor(undefined, 'video');
+      break;
+    case 'multi-select':
+      installedRef.value?.toggleMultiSelectMode();
       break;
     case 'reload':
       installedRef.value?.reloadAllSources();
@@ -322,28 +330,7 @@ onUnmounted(() => {
       </template>
       <template #actions>
         <template v-if="activeTab === 'installed'">
-          <MobileToolbarMenu :options="mobileMenuOptions" @select="handleMobileMenuSelect">
-            <n-button
-              size="small"
-              quaternary
-              title="管理外部书源目录"
-              @click="installedRef?.openDirManager()"
-              >目录</n-button
-            >
-            <n-button size="small" quaternary @click="installedRef?.importFromFile()"
-              >导入本地</n-button
-            >
-            <n-button size="small" quaternary @click="installedRef?.importFromUrl()">导入在线</n-button>
-            <n-dropdown
-              trigger="click"
-              :options="newSourceOptions"
-              @select="handleMobileMenuSelect"
-            >
-              <n-button size="small" type="primary">新建书源</n-button>
-            </n-dropdown>
-            <n-button size="small" :loading="loading" @click="installedRef?.reloadAllSources()"
-              >全部重载</n-button
-            >
+          <MobileToolbarMenu :options="installedMenuOptions" @select="handleMobileMenuSelect">
           </MobileToolbarMenu>
         </template>
         <template v-else-if="activeTab === 'online'">
@@ -420,7 +407,7 @@ onUnmounted(() => {
       </n-tab-pane>
 
       <n-tab-pane name="test" tab="书源测试">
-        <TestSourcesTab :sources="sources" />
+        <TestSourcesTab :sources="sources" @reload="loadSources" />
       </n-tab-pane>
 
       <n-tab-pane name="ai" tab="AI 写书源" display-directive="show">

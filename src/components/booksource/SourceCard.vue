@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NTag, NSwitch, NButton, NPopover, NInputNumber } from 'naive-ui';
+import { NTag, NSwitch, NButton, NPopover, NInputNumber, NCheckbox } from 'naive-ui';
 import type { BookSourceMeta, UpdateCheckResult } from '@/composables/useBookSource';
 
 defineProps<{
@@ -12,6 +12,8 @@ defineProps<{
   delayOverride: number;
   updateInfo?: UpdateCheckResult;
   updateBusy: boolean;
+  selectable?: boolean;
+  selected?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -26,11 +28,23 @@ const emit = defineEmits<{
   'load-delay': [];
   'save-delay': [value: number | null];
   'apply-update': [];
+  'select': [];
 }>();
 </script>
 
 <template>
-  <div class="src-card" :class="{ 'src-card--off': !src.enabled }">
+  <div
+    class="src-card"
+    :class="{
+      'src-card--off': !src.enabled,
+      'src-card--selected': selected,
+      'src-card--selectable': selectable,
+    }"
+  >
+    <!-- 多选复选框 -->
+    <div v-if="selectable" class="src-card__checkbox">
+      <n-checkbox :checked="selected" @click="emit('select')" />
+    </div>
     <!-- 顶部：Logo + 标题区 + 开关 -->
     <div class="src-card__header">
       <img
@@ -200,10 +214,15 @@ const emit = defineEmits<{
   border: 1px solid var(--color-border);
   border-left: 3px solid transparent;
   background: var(--color-surface-raised);
+  position: relative;
   transition:
     border-color var(--transition-fast),
     background var(--transition-fast),
     box-shadow var(--transition-fast);
+}
+
+.src-card--selectable {
+  padding-left: 32px;
 }
 
 .src-card:hover {
@@ -219,6 +238,19 @@ const emit = defineEmits<{
 
 .src-card--off:hover {
   border-left-color: var(--color-danger);
+}
+
+.src-card--selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.src-card__checkbox {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .src-card__header {

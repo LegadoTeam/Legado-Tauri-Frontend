@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Eye, EyeOff, Trash2, Edit3, Plus, Folder } from 'lucide-vue-next';
-import { NButton, NInput, NPopconfirm, NSwitch } from 'naive-ui';
+import { NButton, NInput, NPopconfirm, NSwitch, NModal } from 'naive-ui';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import type { ShelfGroup } from '@/types/shelfGroup';
@@ -22,10 +22,13 @@ const emit = defineEmits<{
   (e: 'toggle-all'): void;
 }>();
 
-const newGroupName = ref('');
 const addingNew = ref(false);
 const editingGroupId = ref<string | null>(null);
 const editingName = ref('');
+
+// 新建分组弹窗
+const showAddModal = ref(false);
+const newGroupName = ref('');
 
 useOverlayBackstack(
   () => props.show,
@@ -44,7 +47,7 @@ const sortedGroups = computed(() => {
 });
 
 function startAddNew() {
-  addingNew.value = true;
+  showAddModal.value = true;
   newGroupName.value = '';
   nextTick(() => {
     const input = document.getElementById('new-group-name-input');
@@ -59,12 +62,12 @@ function confirmAdd() {
   if (name) {
     emit('add', name);
   }
-  addingNew.value = false;
+  showAddModal.value = false;
   newGroupName.value = '';
 }
 
 function cancelAdd() {
-  addingNew.value = false;
+  showAddModal.value = false;
   newGroupName.value = '';
 }
 
@@ -147,21 +150,6 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
         </n-button>
       </div>
 
-      <!-- 新建分组输入 -->
-      <div v-if="addingNew" class="group-menu__add">
-        <n-input
-          id="new-group-name-input"
-          v-model:value="newGroupName"
-          placeholder="输入分组名称"
-          size="small"
-          @keydown="(e: KeyboardEvent) => handleKeydown(e, 'add')"
-        />
-        <div class="group-menu__add-actions">
-          <n-button size="tiny" type="primary" @click="confirmAdd">确定</n-button>
-          <n-button size="tiny" @click="cancelAdd">取消</n-button>
-        </div>
-      </div>
-
       <!-- 分组列表 -->
       <div class="group-menu__list">
         <div
@@ -235,6 +223,24 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
       </div>
     </div>
   </n-drawer>
+
+  <!-- 新建分组弹窗 -->
+  <n-modal
+    v-model:show="showAddModal"
+    preset="dialog"
+    title="新建分组"
+    positive-text="确定"
+    negative-text="取消"
+    @positive-click="confirmAdd"
+    @negative-click="cancelAdd"
+  >
+    <n-input
+      id="new-group-name-input"
+      v-model:value="newGroupName"
+      placeholder="输入分组名称"
+      @keyup.enter="confirmAdd"
+    />
+  </n-modal>
 </template>
 
 <style scoped>
@@ -254,27 +260,6 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
-}
-
-.group-menu__add {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  background: var(--color-fill-secondary);
-  border-radius: var(--radius-1);
-  margin-bottom: 12px;
-}
-
-.group-menu__add-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.group-menu__list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
 .group-menu__item {
