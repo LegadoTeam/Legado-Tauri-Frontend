@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { X } from 'lucide-vue-next';
-import { useDialog, useMessage } from 'naive-ui';
+import { useMessage } from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import {
   checkRepositorySourceSync,
+  deleteBookSource,
   installFromRepository,
   listBookSources,
   previewRemoteBookSource,
+  readBookSource,
   toSafeFileName,
   type BookSourceMeta,
   type RepoSourceSyncResult,
@@ -33,7 +35,6 @@ const emit = defineEmits<{
 }>();
 
 const message = useMessage();
-const dialog = useDialog();
 
 type RemoteSyncStatus = 'idle' | 'checking' | 'same' | 'different' | 'error';
 
@@ -66,7 +67,6 @@ const sourceTypeLabel = computed(() => {
       return '小说';
   }
 });
-const installActionText = computed(() => (localSource.value ? '覆盖安装' : '安装'));
 const installTargetFileName = computed(() => {
   const current = meta.value;
   if (!current) return '';
@@ -323,24 +323,38 @@ watch(
 
 // ── install ───────────────────────────────────────────────────────────────
 
-function buildOverwriteContent(current: RemoteBookSourcePreview) {
-  const local = localSource.value;
-  if (!local) return '';
-  const localLabel = formatVersion(localVersion.value || local.version);
-  const remoteLabel = formatVersion(remoteVersion.value || current.meta.version);
-  switch (syncStatus.value) {
-    case 'same':
-      return `本地已存在同一 UUID 书源「${current.meta.name}」，且远端内容与本地一致（比较时已忽略 @enabled 与 @uuid）。仍要重新覆盖安装吗？`;
-    case 'different':
-      if (versionDiff.value === 'upgrade')
-        return `本地已安装「${current.meta.name}」，将从 ${localLabel} 覆盖为 ${remoteLabel}。确认继续？`;
-      if (versionDiff.value === 'downgrade')
-        return `仓库版本 ${remoteLabel} 低于本地版本 ${localLabel}，继续会降级覆盖「${current.meta.name}」。确认继续？`;
-      return `本地已存在同一 UUID 书源「${current.meta.name}」，远端与本地内容不一致，继续会直接覆盖当前文件。确认继续？`;
-    case 'error':
-      return `本地已存在同一 UUID 书源「${current.meta.name}」，但差异检查失败（${syncError.value || '未知错误'}）。仍要覆盖安装吗？`;
-    default:
-      return `本地已存在同一 UUID 书源「${current.meta.name}」，继续会覆盖当前文件。确认继续？`;
+/** 删除书源文件并验证删除成功（最多重试3次） */
+async function safeDeleteWithVerify(fileName: string, sourceDir?: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // 先尝试删除
+      await deleteBookSource(fileName, sourceDir);
+
+      // 等待文件系统操作
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // 验证删除是否成功 - 尝试读取文件
+      try {
+        await readBookSource(fileName, sourceDir);
+        // 如果能读到文件，说明删除失败
+        console.warn(`删除验证失败：文件 ${fileName} 仍然可以读取，重试中...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      } catch {
+        // 读取抛出异常表示文件不存在，说明删除成功
+        return true;
+      }
+    } catch (e: unknown) {
+      console.warn(`删除书源失败（尝试 ${attempt + 1}）: ${fileName}`, e);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+  // 最后再验证一次
+  try {
+    await readBookSource(fileName, sourceDir);
+    return false; // 仍然可以读到文件
+  } catch {
+    return true; // 读取失败，文件不存在
   }
 }
 
@@ -348,40 +362,40 @@ async function performInstall(current: RemoteBookSourcePreview) {
   installing.value = true;
   try {
     const targetFileName = installTargetFileName.value || current.meta.fileName;
+    const local = localSource.value;
+
+    // 检测到同名书源已安装：自动删除旧书源
+    if (local) {
+      message.info(`检测到同名书源已安装，正在更新「${current.meta.name}」...`);
+      try {
+        await deleteBookSource(local.fileName, local.sourceDir || undefined);
+        // 等待文件系统同步
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (e) {
+        message.warning(`删除旧书源失败，将继续尝试安装: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
     try {
       await installFromRepository(current.downloadUrl, targetFileName, current.meta.uuid);
+      message.success(`已安装「${current.meta.name}」`);
+      emit('installed', { name: current.meta.name, fileName: targetFileName, uuid: current.meta.uuid });
+      closeDialog();
     } catch (e: unknown) {
-      // 如果目标路径存在另一个 UUID 的文件（可能因 UUID 去重未出现在已安装列表中），
-      // 自动改用备用文件名重试一次
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes('属于另一个')) {
-        const dot = targetFileName.toLowerCase().endsWith('.js') ? targetFileName.length - 3 : targetFileName.length;
-        const stem = targetFileName.slice(0, dot) || 'booksource';
-        const ext = targetFileName.toLowerCase().endsWith('.js') ? targetFileName.slice(dot) : '.js';
-        const usedNames = new Set(installedSources.value.map((s) => s.fileName));
-        let index = 2;
-        let fallback = `${stem}-${index}${ext}`;
-        while (usedNames.has(fallback)) {
-          index += 1;
-          fallback = `${stem}-${index}${ext}`;
-        }
-        await installFromRepository(current.downloadUrl, fallback, current.meta.uuid);
-        message.success(`已安装「${current.meta.name}」`);
-        emit('installed', { name: current.meta.name, fileName: fallback, uuid: current.meta.uuid });
-        closeDialog();
-        return;
+      // 如果是 UUID 冲突错误，提示用户
+      if (
+        msg.includes('另一个') ||
+        msg.includes('another UUID') ||
+        msg.includes('different UUID') ||
+        msg.includes('blocked')
+      ) {
+        message.error(`安装失败：检测到 UUID 冲突，可能需要手动清理`);
+      } else {
+        message.error(`安装失败: ${msg}`);
       }
       throw e;
     }
-    message.success(`已安装「${current.meta.name}」`);
-    emit('installed', {
-      name: current.meta.name,
-      fileName: targetFileName,
-      uuid: current.meta.uuid,
-    });
-    closeDialog();
-  } catch (e: unknown) {
-    message.error(`安装失败: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     installing.value = false;
   }
@@ -391,19 +405,7 @@ async function confirmInstall() {
   const current = preview.value;
   if (!current || installing.value) return;
 
-  if (localSource.value) {
-    dialog.warning({
-      title: '覆盖安装书源',
-      content: buildOverwriteContent(current),
-      positiveText: installActionText.value,
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        await performInstall(current);
-      },
-    });
-    return;
-  }
-
+  // 检测到 UUID 冲突时，自动执行删除旧书源再安装，无需用户确认
   await performInstall(current);
 }
 </script>
@@ -519,7 +521,7 @@ async function confirmInstall() {
             :disabled="loading || !!error || !preview"
             @click="confirmInstall"
           >
-            {{ installActionText }}
+                        {{ localSource ? '更新' : '安装' }}
           </n-button>
         </div>
       </template>

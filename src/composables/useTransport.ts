@@ -120,6 +120,8 @@ interface HarmonyNativeBridge {
   invoke: (reqId: string, cmd: string, argsJson: string) => string;
   subscribe?: () => string;
   getEnv?: () => string;
+  openDebugTool?: () => void;
+  closeDebugTool?: () => void;
 }
 
 // ── WebSocket 传输实现 ───────────────────────────────────────────────────

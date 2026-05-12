@@ -595,7 +595,28 @@ async function installAll() {
       try {
         const targetFileName = resolveInstallFileName(src.fileName, sourceUuid(src), reservedNames);
         reservedNames.add(targetFileName);
-        await installFromRepository(src.downloadUrl, targetFileName, sourceUuid(src));
+        try {
+          await installFromRepository(src.downloadUrl, targetFileName, sourceUuid(src));
+        } catch (e: unknown) {
+          // 目标文件名被另一个不同 UUID 的书源占用，清理冲突后重试
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('属于另一个') || msg.includes('another UUID') || msg.includes('different UUID') || msg.includes('another source') || msg.includes('is already used')) {
+            const conflicts = props.sources.filter((s) => s.fileName === targetFileName && s.uuid !== sourceUuid(src));
+            for (const conflict of conflicts) {
+              try {
+                await deleteBookSource(conflict.fileName, conflict.sourceDir || undefined);
+                await new Promise((resolve) => setTimeout(resolve, 300));
+              } catch {
+                // 忽略单个删除失败
+              }
+            }
+            // 等待文件系统操作完成
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await installFromRepository(src.downloadUrl, targetFileName, sourceUuid(src));
+          } else {
+            throw e;
+          }
+        }
         await refreshSingleSourceSync(src);
       } finally {
         installingSet.value.delete(src.fileName);
@@ -618,7 +639,30 @@ async function performRepositoryUpdate(src: RepoSourceInfo, force = false, silen
     if (!local) {
       throw new Error('未找到同一 UUID 的本地书源');
     }
-    await installFromRepository(src.downloadUrl, local.fileName, sourceUuid(src));
+
+    try {
+      await installFromRepository(src.downloadUrl, local.fileName, sourceUuid(src));
+    } catch (e: unknown) {
+      // 目标文件名被另一个不同 UUID 的书源占用，清理冲突后重试
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('属于另一个') || msg.includes('another UUID') || msg.includes('different UUID') || msg.includes('another source') || msg.includes('is already used')) {
+        const conflicts = props.sources.filter((s) => s.fileName === local.fileName && s.uuid !== sourceUuid(src));
+        for (const conflict of conflicts) {
+          try {
+            await deleteBookSource(conflict.fileName, conflict.sourceDir || undefined);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          } catch {
+            // 忽略单个删除失败
+          }
+        }
+        // 等待文件系统操作完成
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await installFromRepository(src.downloadUrl, local.fileName, sourceUuid(src));
+      } else {
+        throw e;
+      }
+    }
+
     await refreshSingleSourceSync(src);
     emits('reload');
     if (!silent) {
