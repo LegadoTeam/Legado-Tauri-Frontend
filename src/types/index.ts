@@ -26,8 +26,6 @@ export type {
   UpdateShelfBookPayload,
 } from '@/composables/useBookshelf';
 
-export type { ShelfGroup, ShelfGroupWithCount } from '@/types/shelfGroup';
-
 // ── 布局 ───────────────────────────────────────────────────────────────
 export type { NavItem } from '@/components/layout/SideBar.vue';
 
