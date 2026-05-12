@@ -712,7 +712,7 @@ onUnmounted(() => {
       :file-name="drawerFileName"
       :source-name="drawerSourceName"
       :source-type="drawerSourceType"
-      :suspend-close-shortcuts="showReader"
+
       @read-chapter="onReadChapter"
     />
 

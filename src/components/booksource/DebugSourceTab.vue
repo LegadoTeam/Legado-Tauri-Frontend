@@ -856,7 +856,6 @@ defineExpose({ setDebugSource });
     :source-name="
       sources.find((s) => s.fileName === debugDrawerFileName)?.name ?? debugDrawerFileName
     "
-    :suspend-close-shortcuts="debugShowReader"
     @read-chapter="debugReadChapter"
   />
   <ChapterReaderModal

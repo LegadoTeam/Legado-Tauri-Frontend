@@ -2,9 +2,10 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ChevronLeft, ArrowUp } from 'lucide-vue-next';
 import { useMessage } from 'naive-ui';
-import { ref, computed, watch, onMounted, onBeforeUnmount, type CSSProperties } from 'vue';
+import { ref, computed, watch, onMounted, type CSSProperties } from 'vue';
 import type { CachedChapter, BookDetail, ChapterItem, ChapterGroup } from '@/types';
-import { useBookshelfStore, useScriptBridgeStore, useBackStackStore, groupChapters } from '@/stores';
+import { useBookshelfStore, useScriptBridgeStore, groupChapters } from '@/stores';
+import { useOverlayBackstack } from '../../composables/useOverlayBackstack';
 import type { ReaderBookInfo } from '../reader/types';
 import { isMobile } from '../../composables/useEnv';
 import {
@@ -31,8 +32,6 @@ const props = defineProps<{
   sourceName: string;
   /** 书源类型：novel（默认）或 comic 或 video */
   sourceType?: string;
-  /** 顶层还有其它弹层时，暂停返回键/Escape 处理，避免一次关闭多层 */
-  suspendCloseShortcuts?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -184,33 +183,7 @@ function closeDrawer() {
   emit('update:show', false);
 }
 
-/* ---- Android 返回键 / Escape ---- */
-const _backStack = useBackStackStore();
-let _backHandler: (() => void) | null = null;
-
-function activateHistoryGuard() {
-  if (_backHandler) return;
-  _backHandler = () => {
-    _backHandler = null; // 自注销，避免 show watcher 重复消耗
-    if (props.suspendCloseShortcuts) return;
-    closeDrawer();
-  };
-  _backStack.push(_backHandler);
-}
-
-function deactivateHistoryGuard() {
-  if (!_backHandler) return;
-  const h = _backHandler;
-  _backHandler = null;
-  _backStack.remove(h);
-}
-
-onBeforeUnmount(() => {
-  if (_backHandler) {
-    _backStack.detach(_backHandler);
-    _backHandler = null;
-  }
-});
+useOverlayBackstack(() => props.show, closeDrawer);
 
 watch(
   () => props.show,
@@ -250,18 +223,6 @@ watch(
       loading.value = false;
     }
   },
-);
-
-watch(
-  () => [props.show, props.suspendCloseShortcuts] as const,
-  ([visible, suspended]) => {
-    if (visible && !suspended) {
-      activateHistoryGuard();
-    } else {
-      deactivateHistoryGuard();
-    }
-  },
-  { immediate: true },
 );
 
 function onClickChapter(ch: ChapterItem, indexInDisplay: number) {
