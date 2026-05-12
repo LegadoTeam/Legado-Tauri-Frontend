@@ -19,6 +19,8 @@ export interface ShelfBook {
   coverReferer?: string;
   intro?: string;
   kind?: string;
+  /** 所属分组 ID */
+  groupId?: string;
   bookUrl: string;
   fileName: string;
   sourceName: string;
@@ -50,6 +52,7 @@ export interface UpdateShelfBookPayload {
   coverUrl?: string;
   intro?: string;
   kind?: string;
+  groupId?: string;
   bookUrl: string;
   fileName: string;
   sourceName: string;
@@ -75,6 +78,7 @@ export interface PatchShelfBookPayload {
   coverUrl?: string;
   intro?: string;
   kind?: string;
+  groupId?: string;
   bookUrl?: string;
   fileName?: string;
   sourceName?: string;
@@ -105,6 +109,7 @@ export interface AddBookPayload {
   coverUrl?: string;
   intro?: string;
   kind?: string;
+  groupId?: string;
   bookUrl: string;
   lastChapter?: string;
   /** 书源类型："novel"（默认）| "comic" | "video" */
@@ -281,6 +286,7 @@ export function useBookshelf() {
         coverUrl: patch.coverUrl ?? current.coverUrl,
         intro: patch.intro ?? current.intro,
         kind: patch.kind ?? current.kind,
+        groupId: patch.groupId ?? current.groupId,
         bookUrl: patch.bookUrl ?? current.bookUrl,
         fileName: patch.fileName ?? current.fileName,
         sourceName: patch.sourceName ?? current.sourceName,

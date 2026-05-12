@@ -12,6 +12,7 @@ export const useBookshelfUiStore = defineStore('bookshelfUi', () => {
 
   const searchKw = ref('');
   const openingBookId = ref<string | null>(null);
+  const showGroupMenu = ref(false);
 
   const showDropdown = ref(false);
   const dropdownX = ref(0);
@@ -125,6 +126,7 @@ export const useBookshelfUiStore = defineStore('bookshelfUi', () => {
   return {
     searchKw,
     openingBookId,
+    showGroupMenu,
     showDropdown,
     dropdownX,
     dropdownY,
