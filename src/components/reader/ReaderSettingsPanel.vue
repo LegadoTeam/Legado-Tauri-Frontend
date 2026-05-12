@@ -4,6 +4,7 @@ import { toRef } from 'vue';
 import { isMobile } from '@/composables/useEnv';
 import { useReaderSettingsPanelModel } from '@/features/reader/settings/useReaderSettingsPanelModel';
 import ReaderSettingsCustomFontPage from '@/features/reader/settings/components/ReaderSettingsCustomFontPage.vue';
+import ReaderSettingsUploadedFontsPage from '@/features/reader/settings/components/ReaderSettingsUploadedFontsPage.vue';
 import ReaderSettingsFontPage from '@/features/reader/settings/components/ReaderSettingsFontPage.vue';
 import ReaderSettingsMorePage from '@/features/reader/settings/components/ReaderSettingsMorePage.vue';
 import ReaderSettingsPagePaddingPage from '@/features/reader/settings/components/ReaderSettingsPagePaddingPage.vue';
@@ -72,6 +73,13 @@ const {
   onDividerPointerDown,
   onTapZoneBarPointerMove,
   onTapZoneBarPointerUp,
+  userFonts,
+  uploading: userFontUploading,
+  uploadError: userFontUploadError,
+  loadUserFonts,
+  uploadFont,
+  deleteUserFont,
+  renameUserFont,
 } = useReaderSettingsPanelModel({
   sourceType: toRef(props, 'sourceType'),
   onDumpPaginationLayout: () => emit('dump-pagination-layout'),
@@ -260,7 +268,6 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
     <ReaderSettingsMorePage
       v-else-if="subPage === 'more'"
       :settings="settings"
-      :font-weight-presets="FONT_WEIGHT_PRESETS"
       :is-comic="isComic"
       :is-video="isVideo"
       :is-mobile="isMobile"
@@ -410,6 +417,7 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
       @update-typography="updateTypography"
       @navigate="navigateTo"
       @load-system-fonts="loadSystemFonts"
+      @load-user-fonts="loadUserFonts"
     />
 
     <!-- ============ L2 字体样式 ============ -->
@@ -442,6 +450,20 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
       @back="goBack"
       @copy-font-list="copyFontList"
       @update-typography="updateTypography"
+    />
+
+    <!-- ============ L2 用户上传字体 ============ -->
+    <ReaderSettingsUploadedFontsPage
+      v-else-if="subPage === 'uploadedFont'"
+      :settings="settings"
+      :user-fonts="userFonts"
+      :uploading="userFontUploading ?? false"
+      :upload-error="userFontUploadError ?? ''"
+      @back="goBack"
+      @update-typography="updateTypography"
+      @upload-font="uploadFont"
+      @delete-font="deleteUserFont"
+      @rename-font="renameUserFont"
     />
   </div>
 </template>

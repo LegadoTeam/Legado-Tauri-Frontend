@@ -33,6 +33,7 @@ interface ReportReaderSessionPayload {
 interface ReaderSyncApi {
   syncNow: (mode?: 'push' | 'sync' | 'pull') => Promise<unknown>;
   reportReaderSession: (payload: ReportReaderSessionPayload) => Promise<unknown>;
+  syncCurrentReadingProgress: (bookId: string) => Promise<unknown>;
   listenReadingConflict: (listener: (payload: unknown) => void) => Promise<() => void>;
 }
 
@@ -183,7 +184,12 @@ export function useReaderProgressSync(options: UseReaderProgressSyncOptions) {
     reportReaderSession(true);
     readerSyncRunning = true;
     try {
-      await options.sync.syncNow('sync');
+      const bookId = options.currentShelfId.value;
+      if (bookId) {
+        await options.sync.syncCurrentReadingProgress(bookId);
+      } else {
+        await options.sync.syncNow('sync');
+      }
     } catch {
       // 同步失败不打断阅读
     } finally {

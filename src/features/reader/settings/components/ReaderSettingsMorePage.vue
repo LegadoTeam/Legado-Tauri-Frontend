@@ -6,7 +6,6 @@ type MoreTarget = 'tapControls' | 'spacing' | 'pagePadding' | 'typography' | 'sh
 
 defineProps<{
   settings: ReaderSettings;
-  fontWeightPresets: Array<{ label: string; value: number }>;
   isComic: boolean;
   isVideo: boolean;
   isMobile: boolean;
@@ -40,37 +39,49 @@ const emit = defineEmits<{
     </button>
   </div>
 
-  <div class="reader-settings__row">
-    <span class="reader-settings__label">粗细</span>
-    <div class="reader-settings__pill-group">
-      <button
-        v-for="weight in fontWeightPresets"
-        :key="weight.value"
-        class="reader-settings__pill"
-        :class="{ 'reader-settings__pill--active': settings.typography.fontWeight === weight.value }"
-        :style="{ fontWeight: weight.value }"
-        @click="emit('update-typography', { fontWeight: weight.value })"
-      >
-        {{ weight.label }}
-      </button>
+  <div class="reader-settings__fw-section">
+    <div class="reader-settings__fw-header">
+      <span class="reader-settings__fw-label">粗细</span>
+      <span class="reader-settings__fw-value">{{ settings.typography.fontWeight }}</span>
+    </div>
+    <n-slider
+      :value="settings.typography.fontWeight"
+      :min="100"
+      :max="900"
+      :step="100"
+      :marks="{
+        100: '极细',
+        200: '超细',
+        300: '细体',
+        400: '正常',
+        500: '中等',
+        600: '半粗',
+        700: '粗体',
+        800: '特粗',
+        900: '黑体',
+      }"
+      :format-tooltip="(v: number) => v.toString()"
+      @update:value="(v: number) => emit('update-typography', { fontWeight: v })"
+    />
+    <div class="reader-settings__fw-warn">
+      ⚠️ 大部分字体只内置 400（正常）和 700（粗）两个字重。可变字体（Variable Font）才能利用全部字重范围。
     </div>
   </div>
 
-  <div class="reader-settings__row">
-    <span class="reader-settings__label">布局调试</span>
-    <div class="reader-settings__switch-row">
-      <span class="reader-settings__hint">显示页边距、内容区和行盒/行距网格</span>
+  <div class="reader-settings__row reader-settings__row--col">
+    <div class="reader-settings__col-header">
+      <span class="reader-settings__label">布局调试</span>
       <n-switch
         :value="settings.layoutDebugMode"
         @update:value="emit('set-layout-debug', $event)"
       />
     </div>
+    <span class="reader-settings__hint">显示页边距、内容区和行盒/行距网格</span>
   </div>
 
-  <div v-if="!isComic && !isVideo" class="reader-settings__row">
-    <span class="reader-settings__label">排版诊断</span>
-    <div class="reader-settings__switch-row">
-      <span class="reader-settings__hint">导出当前页的详细分页信息到实时日志，仅分页模式可用</span>
+  <div v-if="!isComic && !isVideo" class="reader-settings__row reader-settings__row--col">
+    <div class="reader-settings__col-header">
+      <span class="reader-settings__label">排版诊断</span>
       <button
         class="reader-settings__debug-export-btn"
         :disabled="!canDumpPaginationLayout"
@@ -79,28 +90,29 @@ const emit = defineEmits<{
         输出当前页
       </button>
     </div>
+    <span class="reader-settings__hint">导出当前页的详细分页信息到实时日志，仅分页模式可用</span>
   </div>
 
-  <div v-if="!isComic && !isVideo" class="reader-settings__row">
-    <span class="reader-settings__label">音量键</span>
-    <div class="reader-settings__switch-row">
-      <span class="reader-settings__hint">菜单关闭且未听书时，音量键用于上一页 / 下一页</span>
+  <div v-if="!isComic && !isVideo" class="reader-settings__row reader-settings__row--col">
+    <div class="reader-settings__col-header">
+      <span class="reader-settings__label">音量键</span>
       <n-switch
         :value="settings.volumeKeyPageTurnEnabled"
         @update:value="emit('set-volume-key-page-turn', $event)"
       />
     </div>
+    <span class="reader-settings__hint">菜单关闭且未听书时，音量键用于上一页 / 下一页</span>
   </div>
 
-  <div v-if="isMobile" class="reader-settings__row">
-    <span class="reader-settings__label">顶部栏</span>
-    <div class="reader-settings__switch-row">
-      <span class="reader-settings__hint">手机布局打开菜单时隐藏顶部栏，减少正文遮挡</span>
+  <div v-if="isMobile" class="reader-settings__row reader-settings__row--col">
+    <div class="reader-settings__col-header">
+      <span class="reader-settings__label">顶部栏</span>
       <n-switch
         :value="settings.hideTopBarOnMobile"
         @update:value="emit('set-hide-top-bar-on-mobile', $event)"
       />
     </div>
+    <span class="reader-settings__hint">手机布局打开菜单时隐藏顶部栏，减少正文遮挡</span>
   </div>
 
   <div class="reader-settings__more-list">
@@ -194,12 +206,38 @@ const emit = defineEmits<{
   min-height: 36px;
 }
 
+.reader-settings__row--col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-height: unset;
+}
+
+.reader-settings__col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .reader-settings__label {
   flex-shrink: 0;
   width: 44px;
   color: rgba(255, 255, 255, 0.65);
   font-size: 13px;
   text-align: left;
+}
+
+/* col-header 里标签不限宽，避免换行 */
+.reader-settings__col-header .reader-settings__label {
+  width: auto;
+  white-space: nowrap;
+}
+
+/* col 行的标题（占全行，粗细等） */
+.reader-settings__row-title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .reader-settings__hint {
@@ -290,5 +328,42 @@ const emit = defineEmits<{
 
 .reader-settings__more-item:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* ---- 字体粗细区块 ---- */
+.reader-settings__fw-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 为 slider mark 标签留空 */
+  padding-bottom: 6px;
+}
+
+.reader-settings__fw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reader-settings__fw-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.reader-settings__fw-value {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-settings__fw-warn {
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: rgba(255, 185, 80, 0.85);
+  background: rgba(255, 185, 80, 0.08);
+  border: 1px solid rgba(255, 185, 80, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 18px;
 }
 </style>

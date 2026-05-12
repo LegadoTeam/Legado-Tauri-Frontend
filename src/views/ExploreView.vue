@@ -906,7 +906,6 @@ watch(
       :file-name="drawerFileName"
       :source-name="drawerSourceName"
       :source-type="drawerSourceType"
-      :suspend-close-shortcuts="showReader"
       @read-chapter="onReadChapter"
     />
 
@@ -1081,6 +1080,8 @@ watch(
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 16px;
+  display: flex;
+  flex-direction: column;
 }
 /* ── 移动端适配 ─────────────────────────── */
 @media (pointer: coarse), (max-width: 640px) {

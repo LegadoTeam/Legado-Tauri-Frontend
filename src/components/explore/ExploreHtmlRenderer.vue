@@ -239,6 +239,13 @@ async function routeMethod(method: BridgeMethod, args: unknown[]): Promise<unkno
       return null;
     }
 
+    case 'installSource': {
+      const [url] = args as [string];
+      // 使用纯前端 CustomEvent，绕开 Tauri transportEmit（它会发到 Rust 后端而不会回勂到前端监听器）
+      window.dispatchEvent(new CustomEvent('app:install-source', { detail: { url } }));
+      return null;
+    }
+
     default:
       throw new Error(`未知的 bridge 方法: ${method}`);
   }

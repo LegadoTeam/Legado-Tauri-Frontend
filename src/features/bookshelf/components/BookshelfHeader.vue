@@ -21,6 +21,7 @@ const emit = defineEmits<{
   (e: 'toggle-group-menu'): void;
   (e: 'select-group', groupId: string): void;
   (e: 'import-txt'): void;
+  (e: 'refresh'): void;
 }>();
 
 // 启用的分组（排除禁用的）
@@ -56,6 +57,17 @@ const showGroupBar = computed(() => {
           <FolderPlus :size="16" />
         </button>
         <!-- TXT 导入按钮 -->
+        <button
+          class="bs-icon-btn"
+          :class="{ 'bs-icon-btn--spinning': loading }"
+          type="button"
+          title="刷新书架"
+          aria-label="刷新书架"
+          :disabled="loading"
+          @click="emit('refresh')"
+        >
+          <RefreshCw :size="16" />
+        </button>
         <button
           class="bs-icon-btn"
           type="button"
@@ -162,6 +174,13 @@ const showGroupBar = computed(() => {
   color: var(--color-accent);
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.bs-icon-btn--spinning svg {
+  animation: bs-spin 0.8s linear infinite;
+}
+@keyframes bs-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 @media (pointer: coarse), (max-width: 640px) {
   .bs-header {

@@ -32,6 +32,12 @@ const qrRawText = ref('');
 const scanVisible = ref(false);
 const videoRef = ref<HTMLVideoElement | null>(null);
 
+const providerOptions = [
+  { label: 'WebDAV', value: 'webdav' },
+  { label: 'FTP', value: 'ftp' },
+  { label: '百度网盘', value: 'baidu_netdisk' },
+];
+
 useOverlayBackstack(() => qrVisible.value, closeQr);
 useOverlayBackstack(
   () => scanVisible.value,
@@ -41,14 +47,12 @@ useOverlayBackstack(
 );
 
 const scopeOptions = [
+  { label: '系统设置', key: 'sync_scope_app_settings' },
+  { label: '书源文件', key: 'sync_scope_booksources' },
+  { label: '插件文件', key: 'sync_scope_extensions' },
   { label: '书架', key: 'sync_scope_bookshelf' },
-  { label: '阅读进度', key: 'sync_scope_reading_progress' },
-  { label: '书源', key: 'sync_scope_booksources' },
-  { label: '阅读设置', key: 'sync_scope_reader_settings' },
-  { label: '应用设置', key: 'sync_scope_app_settings' },
-  { label: '书源开关', key: 'sync_scope_source_flags' },
-  { label: '扩展脚本', key: 'sync_scope_extensions' },
-  { label: '脚本配置', key: 'sync_scope_script_config' },
+  { label: '单书设置', key: 'sync_scope_reader_settings' },
+  { label: '阅读位置', key: 'sync_scope_reading_progress' },
 ] as const;
 
 const enabledScopeKeys = computed({
@@ -222,7 +226,7 @@ onMounted(async () => {
 
 <template>
   <SettingSection title="跨设备同步" section-id="section-sync">
-    <SettingItem label="启用同步" desc="使用 WebDAV 在多设备间同步书架、阅读进度、书源和设置">
+    <SettingItem label="启用同步" desc="使用 WebDAV / FTP / 百度网盘同步小文件数据">
       <n-switch
         :value="config.sync_enabled"
         :loading="savingKey === 'sync_enabled'"
@@ -231,14 +235,24 @@ onMounted(async () => {
     </SettingItem>
 
     <SettingItem
-      label="WebDAV 与同步范围"
-      desc="地址、账号、密码、根目录、同步范围和自动触发设置直接在当前页面展开。"
+      label="驱动与同步范围"
+      desc="同步协议采用小文件模型；书源和插件只同步文件，不同步各自设置。"
       :vertical="true"
     >
       <div class="sync-panel-stack">
+        <SettingItem label="同步驱动">
+          <n-select
+            :value="config.sync_provider"
+            size="small"
+            :options="providerOptions"
+            @update:value="(v: string) => handleSet('sync_provider', v)"
+          />
+        </SettingItem>
+
         <SettingItem
           label="WebDAV 地址"
           desc="例如 https://dav.example.com/remote.php/dav/files/user"
+          v-if="config.sync_provider === 'webdav'"
         >
           <n-input
             :value="config.sync_webdav_url"
@@ -248,7 +262,7 @@ onMounted(async () => {
           />
         </SettingItem>
 
-        <SettingItem label="账号">
+        <SettingItem label="账号" v-if="config.sync_provider === 'webdav'">
           <n-input
             :value="config.sync_webdav_username"
             size="small"
@@ -272,7 +286,10 @@ onMounted(async () => {
           <n-button size="small" type="warning" @click="clearSyncCredentials">清除</n-button>
         </SettingItem>
 
-        <SettingItem label="远端目录" desc="将在 WebDAV 根地址下创建该目录">
+        <SettingItem
+          label="远端目录"
+          desc="当前 WebDAV 可用；FTP / 百度网盘驱动入口已预留，真实连接实现继续接入中"
+        >
           <n-input
             :value="config.sync_webdav_root_dir"
             size="small"

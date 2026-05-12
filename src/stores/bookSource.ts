@@ -123,13 +123,18 @@ export const useBookSourceStore = defineStore('bookSource', () => {
 
   const explorableSources = computed(() =>
     enabledSources.value.filter(
-      (s) => fnsCache.value[s.fileName]?.has('explore') && !exploreDisabled.value.has(s.fileName),
+      (s) =>
+        (s.sourceType === 'webpage' || fnsCache.value[s.fileName]?.has('explore')) &&
+        !exploreDisabled.value.has(s.fileName),
     ),
   );
 
   const searchableSources = computed(() =>
     enabledSources.value.filter(
-      (s) => fnsCache.value[s.fileName]?.has('search') && !searchDisabled.value.has(s.fileName),
+      (s) =>
+        s.sourceType !== 'webpage' &&
+        fnsCache.value[s.fileName]?.has('search') &&
+        !searchDisabled.value.has(s.fileName),
     ),
   );
 

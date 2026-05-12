@@ -4,7 +4,11 @@ import { ref, computed, onMounted, watch } from 'vue';
 import type { BookItem } from '@/stores';
 import { useScriptBridgeStore } from '@/stores';
 import type { BookSourceMeta } from '../../composables/useBookSource';
-import { isHtmlExploreResult } from '../../composables/useExploreBridge';
+import {
+  isHtmlExploreResult,
+  isUrlExploreResult,
+  getUrlFromExploreResult,
+} from '../../composables/useExploreBridge';
 import {
   getCachedExploreCategories,
   setCachedExploreCategories,
@@ -14,6 +18,7 @@ import {
 import AppSkeleton from '../base/AppSkeleton.vue';
 import BookCard from './BookCard.vue';
 import ExploreHtmlRenderer from './ExploreHtmlRenderer.vue';
+import ExploreUrlRenderer from './ExploreUrlRenderer.vue';
 
 const props = defineProps<{
   source: BookSourceMeta;
@@ -64,6 +69,8 @@ const booksLoading = ref(false);
 const booksError = ref('');
 /** HTML 交互页内容（当 explore 返回 {type:'html'} 时使用） */
 const htmlContent = ref<string | null>(null);
+/** URL 网页内容（当 explore 返回 URL 字符串或 {type:'url'} 时使用，适用于网页发现源） */
+const urlContent = ref<string | null>(null);
 const hasAttemptedInitialLoad = ref(false);
 const pendingActivationRefresh = ref(false);
 /** 是否已完成过至少一次书籍内容加载 */
@@ -100,14 +107,20 @@ async function loadCategories(restoreCategory?: string, skipBooks = false) {
   // ── stale-while-revalidate ───────────────────────────────────
   // 1. 立刻用缓存（无骨架屏）；2. 后台异步刷新；3. 仅有变化才重渲染
   const cached = getCachedExploreCategories(props.source.fileName);
-  if (cached && cached.length > 0) {
+  // cached 不为 null（即曾经加载过，哪怕是空数组）才走 SWR 路径
+  if (cached !== null && cached !== undefined) {
     // 直接应用缓存，不显示骨架屏
     categories.value = cached;
     catLoading.value = false;
+    const isCachedSinglePage = cached.length === 0;
     if (!skipBooks && !booksEverLoaded.value) {
-      const target =
-        restoreCategory && cached.includes(restoreCategory) ? restoreCategory : cached[0];
-      void loadBooks(target);
+      if (isCachedSinglePage) {
+        void loadBooks('');
+      } else {
+        const target =
+          restoreCategory && cached.includes(restoreCategory) ? restoreCategory : cached[0];
+        void loadBooks(target);
+      }
     }
     // 后台刷新（静默，失败不报错）
     void (async () => {
@@ -141,13 +154,35 @@ async function loadCategories(restoreCategory?: string, skipBooks = false) {
     }
     if (Array.isArray(raw)) {
       const cats = raw.filter((v): v is string => typeof v === 'string');
-      categories.value = cats;
-      // 首次获取到分类后立即缓存
-      if (cats.length) setCachedExploreCategories(props.source.fileName, cats);
-      if (cats.length && !skipBooks) {
-        const target =
-          restoreCategory && cats.includes(restoreCategory) ? restoreCategory : cats[0];
-        await loadBooks(target);
+      // [] 或 [''] 表示单页源，隐藏分类标签栏，直接加载内容
+      const isSinglePage = cats.length === 0 || (cats.length === 1 && cats[0] === '');
+      categories.value = isSinglePage ? [] : cats;
+      // 首次获取到分类后立即缓存（单页源缓存空数组以便下次跳过骨架屏）
+      setCachedExploreCategories(props.source.fileName, categories.value);
+      if (!skipBooks) {
+        if (isSinglePage) {
+          await loadBooks('');
+        } else if (cats.length) {
+          const target =
+            restoreCategory && cats.includes(restoreCategory) ? restoreCategory : cats[0];
+          await loadBooks(target);
+        }
+      }
+    } else if (isUrlExploreResult(raw) || isHtmlExploreResult(raw)) {
+      // 网页发现源：GETALL 直接返回内容，使用单一"发现"分类
+      categories.value = ['发现'];
+      setCachedExploreCategories(props.source.fileName, ['发现']);
+      if (!skipBooks) {
+        activeCategory.value = '发现';
+        booksEverLoaded.value = true;
+        if (isUrlExploreResult(raw)) {
+          urlContent.value = getUrlFromExploreResult(raw);
+          htmlContent.value = null;
+        } else if (isHtmlExploreResult(raw)) {
+          htmlContent.value = raw.html;
+          urlContent.value = null;
+        }
+        books.value = [];
       }
     }
   } catch (e: unknown) {
@@ -177,6 +212,7 @@ async function loadBooks(category: string, page = 1) {
     if (cached) {
       // 立即展示缓存数据，不显示 loading 遮罩
       htmlContent.value = null;
+      urlContent.value = null;
       books.value = cached;
       booksLoading.value = false;
 
@@ -185,9 +221,16 @@ async function loadBooks(category: string, page = 1) {
         try {
           const raw = await runExplore(props.source.fileName, category, 1);
           if (requestToken !== booksRequestToken) return;
+          if (isUrlExploreResult(raw)) {
+            urlContent.value = getUrlFromExploreResult(raw);
+            htmlContent.value = null;
+            books.value = [];
+            return;
+          }
           if (isHtmlExploreResult(raw)) {
             // HTML 交互页不缓存，直接切换
             htmlContent.value = raw.html;
+            urlContent.value = null;
             books.value = [];
             return;
           }
@@ -213,13 +256,20 @@ async function loadBooks(category: string, page = 1) {
     if (requestToken !== booksRequestToken) {
       return;
     }
-    if (isHtmlExploreResult(raw)) {
+    if (isUrlExploreResult(raw)) {
+      // URL 网页模式（不缓存）
+      urlContent.value = getUrlFromExploreResult(raw);
+      htmlContent.value = null;
+      books.value = [];
+    } else if (isHtmlExploreResult(raw)) {
       // HTML 交互页模式（不缓存）
       htmlContent.value = raw.html;
+      urlContent.value = null;
       books.value = [];
     } else {
       // 标准书籍列表模式
       htmlContent.value = null;
+      urlContent.value = null;
       const freshBooks = Array.isArray(raw) ? (raw as BookItem[]) : [];
       books.value = freshBooks;
       // 第 1 页结果写入持久化缓存
@@ -323,7 +373,7 @@ watch(
 </script>
 
 <template>
-  <div class="ses">
+  <div class="ses" :class="{ 'ses--fullheight': urlContent !== null || htmlContent !== null }">
     <!-- 加载分类中 -->
     <div v-if="catLoading" class="ses__skeleton">
       <div class="ses__skeleton-cats">
@@ -343,9 +393,9 @@ watch(
     <!-- 分类加载失败 -->
     <div v-else-if="catError" class="ses__error">加载失败: {{ catError }}</div>
 
-    <!-- 分类标签行 -->
-    <template v-else-if="categories.length">
-      <div class="ses__cats">
+    <!-- 分类标签行（单页源 categories=[] 时隐藏） -->
+    <template v-else-if="categories.length > 0 || urlContent !== null || htmlContent !== null || booksEverLoaded">
+      <div v-if="categories.length > 0" class="ses__cats">
         <button
           v-for="cat in categories"
           :key="cat"
@@ -358,7 +408,7 @@ watch(
       </div>
 
       <!-- 书籍区域：overlay loading，不改变高度 -->
-      <div class="ses__books-wrap">
+      <div class="ses__books-wrap" :class="{ 'ses__books-wrap--fullheight': urlContent !== null || htmlContent !== null }">
         <!-- loading 遮罩层 -->
         <Transition name="ses-fade">
           <div v-if="booksLoading" class="ses__loading-overlay">
@@ -367,6 +417,12 @@ watch(
         </Transition>
 
         <div v-if="booksError" class="ses__error">{{ booksError }}</div>
+
+        <!-- URL 网页模式（网页发现源） -->
+        <ExploreUrlRenderer
+          v-else-if="urlContent"
+          :url="urlContent"
+        />
 
         <!-- HTML 交互页模式 -->
         <ExploreHtmlRenderer
@@ -400,8 +456,8 @@ watch(
         <div v-else-if="!booksLoading" class="ses__empty">暂无数据</div>
       </div>
 
-      <!-- 翻页栏（标准书单模式，首页有数据或已翻页时显示） -->
-      <div v-if="!htmlContent && (books.length > 0 || currentPage > 1)" class="ses__pagination">
+      <!-- 翻页栏（标准书单模式，非 URL/HTML 渲染时显示） -->
+      <div v-if="!htmlContent && !urlContent && (books.length > 0 || currentPage > 1)" class="ses__pagination">
         <button
           class="ses__page-btn"
           :disabled="currentPage === 1 || booksLoading"
@@ -434,6 +490,10 @@ watch(
 .ses {
   display: flex;
   flex-direction: column;
+}
+.ses--fullheight {
+  flex: 1;
+  min-height: 0;
 }
 
 .ses__skeleton {
@@ -496,6 +556,10 @@ watch(
 .ses__books-wrap {
   position: relative;
   min-height: 40px;
+}
+.ses__books-wrap--fullheight {
+  flex: 1;
+  min-height: 0;
 }
 
 .ses__loading-overlay {

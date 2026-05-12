@@ -56,7 +56,7 @@ export interface SyncCredentials {
 export interface SyncQrPayload {
   type: 'legado-sync-config';
   version: 1;
-  provider: 'webdav';
+  provider: 'webdav' | 'ftp' | 'baidu_netdisk';
   profileId: string;
   webdavUrl: string;
   username: string;
@@ -78,6 +78,13 @@ export interface ReaderSessionPayload {
   scrollRatio: number;
   playbackTime: number;
   updatedAt: number;
+}
+
+export interface SyncV2ProgressResult {
+  status: string;
+  message: string;
+  local?: unknown;
+  remote?: unknown;
 }
 
 function readLocalJson(key: string): unknown {
@@ -241,7 +248,10 @@ export function useSync() {
     return {
       type: 'legado-sync-config',
       version: 1,
-      provider: 'webdav',
+      provider:
+        config.value.sync_provider === 'ftp' || config.value.sync_provider === 'baidu_netdisk'
+          ? config.value.sync_provider
+          : 'webdav',
       profileId: config.value.sync_profile_id,
       webdavUrl: config.value.sync_webdav_url,
       username: config.value.sync_webdav_username,
@@ -315,6 +325,14 @@ export function useSync() {
     return invokeWithTimeout<void>('sync_report_reader_session', { session }, 5000);
   }
 
+  function syncCurrentReadingProgress(bookId: string): Promise<SyncV2ProgressResult> {
+    return invokeWithTimeout<SyncV2ProgressResult>(
+      'sync_v2_sync_reading_progress',
+      { bookId },
+      30000,
+    );
+  }
+
   function notifyLifecycle(event: 'startup' | 'resume' | 'background'): Promise<void> {
     return invokeWithTimeout<void>('sync_notify_lifecycle', { event }, 10000).catch(() => {});
   }
@@ -337,6 +355,7 @@ export function useSync() {
     importQrPayload,
     scanQrFromVideo,
     reportReaderSession,
+    syncCurrentReadingProgress,
     notifyLifecycle,
     listenReadingConflict,
   };

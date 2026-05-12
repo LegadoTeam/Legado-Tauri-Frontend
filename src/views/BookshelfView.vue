@@ -262,6 +262,7 @@ onMounted(async () => {
       @toggle-group-menu="showGroupMenu = !showGroupMenu"
       @select-group="(id: string) => selectGroup(id)"
       @import-txt="uiStore.showTxtImportDialog = true"
+      @refresh="bookshelfStore.loadBooks()"
     />
 
     <BookshelfToolbar v-model:search-kw="searchKw" :show="!!books.length" />

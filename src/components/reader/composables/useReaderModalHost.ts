@@ -587,7 +587,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     openChapter: options.openChapter,
   });
 
-  options.readerActionsStore.bind({
+  const actionStoreBindings = {
     close,
     retryCurrentChapter: options.retryCurrentChapter,
     onTap,
@@ -619,7 +619,8 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     handleWholeBookSourceSwitched,
     onVideoProgress: options.onVideoProgress,
     onVideoEnded: options.onVideoEnded,
-  });
+  };
+  options.readerActionsStore.bind(actionStoreBindings);
 
   const readerLifecycle = createReaderLifecycleController({
     getShelfBookId: options.getShelfBookId,
@@ -799,10 +800,11 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
   watch(
     () => options.getShow(),
     (visible) => {
-      // 多个 ChapterReaderModal 同时挂载时，只有当前显示的那个拥有 readerViewStore 绑定权。
+      // 多个 ChapterReaderModal 同时挂载时，只有当前显示的那个拥有 readerViewStore/readerActionsStore 绑定权。
       // 每次 show 变为 true 时重新抢占，防止其他视图的弹层在挂载时覆盖本实例的绑定。
       if (visible) {
         options.readerViewStore.bind(viewStoreBindings);
+        options.readerActionsStore.bind(actionStoreBindings);
       }
       readerLifecycle.handleVisibilityChange(visible);
     },

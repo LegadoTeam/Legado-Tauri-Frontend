@@ -46,9 +46,15 @@ export const FONT_PRESETS: { label: string; value: string }[] = [
 ];
 
 export const FONT_WEIGHT_PRESETS = [
-  { label: '细', value: 300 },
-  { label: '正常', value: 400 },
-  { label: '粗', value: 700 },
+  { label: 'Thin', value: 100 },
+  { label: 'ExtraLight', value: 200 },
+  { label: 'Light', value: 300 },
+  { label: 'Regular', value: 400 },
+  { label: 'Medium', value: 500 },
+  { label: 'SemiBold', value: 600 },
+  { label: 'Bold', value: 700 },
+  { label: 'ExtraBold', value: 800 },
+  { label: 'Heavy', value: 900 },
 ];
 
 export const TEXT_ALIGN_OPTIONS: { label: string; value: ReaderTypography['textAlign'] }[] = [

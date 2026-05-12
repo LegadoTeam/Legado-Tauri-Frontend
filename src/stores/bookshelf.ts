@@ -379,6 +379,32 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     }
   });
 
+  // TF-40: 监听书架新增/移除事件（来自其他客户端或同一进程的 Web 端），自动刷新列表
+  eventListenSync('bookshelf:changed', () => {
+    void loadBooks();
+  });
+
+  // TF-39: 监听阅读进度更新事件，就地更新内存状态，避免整个书架重载
+  eventListenSync<{
+    id: string;
+    readChapterIndex: number;
+    readChapterUrl: string | null;
+    readPageIndex: number;
+    readScrollRatio: number;
+    readPlaybackTime: number;
+    lastReadAt: number;
+  }>('bookshelf:progress-updated', ({ payload }) => {
+    const book = books.value.find((b) => b.id === payload.id);
+    if (book) {
+      book.readChapterIndex = payload.readChapterIndex;
+      if (payload.readChapterUrl !== null) book.readChapterUrl = payload.readChapterUrl;
+      book.readPageIndex = payload.readPageIndex;
+      book.readScrollRatio = payload.readScrollRatio;
+      book.readPlaybackTime = payload.readPlaybackTime;
+      book.lastReadAt = payload.lastReadAt;
+    }
+  });
+
   return {
     books,
     shelfIndex,
