@@ -4,6 +4,7 @@ import { useMessage, type SelectOption } from 'naive-ui';
 import { computed, reactive, ref, watch } from 'vue';
 import { useBookshelfStore, type ShelfBook, type UpdateShelfBookPayload } from '@/stores';
 import BookCoverImg from '../BookCoverImg.vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 type DetailMode = 'view' | 'edit';
 
@@ -228,6 +229,8 @@ async function saveDetail() {
 function closeDialog() {
   emit('update:show', false);
 }
+
+useOverlayBackstack(() => props.show, closeDialog);
 
 watch(
   () => [props.show, props.book, props.initialMode] as const,

@@ -20,14 +20,14 @@
   min-height: 0;
   border-radius: 0;
   position: relative;
-  /* 加入外阴用试试 */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   /* margin-right: 2px; */
 }
 
 @media (min-width: 768px) {
   .main-content {
     border-radius: 20px;
+    /* 加入外阴用试试 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 }
 </style>

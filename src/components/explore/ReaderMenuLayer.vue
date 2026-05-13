@@ -12,6 +12,7 @@ import ReaderTocPanel from '../reader/ReaderTocPanel.vue';
 import ReaderTopBar from '../reader/ReaderTopBar.vue';
 import TtsControlBar from '../reader/TtsControlBar.vue';
 import ReaderSourceSwitchBridge from '@/features/reader/components/ReaderSourceSwitchBridge.vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const readerActionsStore = useReaderActionsStore();
 const readerUiStore = useReaderUiStore();
@@ -67,6 +68,9 @@ function onOpenToc() {
 function onSettingsVisibleChange(val: boolean) {
   settingsVisible.value = val;
 }
+
+// 菜单遮罩层接入返回栈（Back/Esc 关闭菜单）
+useOverlayBackstack(() => showMenu.value, readerUiStore.closeMenu);
 
 defineExpose({ closeSettings });
 </script>

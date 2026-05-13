@@ -48,8 +48,6 @@ export interface AppConfig {
   ui_layout_mode: string;
   /** UI 主题模式："auto" | "light" | "dark" */
   ui_theme: string;
-  /** 是否启用 Eruda 移动端调试控制台（重启后生效） */
-  ui_enable_eruda: boolean;
   /** Windows 主窗口上次退出时的逻辑宽度，0 表示未记录 */
   windows_main_window_width: number;
   /** Windows 主窗口上次退出时的逻辑高度，0 表示未记录 */
@@ -155,7 +153,6 @@ const config = ref<AppConfig>({
   ui_layout_mode: 'auto',
   ui_theme: 'auto',
   ui_enable_aplus_tracking: true,
-  ui_enable_eruda: false,
   windows_main_window_width: 0,
   windows_main_window_height: 0,
   video_player_type: 'videojs',

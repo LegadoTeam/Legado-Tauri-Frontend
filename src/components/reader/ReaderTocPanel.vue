@@ -11,6 +11,7 @@ import type { ReaderBookInfo } from './types';
 import AppInput from '../base/AppInput.vue';
 import AppTabs from '../base/AppTabs.vue';
 import BookCoverImg from '../BookCoverImg.vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 defineOptions({ inheritAttrs: false });
 
@@ -38,6 +39,11 @@ const emit = defineEmits<{
   /** 清理全书所有章节缓存 */
   (e: 'clear-all-cache'): void;
 }>();
+
+useOverlayBackstack(
+  () => props.show,
+  () => emit('update:show', false),
+);
 
 type TabKey = 'toc' | 'detail';
 const TOC_ITEM_HEIGHT = 48;

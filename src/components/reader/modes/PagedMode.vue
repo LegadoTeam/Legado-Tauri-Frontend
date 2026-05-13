@@ -330,6 +330,18 @@ function goToPage(page: number) {
   }
 }
 
+// 模式切换时清理动画/拖拽残留状态，防止旧模式的 animationTimer 在新模式下触发意外翻页
+watch(
+  () => props.mode,
+  (newMode, oldMode) => {
+    if (newMode !== oldMode) {
+      clearAnimationTimer();
+      finishAnimation(false);
+      dragging = false;
+    }
+  },
+);
+
 watch(
   () => [props.currentPage, totalPages.value] as const,
   ([page, total]) => {

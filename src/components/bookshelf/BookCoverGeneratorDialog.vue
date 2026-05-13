@@ -5,6 +5,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useBookshelfStore, type ShelfBook } from '@/stores';
 import { BUILTIN_COVER_GENERATORS } from '@/utils/defaultCoverGenerators';
 import BookCoverImg from '../BookCoverImg.vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 type PreviewStatus = 'pending' | 'generating' | 'ready' | 'error';
 
@@ -123,6 +124,8 @@ async function applyCover(item: CoverPreviewItem) {
 function closeDialog() {
   emit('update:show', false);
 }
+
+useOverlayBackstack(() => props.show, closeDialog);
 
 watch(
   () => [props.show, props.book] as const,

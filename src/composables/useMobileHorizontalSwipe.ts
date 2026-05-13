@@ -1,5 +1,11 @@
+/**
+ * useMobileHorizontalSwipe — 移动端横向滑动切换页签的兼容占位。
+ *
+ * Android WebView 下原实现会通过 setPointerCapture 接管内容区 pointer 事件，
+ * 已确认会导致书源管理中的按钮、开关等交互控件失效。这里全局禁用该手势，
+ * 保留调用接口，避免 BookSourceView / ExploreView 逐处改模板。
+ */
 import { ref } from 'vue';
-import { isMobile } from './useEnv';
 
 interface MobileHorizontalSwipeOptions {
   threshold?: number;
@@ -9,113 +15,20 @@ interface MobileHorizontalSwipeOptions {
   shouldIgnoreTarget?: (target: EventTarget | null) => boolean;
 }
 
-const DEFAULT_IGNORE_SELECTOR =
-  'input, textarea, select, iframe, [contenteditable="true"], .monaco-editor, .n-tabs-nav';
-
-function defaultShouldIgnoreTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && !!target.closest(DEFAULT_IGNORE_SELECTOR);
-}
-
-function getCurrentElement(e: PointerEvent): HTMLElement | null {
-  return e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
-}
-
 export function useMobileHorizontalSwipe(options: MobileHorizontalSwipeOptions) {
-  const threshold = options.threshold ?? 64;
-  const verticalTolerance = options.verticalTolerance ?? 1.35;
+  void options;
   const swiping = ref(false);
 
-  let pointerId: number | null = null;
-  let startX = 0;
-  let startY = 0;
-  let movedHorizontally = false;
-  let suppressNextClick = false;
-
-  function isEnabled() {
-    return isMobile.value;
-  }
-
-  function shouldIgnoreTarget(target: EventTarget | null) {
-    return options.shouldIgnoreTarget?.(target) ?? defaultShouldIgnoreTarget(target);
-  }
-
-  function onSwipePointerDown(e: PointerEvent) {
-    if (!isEnabled() || !e.isPrimary || shouldIgnoreTarget(e.target)) {
-      pointerId = null;
-      return;
-    }
-    pointerId = e.pointerId;
-    startX = e.clientX;
-    startY = e.clientY;
-    movedHorizontally = false;
-    swiping.value = false;
-    getCurrentElement(e)?.setPointerCapture(e.pointerId);
-  }
-
-  function onSwipePointerMove(e: PointerEvent) {
-    if (pointerId !== e.pointerId) {
-      return;
-    }
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * verticalTolerance) {
-      movedHorizontally = true;
-      swiping.value = true;
-      if (e.cancelable) {
-        e.preventDefault();
-      }
-    }
-  }
-
-  function finishSwipe(e: PointerEvent) {
-    if (pointerId !== e.pointerId) {
-      return;
-    }
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const shouldSwipe =
-      Math.abs(dx) >= threshold && Math.abs(dx) > Math.abs(dy) * verticalTolerance;
-    if (shouldSwipe) {
-      suppressNextClick = true;
-      if (dx < 0) {
-        options.onSwipeLeft();
-      } else {
-        options.onSwipeRight();
-      }
-    }
-    pointerId = null;
-    movedHorizontally = false;
-    swiping.value = false;
-    getCurrentElement(e)?.releasePointerCapture(e.pointerId);
-  }
-
-  function onSwipePointerUp(e: PointerEvent) {
-    finishSwipe(e);
-  }
-
-  function onSwipePointerCancel(e: PointerEvent) {
-    if (pointerId === e.pointerId) {
-      pointerId = null;
-      movedHorizontally = false;
-      swiping.value = false;
-    }
-  }
-
-  function onSwipeClickCapture(e: MouseEvent) {
-    if (!suppressNextClick && !movedHorizontally) {
-      return;
-    }
-    suppressNextClick = false;
-    e.preventDefault();
-    e.stopPropagation();
+  function noop() {
+    // 手势已全局禁用，不能在这里 preventDefault / stopPropagation。
   }
 
   return {
     swiping,
-    onSwipePointerDown,
-    onSwipePointerMove,
-    onSwipePointerUp,
-    onSwipePointerCancel,
-    onSwipeClickCapture,
+    onSwipePointerDown: noop,
+    onSwipePointerMove: noop,
+    onSwipePointerUp: noop,
+    onSwipePointerCancel: noop,
+    onSwipeClickCapture: noop,
   };
 }

@@ -24,7 +24,6 @@ const DEFAULT_CONFIG: AppConfig = {
   ui_layout_mode: 'auto',
   ui_theme: 'auto',
   ui_enable_aplus_tracking: true,
-  ui_enable_eruda: false,
   windows_main_window_width: 0,
   windows_main_window_height: 0,
   video_player_type: 'xgplayer',

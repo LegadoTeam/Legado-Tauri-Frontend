@@ -17,30 +17,6 @@ import './styles/remote.css';
 import './styles/components.css';
 import App from './App.vue';
 import { initFrontendStorage } from './composables/useFrontendStorage';
-import { invokeWithTimeout } from './composables/useInvoke';
-import { isTransportAvailable } from './composables/useTransport';
-
-async function bootstrapEruda() {
-  try {
-    const available = await isTransportAvailable();
-    if (!available) {
-      return;
-    }
-    const config = await invokeWithTimeout<{ ui_enable_eruda?: boolean }>(
-      'app_config_get_all',
-      undefined,
-      10_000,
-    );
-    if (config.ui_enable_eruda) {
-      const eruda = await import('eruda');
-      eruda.default.init();
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
-void bootstrapEruda();
 
 // Naive UI 已通过 unplugin-vue-components 按需自动导入，无需全量 app.use(naive)
 const app = createApp(App);

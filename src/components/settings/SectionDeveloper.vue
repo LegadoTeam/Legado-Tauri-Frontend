@@ -22,38 +22,10 @@ async function handleSet(key: string, value: string) {
     message.error(`保存失败: ${e}`);
   }
 }
-
-async function handleErudaToggle(v: boolean) {
-  try {
-    await setConfig('ui_enable_eruda', String(v));
-    if (v) {
-      const eruda = await import('eruda');
-      eruda.default.init();
-      message.success('Eruda 调试控制台已开启');
-    } else {
-      message.info('已关闭，重启后完全生效');
-    }
-  } catch (e: unknown) {
-    message.error(`保存失败: ${e}`);
-  }
-}
 </script>
 
 <template>
   <SettingSection title="开发设置" section-id="section-developer">
-    <SettingItem
-      v-if="isMobile"
-      label="Eruda 调试控制台"
-      desc="开启后在 App 内显示小拖拽按钮，可查看请求、控制台等。开启立即生效；关闭重启生效。"
-    >
-      <n-switch
-        :value="config.ui_enable_eruda"
-        size="small"
-        :loading="savingKey === 'ui_enable_eruda'"
-        @update:value="handleErudaToggle"
-      />
-    </SettingItem>
-
     <!-- 实时日志：开关只控制 PC 底部任务栏日志区域，按钮直接打开通用日志面板 -->
     <SettingItem
       label="实时日志"

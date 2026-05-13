@@ -8,6 +8,7 @@ import {
   type ChapterReaderModalProps,
   useChapterReaderModalController,
 } from '../reader/composables/useChapterReaderModalController';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const props = defineProps<ChapterReaderModalProps>();
 const emit = defineEmits<ChapterReaderModalEmit>();
@@ -16,6 +17,12 @@ const controller = useChapterReaderModalController(props, emit);
 const isVideoMode = computed(() => controller.isVideoMode.value);
 const effectiveStyle = computed(() => controller.effectiveStyle.value);
 const settings = controller.settings;
+
+// 视频模式通过 Teleport 挂载，不经过 ReaderModal，需单独注册返回栈
+useOverlayBackstack(
+  () => isVideoMode.value && props.show,
+  () => emit('update:show', false),
+);
 </script>
 
 <template>

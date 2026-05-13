@@ -1,11 +1,18 @@
 <script setup lang="ts">
-defineProps<{
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+
+const props = defineProps<{
   show: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void;
 }>();
+
+useOverlayBackstack(
+  () => props.show,
+  () => emit('update:show', false),
+);
 </script>
 
 <template>

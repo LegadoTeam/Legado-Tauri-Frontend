@@ -479,16 +479,21 @@ onBeforeUnmount(() => {
     @pointercancel.capture="clearLongPressTimer"
   >
     <n-spin v-if="blockingLoading" :show="true" class="reader-modal__spin" />
-    <n-alert v-else-if="blockingError" type="error" :title="error" style="margin: 24px">
-      <n-button
-        type="error"
-        size="small"
-        style="margin-top: 8px"
-        @click="readerActionsStore.retryCurrentChapter"
-      >
-        重试
-      </n-button>
-    </n-alert>
+    <div
+      v-else-if="blockingError"
+      style="display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box"
+    >
+      <n-alert type="error" :title="error" style="max-width: 480px; width: 100%">
+        <n-button
+          type="error"
+          size="small"
+          style="margin-top: 8px"
+          @click="readerActionsStore.retryCurrentChapter"
+        >
+          重试
+        </n-button>
+      </n-alert>
+    </div>
 
     <ComicMode
       v-else-if="isComicMode"

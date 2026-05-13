@@ -12,6 +12,7 @@ import {
 import { storeToRefs } from 'pinia';
 import { ref, computed } from 'vue';
 import { useAppConfigStore } from '@/stores';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const props = withDefaults(
   defineProps<{
@@ -103,6 +104,9 @@ function handleClearTemporarySwitch() {
   closeMenu();
   emit('clear-temporary-switch');
 }
+
+// 三点下拉菜单接入返回栈
+useOverlayBackstack(() => menuOpen.value, closeMenu);
 </script>
 
 <template>

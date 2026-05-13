@@ -100,6 +100,25 @@ export async function openInVscode(fileName: string, sourceDir?: string): Promis
 }
 
 /**
+ * 在 Android 系统默认编辑器中打开书源文件（通过 FileProvider + ACTION_EDIT Intent）。
+ * 外部编辑器保存后，文件监听器会自动检测变更并刷新编辑器内容。
+ */
+export async function openInExternalEditor(fileName: string, sourceDir?: string): Promise<void> {
+  const path = await invokeWithTimeout<string>(
+    'booksource_resolve_path',
+    { fileName, sourceDir: sourceDir ?? null },
+    10000,
+  );
+  const bridge = (window as Record<string, unknown>)['LegadoAndroidInput'] as
+    | { openFileInEditor(p: string): void }
+    | undefined;
+  if (!bridge?.openFileInEditor) {
+    throw new Error('外部编辑器功能仅在 Android 上可用');
+  }
+  bridge.openFileInEditor(path);
+}
+
+/**
  * 装载书源文件并通过 Boa JS 引擎执行 entryCode。
  * - entryCode 为空时：返回书源内定义的所有顶层函数列表。
  * - entryCode 非空时：在书源作用域内执行该代码，返回结果字符串。

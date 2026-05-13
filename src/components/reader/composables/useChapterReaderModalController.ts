@@ -373,7 +373,11 @@ export function useChapterReaderModalController(
 
   const blockingLoading = computed(() => {
     if (isPagedMode.value) {
-      return pagedLoading.value && (activePagedPages.value.length === 0 || openingChapter.value);
+      // 页面为空且无错误时立即显示 spinner（包括切换模式后 pagedLoading 尚未启动的瞬间）
+      if (activePagedPages.value.length === 0 && !error.value) {
+        return true;
+      }
+      return pagedLoading.value && openingChapter.value;
     }
     if (isScrollMode.value) {
       return false;
