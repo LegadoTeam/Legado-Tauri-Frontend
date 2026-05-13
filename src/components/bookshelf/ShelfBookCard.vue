@@ -1,23 +1,25 @@
 <script setup lang="ts">
-import { Loader2 } from 'lucide-vue-next';
-import type { ShelfBook } from '@/stores';
-import SourceTypeBadge from '../base/SourceTypeBadge.vue';
-import BookCoverImg from '../BookCoverImg.vue';
+import { Loader2 } from "lucide-vue-next";
+import type { ShelfBook } from "@/stores";
+import SourceTypeBadge from "../base/SourceTypeBadge.vue";
+import BookCoverImg from "../BookCoverImg.vue";
 
 defineProps<{
   book: ShelfBook;
   privacyModeEnabled?: boolean;
   loading?: boolean;
+  editMode?: boolean;
+  selected?: boolean;
 }>();
 defineEmits<{
-  (e: 'select', book: ShelfBook): void;
-  (e: 'contextmenu', book: ShelfBook, event: MouseEvent): void;
-  (e: 'toggle-private', book: ShelfBook): void;
+  (e: "select", book: ShelfBook): void;
+  (e: "contextmenu", book: ShelfBook, event: MouseEvent): void;
+  (e: "toggle-private", book: ShelfBook): void;
 }>();
 
 function progressWidth(book: ShelfBook): string {
   if (book.totalChapters <= 0 || book.readChapterIndex < 0) {
-    return '0%';
+    return "0%";
   }
   return `${Math.min(100, ((book.readChapterIndex + 1) / book.totalChapters) * 100).toFixed(2)}%`;
 }
@@ -29,17 +31,17 @@ function unreadCount(book: ShelfBook): number {
 }
 
 function statusLabel(book: ShelfBook): string {
-  if (book.readChapterIndex < 0) return '未开始';
-  if (book.totalChapters <= 0) return '阅读中';
-  return '已读完';
+  if (book.readChapterIndex < 0) return "未开始";
+  if (book.totalChapters <= 0) return "阅读中";
+  return "已读完";
 }
 
 function unreadClass(book: ShelfBook): Record<string, boolean> {
   const count = unreadCount(book);
   return {
-    'shelf-card__unread-bubble--dot': count <= 9,
-    'shelf-card__unread-bubble--compact': count > 9 && count <= 99,
-    'shelf-card__unread-bubble--wide': count > 99,
+    "shelf-card__unread-bubble--dot": count <= 9,
+    "shelf-card__unread-bubble--compact": count > 9 && count <= 99,
+    "shelf-card__unread-bubble--wide": count > 99,
   };
 }
 </script>
@@ -54,18 +56,44 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
       'shelf-card--private': book.isPrivate,
       'shelf-card--privacy-active': privacyModeEnabled && book.isPrivate,
       'shelf-card--loading': loading,
+      'shelf-card--edit': editMode,
+      'shelf-card--selected': selected,
     }"
     @click="$emit('select', book)"
     @keydown.enter.prevent="$emit('select', book)"
     @keydown.space.prevent="$emit('select', book)"
-    @contextmenu.prevent="$emit('contextmenu', book, $event)"
+    @contextmenu.prevent="
+      editMode ? undefined : $emit('contextmenu', book, $event)
+    "
   >
     <div class="shelf-card__cover-wrap">
       <BookCoverImg
-        :src="book.coverReferer && book.coverUrl ? { url: book.coverUrl, referer: book.coverReferer } : book.coverUrl"
+        :src="
+          book.coverReferer && book.coverUrl
+            ? { url: book.coverUrl, referer: book.coverReferer }
+            : book.coverUrl
+        "
         :alt="book.name"
         :base-url="book.bookUrl"
       />
+      <!-- 编辑模式选择指示 -->
+      <div
+        v-if="editMode"
+        class="shelf-card__select-check"
+        :class="{ 'shelf-card__select-check--on': selected }"
+      >
+        <svg
+          v-if="selected"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <polyline points="3,8 6.5,12 13,4" />
+        </svg>
+      </div>
       <!-- 加载中遮罩 -->
       <div v-if="loading" class="shelf-card__loading-overlay">
         <Loader2 class="shelf-card__spinner" :size="24" />
@@ -75,12 +103,12 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
         v-if="!loading && unreadCount(book) > 0"
         class="shelf-card__unread-bubble"
         :class="unreadClass(book)"
-      >{{ unreadCount(book) > 99 ? '99+' : unreadCount(book) }}</span>
+        >{{ unreadCount(book) > 99 ? "99+" : unreadCount(book) }}</span
+      >
       <!-- 状态标签（已读完 / 阅读中 / 未开始） -->
-      <span
-        v-else-if="!loading"
-        class="shelf-card__badge"
-      >{{ statusLabel(book) }}</span>
+      <span v-else-if="!loading" class="shelf-card__badge">{{
+        statusLabel(book)
+      }}</span>
       <!-- 类型图标 -->
       <SourceTypeBadge
         v-if="book.sourceType"
@@ -94,18 +122,21 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
         :class="{ 'shelf-card__name--placeholder': !book.name }"
         :title="book.name || '未知书名'"
       >
-        {{ book.name || '未知书名' }}
+        {{ book.name || "未知书名" }}
       </span>
       <span
         class="shelf-card__author"
         :class="{ 'shelf-card__author--placeholder': !book.author }"
         :title="book.author || '佚名'"
       >
-        {{ book.author || '佚名' }}
+        {{ book.author || "佚名" }}
       </span>
     </div>
     <!-- 进度条 -->
-    <div v-if="book.readChapterIndex >= 0 && book.totalChapters > 0" class="shelf-card__progress">
+    <div
+      v-if="book.readChapterIndex >= 0 && book.totalChapters > 0"
+      class="shelf-card__progress"
+    >
       <div
         class="shelf-card__progress-bar"
         :style="{ '--shelf-progress-width': progressWidth(book) }"
@@ -138,13 +169,56 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
 }
 
 .shelf-card--privacy-active {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent) 55%,
+    var(--color-border)
+  );
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 .shelf-card--loading {
   pointer-events: none;
   opacity: 0.85;
+}
+
+.shelf-card--edit {
+  cursor: pointer;
+}
+
+.shelf-card--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+/* 编辑模式选择标记 */
+.shelf-card__select-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard);
+}
+
+.shelf-card__select-check--on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.shelf-card__select-check svg {
+  width: 11px;
+  height: 11px;
 }
 
 .shelf-card__loading-overlay {
@@ -207,7 +281,11 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
 }
 
 .shelf-card__privacy-toggle--active {
-  background: color-mix(in srgb, var(--color-accent) 78%, rgba(15, 23, 42, 0.7));
+  background: color-mix(
+    in srgb,
+    var(--color-accent) 78%,
+    rgba(15, 23, 42, 0.7)
+  );
 }
 
 .shelf-card__badge {
@@ -345,7 +423,8 @@ function unreadClass(book: ShelfBook): Record<string, boolean> {
   width: max(var(--shelf-progress-width, 0%), 3px);
   background: var(--color-accent);
   border-radius: 0 2px 2px 0;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent) inset;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent)
+    inset;
   transition: width 0.3s ease;
 }
 </style>

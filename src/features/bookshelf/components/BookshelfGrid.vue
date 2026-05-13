@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { BookOpen } from 'lucide-vue-next';
-import type { ShelfBook } from '@/stores';
-import ShelfBookCard from '@/components/bookshelf/ShelfBookCard.vue';
-import { useShelfPullRefresh } from '@/composables/useShelfPullRefresh';
+import { ref } from "vue";
+import { BookOpen } from "lucide-vue-next";
+import type { ShelfBook } from "@/stores";
+import ShelfBookCard from "@/components/bookshelf/ShelfBookCard.vue";
+import { useShelfPullRefresh } from "@/composables/useShelfPullRefresh";
 
 const props = defineProps<{
   loading: boolean;
@@ -11,12 +11,14 @@ const props = defineProps<{
   filteredBooks: ShelfBook[];
   privacyModeEnabled: boolean;
   openingBookId: string | null;
+  editMode?: boolean;
+  selectedBookIds?: Set<string>;
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', book: ShelfBook): void;
-  (e: 'contextmenu', book: ShelfBook, event: MouseEvent): void;
-  (e: 'refresh'): Promise<void>;
+  (e: "select", book: ShelfBook): void;
+  (e: "contextmenu", book: ShelfBook, event: MouseEvent): void;
+  (e: "refresh"): Promise<void>;
 }>();
 
 // 下拉刷新
@@ -30,7 +32,7 @@ const {
   onMouseDown,
 } = useShelfPullRefresh({
   onRefresh: async () => {
-    await emit('refresh');
+    await emit("refresh");
   },
 });
 
@@ -75,8 +77,18 @@ const containerRef = ref<HTMLElement | null>(null);
           </svg>
         </div>
         <!-- 下拉箭头 -->
-        <div v-else class="bs-pull-indicator__arrow" :class="{ 'bs-pull-indicator__arrow--up': isReady }">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <div
+          v-else
+          class="bs-pull-indicator__arrow"
+          :class="{ 'bs-pull-indicator__arrow--up': isReady }"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
             <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
         </div>
@@ -113,6 +125,8 @@ const containerRef = ref<HTMLElement | null>(null);
             :book="book"
             :privacy-mode-enabled="privacyModeEnabled"
             :loading="openingBookId === book.id"
+            :edit-mode="editMode"
+            :selected="selectedBookIds?.has(book.id)"
             @select="emit('select', $event)"
             @contextmenu="(_, e: MouseEvent) => emit('contextmenu', book, e)"
           />
@@ -184,7 +198,9 @@ const containerRef = ref<HTMLElement | null>(null);
   width: 20px;
   height: 20px;
   color: var(--color-text-muted);
-  transition: transform 0.2s ease, color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
 }
 
 .bs-pull-indicator__arrow svg {
@@ -222,7 +238,10 @@ const containerRef = ref<HTMLElement | null>(null);
 
 .bs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 120px), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--book-card-col-min, 120px), 1fr)
+  );
   gap: 12px;
   padding-top: 4px;
 }
@@ -262,7 +281,10 @@ const containerRef = ref<HTMLElement | null>(null);
   .bs-grid {
     grid-template-columns: repeat(
       auto-fill,
-      minmax(var(--book-card-col-min-mobile, var(--book-card-col-min, 100px)), 1fr)
+      minmax(
+        var(--book-card-col-min-mobile, var(--book-card-col-min, 100px)),
+        1fr
+      )
     );
     gap: 8px;
   }

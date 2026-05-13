@@ -1,8 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { LayoutGrid, EyeOff, Eye, FolderPlus, FilePlus } from 'lucide-vue-next';
-import type { CardSizeKey } from '@/composables/useViewCardDensity';
-import type { ShelfGroup } from '@/types/shelfGroup';
+import { computed } from "vue";
+import {
+  LayoutGrid,
+  EyeOff,
+  Eye,
+  FolderPlus,
+  FilePlus,
+  RefreshCw,
+  Search,
+  Pencil,
+  Settings2,
+} from "lucide-vue-next";
+import type { CardSizeKey } from "@/composables/useViewCardDensity";
+import type { ShelfGroup } from "@/types/shelfGroup";
 
 const props = defineProps<{
   bookCount: number;
@@ -13,20 +23,23 @@ const props = defineProps<{
   groups: ShelfGroup[];
   activeGroupId: string;
   showGroupMenu: boolean;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (e: 'set-size', key: CardSizeKey): void;
-  (e: 'toggle-privacy'): void;
-  (e: 'toggle-group-menu'): void;
-  (e: 'select-group', groupId: string): void;
-  (e: 'import-txt'): void;
-  (e: 'refresh'): void;
+  (e: "set-size", key: CardSizeKey): void;
+  (e: "toggle-privacy"): void;
+  (e: "toggle-group-menu"): void;
+  (e: "select-group", groupId: string): void;
+  (e: "import-txt"): void;
+  (e: "refresh"): void;
+  (e: "toggle-search"): void;
+  (e: "toggle-edit"): void;
 }>();
 
 // 启用的分组（排除禁用的）
 const enabledGroups = computed(() => {
-  return props.groups.filter(g => g.enabled);
+  return props.groups.filter((g) => g.enabled);
 });
 
 // 是否显示分组标签栏（至少有一个启用的分组）
@@ -41,10 +54,20 @@ const showGroupBar = computed(() => {
       <div>
         <h1 class="bs-header__title">书架</h1>
         <p class="bs-header__sub">
-          {{ privacyModeEnabled ? '隐私模式' : `${bookCount} 本书籍` }}
+          {{ privacyModeEnabled ? "隐私模式" : `${bookCount} 本书籍` }}
         </p>
       </div>
       <div class="bs-header__actions">
+        <!-- 搜索按钮 -->
+        <button
+          class="bs-icon-btn"
+          type="button"
+          title="搜索书架"
+          aria-label="搜索书架"
+          @click="emit('toggle-search')"
+        >
+          <Search :size="16" />
+        </button>
         <!-- 分组按钮 -->
         <button
           class="bs-icon-btn"
@@ -56,7 +79,7 @@ const showGroupBar = computed(() => {
         >
           <FolderPlus :size="16" />
         </button>
-        <!-- TXT 导入按钮 -->
+        <!-- 刷新书架 -->
         <button
           class="bs-icon-btn"
           :class="{ 'bs-icon-btn--spinning': loading }"
@@ -68,6 +91,7 @@ const showGroupBar = computed(() => {
         >
           <RefreshCw :size="16" />
         </button>
+        <!-- TXT 导入 -->
         <button
           class="bs-icon-btn"
           type="button"
@@ -79,7 +103,9 @@ const showGroupBar = computed(() => {
         </button>
         <n-dropdown
           trigger="click"
-          :options="cardSizes.map((size) => ({ label: size.label, key: size.key }))"
+          :options="
+            cardSizes.map((size) => ({ label: size.label, key: size.key }))
+          "
           :value="activeSizeKey"
           @select="(key: string) => emit('set-size', key as CardSizeKey)"
         >
@@ -103,6 +129,16 @@ const showGroupBar = computed(() => {
           <EyeOff v-if="privacyModeEnabled" :size="16" />
           <Eye v-else :size="16" />
         </button>
+        <!-- 编辑书架 -->
+        <button
+          class="bs-icon-btn"
+          type="button"
+          title="编辑书架"
+          aria-label="编辑书架"
+          @click="emit('toggle-edit')"
+        >
+          <Pencil :size="16" />
+        </button>
       </div>
     </div>
 
@@ -116,6 +152,17 @@ const showGroupBar = computed(() => {
         @click="emit('select-group', group.id)"
       >
         {{ group.name }}
+      </button>
+      <!-- 分组编辑按钮（最右侧） -->
+      <button
+        class="bs-group-edit-btn"
+        :class="{ 'bs-group-edit-btn--active': showGroupMenu }"
+        type="button"
+        title="编辑分组"
+        aria-label="编辑分组"
+        @click="emit('toggle-group-menu')"
+      >
+        <Settings2 :size="13" />
       </button>
     </div>
   </div>
@@ -179,8 +226,12 @@ const showGroupBar = computed(() => {
   animation: bs-spin 0.8s linear infinite;
 }
 @keyframes bs-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 @media (pointer: coarse), (max-width: 640px) {
   .bs-header {
@@ -247,5 +298,38 @@ const showGroupBar = computed(() => {
     padding: 5px 10px;
     font-size: 12px;
   }
+}
+
+/* 分组栏右侧编辑按钮 */
+.bs-group-edit-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bs-group-edit-btn:hover {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+  }
+}
+
+.bs-group-edit-btn--active {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 </style>

@@ -72,13 +72,10 @@ export function useShelfGroups() {
     return groupsWithAll.value.filter((g) => g.enabled || g.id === 'all');
   });
 
-  /** 根据当前分组过滤的书籍 */
+  /** 根据当前分组过滤的书籍（不含隐私过滤，由上层视图按隐私模式处理） */
   const filteredBooks = computed(() => {
     const activeId = store.state.activeGroupId;
     let books = [...bookshelfStore.books];
-
-    // 非隐私模式过滤
-    books = books.filter((b) => !b.isPrivate);
 
     if (activeId === 'all') {
       // 全部书籍：按 lastReadAt 降序排列，最近阅读的在前
