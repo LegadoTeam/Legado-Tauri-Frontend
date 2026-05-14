@@ -1,13 +1,13 @@
 ﻿<script setup lang="ts">
-import { openUrl } from '@tauri-apps/plugin-opener';
-import { useMessage, useDialog } from 'naive-ui';
-import { ref, computed, watch } from 'vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
-import { safeRandomUUID } from '@/utils/uuid';
-import defaultLogoUrl from '../../assets/booksource-default.svg';
-import BookSourceInstallDialog from '../BookSourceInstallDialog.vue';
-import OnlineSourceCard from './OnlineSourceCard.vue';
-import { formatVersion, compareVersions } from '@/utils/versionUtils';
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { useMessage, useDialog } from "naive-ui";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { useOverlayBackstack } from "@/composables/useOverlayBackstack";
+import { safeRandomUUID } from "@/utils/uuid";
+import defaultLogoUrl from "../../assets/booksource-default.svg";
+import BookSourceInstallDialog from "../BookSourceInstallDialog.vue";
+import OnlineSourceCard from "./OnlineSourceCard.vue";
+import { formatVersion, compareVersions } from "@/utils/versionUtils";
 import {
   type BookSourceMeta,
   type RepoSourceInfo,
@@ -21,9 +21,9 @@ import {
   deleteBookSource,
   configRead,
   configWrite,
-} from '../../composables/useBookSource';
+} from "../../composables/useBookSource";
 
-type RepoSyncStatus = 'idle' | 'checking' | 'synced' | 'update' | 'error';
+type RepoSyncStatus = "idle" | "checking" | "synced" | "update" | "error";
 
 interface RepoSyncState {
   status: RepoSyncStatus;
@@ -46,14 +46,17 @@ const dialog = useDialog();
 
 // 追踪当前状态消息，显示新消息前自动销毁上一条，避免消息堆积
 let statusMsg: ReturnType<typeof message.success> | null = null;
-function showStatusMsg(type: 'success' | 'info' | 'warning' | 'error', content: string) {
+function showStatusMsg(
+  type: "success" | "info" | "warning" | "error",
+  content: string,
+) {
   statusMsg?.destroy();
   statusMsg = message[type](content);
 }
 
 // ---- 仓库配置 ----
-const REPO_CONFIG_SCOPE = '__app__';
-const REPO_CONFIG_KEY = 'repositories';
+const REPO_CONFIG_SCOPE = "__app__";
+const REPO_CONFIG_KEY = "repositories";
 
 interface Repository {
   id: string;
@@ -63,27 +66,27 @@ interface Repository {
 }
 
 const repositories = ref<Repository[]>([]);
-const activeRepoId = ref('');
+const activeRepoId = ref("");
 const onlineManifest = ref<RepoManifest | null>(null);
 const onlineSources = ref<RepoSourceInfo[]>([]);
 const onlineLoading = ref(false);
-const onlineSearch = ref('');
-const onlineError = ref('');
+const onlineSearch = ref("");
+const onlineError = ref("");
 const installingSet = ref(new Set<string>());
 const updatingSet = ref(new Set<string>());
 const deletingSet = ref(new Set<string>());
 
 // ---- 安装弹窗 ----
 const showInstallDialog = ref(false);
-const installDialogUrl = ref('');
-const installDialogExpectedUuid = ref('');
+const installDialogUrl = ref("");
+const installDialogExpectedUuid = ref("");
 const syncStates = ref<Record<string, RepoSyncState>>({});
 const syncRunning = ref(false);
 const bulkUpdating = ref(false);
 const bulkForceUpdating = ref(false);
 
 const showRepoModal = ref(false);
-const repoForm = ref({ id: '', name: '', url: '', description: '' });
+const repoForm = ref({ id: "", name: "", url: "", description: "" });
 
 useOverlayBackstack(
   () => showRepoModal.value,
@@ -99,7 +102,7 @@ function normalizeRepoUrl(url: string) {
 }
 
 function resetOnlineState() {
-  onlineError.value = '';
+  onlineError.value = "";
   onlineSources.value = [];
   onlineManifest.value = null;
   clearSyncStates();
@@ -107,7 +110,9 @@ function resetOnlineState() {
 
 function findRepositoryByUrl(url: string) {
   const normalizedUrl = normalizeRepoUrl(url);
-  return repositories.value.find((repo) => normalizeRepoUrl(repo.url) === normalizedUrl);
+  return repositories.value.find(
+    (repo) => normalizeRepoUrl(repo.url) === normalizedUrl,
+  );
 }
 
 async function persistRepos() {
@@ -133,16 +138,16 @@ async function loadRepoConfig() {
       const repos = data.repos
         .map((repo) => ({
           ...repo,
-          name: repo.name?.trim() ?? '',
-          url: normalizeRepoUrl(repo.url ?? ''),
-          description: repo.description?.trim() ?? '',
+          name: repo.name?.trim() ?? "",
+          url: normalizeRepoUrl(repo.url ?? ""),
+          description: repo.description?.trim() ?? "",
         }))
         .filter((repo) => repo.name && repo.url);
 
       repositories.value = repos;
       activeRepoId.value = repos.some((repo) => repo.id === data.activeId)
-        ? (data.activeId ?? '')
-        : (repos[0]?.id ?? '');
+        ? (data.activeId ?? "")
+        : (repos[0]?.id ?? "");
     }
   } catch {
     /* 配置损坏时静默回退 */
@@ -150,7 +155,7 @@ async function loadRepoConfig() {
 }
 
 function openAddRepo() {
-  repoForm.value = { id: '', name: '', url: '', description: '' };
+  repoForm.value = { id: "", name: "", url: "", description: "" };
   showRepoModal.value = true;
 }
 
@@ -161,19 +166,24 @@ function saveRepo() {
   const description = repoForm.value.description.trim();
 
   if (!name || !url) {
-    message.warning('名称和 URL 不能为空');
+    message.warning("名称和 URL 不能为空");
     return;
   }
 
   const duplicated = repositories.value.find(
-    (repo) => repo.id !== repoForm.value.id && normalizeRepoUrl(repo.url) === url,
+    (repo) =>
+      repo.id !== repoForm.value.id && normalizeRepoUrl(repo.url) === url,
   );
   if (duplicated) {
     activeRepoId.value = duplicated.id;
     showRepoModal.value = false;
-    message.info('该仓库已存在，已切换到现有仓库');
+    message.info("该仓库已存在，已切换到现有仓库");
     void persistRepos();
-    if (props.active && activeRepoId.value && previousActiveRepoId === activeRepoId.value) {
+    if (
+      props.active &&
+      activeRepoId.value &&
+      previousActiveRepoId === activeRepoId.value
+    ) {
       void fetchOnlineSources({ silentSuccess: true });
     }
     return;
@@ -193,7 +203,11 @@ function saveRepo() {
   showRepoModal.value = false;
   void persistRepos();
 
-  if (props.active && activeRepoId.value && previousActiveRepoId === activeRepoId.value) {
+  if (
+    props.active &&
+    activeRepoId.value &&
+    previousActiveRepoId === activeRepoId.value
+  ) {
     void fetchOnlineSources({ silentSuccess: true });
   }
 }
@@ -202,7 +216,7 @@ function removeRepo(id: string) {
   const repo = repositories.value.find((r) => r.id === id);
   repositories.value = repositories.value.filter((r) => r.id !== id);
   if (activeRepoId.value === id) {
-    activeRepoId.value = repositories.value[0]?.id ?? '';
+    activeRepoId.value = repositories.value[0]?.id ?? "";
     onlineSources.value = [];
     onlineManifest.value = null;
     clearSyncStates();
@@ -226,7 +240,7 @@ function syncKey(src: RepoSourceInfo) {
 
 function getLocalSource(src: RepoSourceInfo) {
   if (hasExplicitBookSourceUuid(src)) {
-    return localSourceMap.value.get(src.uuid?.trim() ?? '');
+    return localSourceMap.value.get(src.uuid?.trim() ?? "");
   }
   return localSourceNameMap.value.get(src.name.trim());
 }
@@ -241,36 +255,40 @@ function setSyncState(src: RepoSourceInfo, state: RepoSyncState) {
 
 function makeInitialSyncState(src: RepoSourceInfo): RepoSyncState {
   return {
-    status: 'idle',
-    localVersion: getLocalSource(src)?.version ?? '',
-    remoteVersion: src.version ?? '',
-    error: '',
+    status: "idle",
+    localVersion: getLocalSource(src)?.version ?? "",
+    remoteVersion: src.version ?? "",
+    error: "",
   };
 }
 
 /** 获取在线书源相对于本地安装版本的差异类型。 */
-function getVersionDiff(src: RepoSourceInfo): 'upgrade' | 'downgrade' | 'same' | null {
+function getVersionDiff(
+  src: RepoSourceInfo,
+): "upgrade" | "downgrade" | "same" | null {
   const local = getLocalSource(src);
   if (!local) {
     return null;
   }
-  const cmp = compareVersions(src.version ?? '', local.version ?? '');
+  const cmp = compareVersions(src.version ?? "", local.version ?? "");
   if (cmp === null) {
     return null;
   }
   if (cmp > 0) {
-    return 'upgrade';
+    return "upgrade";
   }
   if (cmp < 0) {
-    return 'downgrade';
+    return "downgrade";
   }
-  return 'same';
+  return "same";
 }
 
-function getDisplayVersionDiff(src: RepoSourceInfo): 'upgrade' | 'downgrade' | 'same' | null {
+function getDisplayVersionDiff(
+  src: RepoSourceInfo,
+): "upgrade" | "downgrade" | "same" | null {
   const diff = getVersionDiff(src);
-  if (diff === 'same' && getSyncState(src)?.status === 'update') {
-    return 'upgrade';
+  if (diff === "same" && getSyncState(src)?.status === "update") {
+    return "upgrade";
   }
   return diff;
 }
@@ -279,7 +297,7 @@ async function checkSingleSourceSync(src: RepoSourceInfo, runId: number) {
   const initialState = makeInitialSyncState(src);
   setSyncState(src, {
     ...initialState,
-    status: 'checking',
+    status: "checking",
   });
 
   try {
@@ -297,10 +315,10 @@ async function checkSingleSourceSync(src: RepoSourceInfo, runId: number) {
     }
 
     setSyncState(src, {
-      status: result.isConsistent ? 'synced' : 'update',
+      status: result.isConsistent ? "synced" : "update",
       localVersion: result.localVersion,
-      remoteVersion: result.remoteVersion || src.version || '',
-      error: '',
+      remoteVersion: result.remoteVersion || src.version || "",
+      error: "",
     });
   } catch (e: unknown) {
     if (runId !== syncRunId) {
@@ -309,13 +327,16 @@ async function checkSingleSourceSync(src: RepoSourceInfo, runId: number) {
 
     setSyncState(src, {
       ...initialState,
-      status: 'error',
+      status: "error",
       error: e instanceof Error ? e.message : String(e),
     });
   }
 }
 
-async function runInstalledSyncChecks(sources: RepoSourceInfo[], announce = false) {
+async function runInstalledSyncChecks(
+  sources: RepoSourceInfo[],
+  announce = false,
+) {
   const targets = sources.filter((src) => isInstalled(src));
   const runId = ++syncRunId;
   syncStates.value = {};
@@ -328,7 +349,7 @@ async function runInstalledSyncChecks(sources: RepoSourceInfo[], announce = fals
   for (const src of targets) {
     setSyncState(src, {
       ...makeInitialSyncState(src),
-      status: 'checking',
+      status: "checking",
     });
   }
 
@@ -375,7 +396,7 @@ async function runInstalledSyncChecks(sources: RepoSourceInfo[], announce = fals
   if (failed) {
     summary.push(`${failed} 个检查失败`);
   }
-  showStatusMsg('warning', summary.join('，'));
+  showStatusMsg("warning", summary.join("，"));
 }
 
 async function refreshSingleSourceSync(src: RepoSourceInfo) {
@@ -385,10 +406,12 @@ async function refreshSingleSourceSync(src: RepoSourceInfo) {
   await checkSingleSourceSync(src, syncRunId);
 }
 
-async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCurrent?: boolean } = {}) {
+async function fetchOnlineSources(
+  options: { silentSuccess?: boolean; preserveCurrent?: boolean } = {},
+) {
   const repo = repositories.value.find((r) => r.id === activeRepoId.value);
   if (!repo) {
-    message.warning('请先添加并选择一个仓库');
+    message.warning("请先添加并选择一个仓库");
     return;
   }
 
@@ -398,14 +421,17 @@ async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCu
 
   const { silentSuccess = false, preserveCurrent = false } = options;
   onlineLoading.value = true;
-  onlineError.value = '';
+  onlineError.value = "";
   if (!preserveCurrent) {
     onlineSources.value = [];
     onlineManifest.value = null;
   }
   clearSyncStates();
   try {
-    showStatusMsg('info', `正在加载「${repo.name}」，如果书源较多可能需要一些时间...`);
+    showStatusMsg(
+      "info",
+      `正在加载「${repo.name}」，如果书源较多可能需要一些时间...`,
+    );
     const manifest = await fetchRepository(repo.url);
     // showStatusMsg('success', `已加载「${manifest.name}」书源列表，正在处理数据...`);
     // 将相对路径的 downloadUrl 解析为绝对 URL，兼容仓库服务端返回相对路径的情况
@@ -424,9 +450,14 @@ async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCu
     });
     onlineManifest.value = manifest;
     onlineSources.value = manifest.sources;
-    const installedMatches = manifest.sources.filter((src) => isInstalled(src)).length;
+    const installedMatches = manifest.sources.filter((src) =>
+      isInstalled(src),
+    ).length;
     if (!silentSuccess) {
-      showStatusMsg('success', `已加载「${manifest.name}」共 ${manifest.sources.length} 个书源`);
+      showStatusMsg(
+        "success",
+        `已加载「${manifest.name}」共 ${manifest.sources.length} 个书源`,
+      );
     } else {
       statusMsg?.destroy();
       statusMsg = null;
@@ -434,8 +465,8 @@ async function fetchOnlineSources(options: { silentSuccess?: boolean; preserveCu
     void runInstalledSyncChecks(manifest.sources, installedMatches > 0);
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e);
-    console.error('[OnlineSourcesTab] fetchOnlineSources error:', e);
-    onlineError.value = errMsg || '请求失败';
+    console.error("[OnlineSourcesTab] fetchOnlineSources error:", e);
+    onlineError.value = errMsg || "请求失败";
     clearSyncStates();
     message.error(`加载失败: ${onlineError.value}`);
   } finally {
@@ -452,34 +483,55 @@ const filteredOnline = computed(() => {
     (s) =>
       s.name.toLowerCase().includes(q) ||
       s.url.toLowerCase().includes(q) ||
-      (s.author ?? '').toLowerCase().includes(q) ||
+      (s.author ?? "").toLowerCase().includes(q) ||
       s.tags.some((t) => t.toLowerCase().includes(q)),
   );
 });
 
 const localSourceMap = computed(
-  () => new Map(props.sources.map((source) => [getBookSourceIdentity(source), source] as const)),
+  () =>
+    new Map(
+      props.sources.map(
+        (source) => [getBookSourceIdentity(source), source] as const,
+      ),
+    ),
 );
 const localSourceNameMap = computed(
-  () => new Map(props.sources.map((source) => [source.name.trim(), source] as const)),
+  () =>
+    new Map(
+      props.sources.map((source) => [source.name.trim(), source] as const),
+    ),
 );
 
-const installedOnlineSources = computed(() => onlineSources.value.filter((source) => isInstalled(source)));
+const installedOnlineSources = computed(() =>
+  onlineSources.value.filter((source) => isInstalled(source)),
+);
 
-const installedOnlineCount = computed(() => installedOnlineSources.value.length);
+const installedOnlineCount = computed(
+  () => installedOnlineSources.value.length,
+);
 
 const updateAvailableCount = computed(
-  () => installedOnlineSources.value.filter((source) => getSyncState(source)?.status === 'update').length,
+  () =>
+    installedOnlineSources.value.filter(
+      (source) => getSyncState(source)?.status === "update",
+    ).length,
 );
 
 const checkingCount = computed(
-  () => installedOnlineSources.value.filter((source) => getSyncState(source)?.status === 'checking').length,
+  () =>
+    installedOnlineSources.value.filter(
+      (source) => getSyncState(source)?.status === "checking",
+    ).length,
 );
 // used in template; void reference prevents noUnusedLocals false positive
 void checkingCount;
 
 const checkErrorCount = computed(
-  () => installedOnlineSources.value.filter((source) => getSyncState(source)?.status === 'error').length,
+  () =>
+    installedOnlineSources.value.filter(
+      (source) => getSyncState(source)?.status === "error",
+    ).length,
 );
 
 function isInstalled(src: RepoSourceInfo) {
@@ -487,36 +539,36 @@ function isInstalled(src: RepoSourceInfo) {
 }
 
 function getSyncTagLabel(src: RepoSourceInfo) {
-  const status = getSyncState(src)?.status ?? 'idle';
+  const status = getSyncState(src)?.status ?? "idle";
   switch (status) {
-    case 'checking':
-      return '检查中';
-    case 'synced':
-      return '已同步';
-    case 'update':
-      return '发现更新';
-    case 'error':
-      return '检查失败';
+    case "checking":
+      return "检查中";
+    case "synced":
+      return "已同步";
+    case "update":
+      return "发现更新";
+    case "error":
+      return "检查失败";
     default:
-      return '待检查';
+      return "待检查";
   }
 }
 // used in template; void reference prevents noUnusedLocals false positive
 void getSyncTagLabel;
 
 function getSyncTagType(src: RepoSourceInfo) {
-  const status = getSyncState(src)?.status ?? 'idle';
+  const status = getSyncState(src)?.status ?? "idle";
   switch (status) {
-    case 'synced':
-      return 'success';
-    case 'update':
-      return 'warning';
-    case 'error':
-      return 'error';
-    case 'checking':
-      return 'info';
+    case "synced":
+      return "success";
+    case "update":
+      return "warning";
+    case "error":
+      return "error";
+    case "checking":
+      return "info";
     default:
-      return 'default';
+      return "default";
   }
 }
 // used in template; void reference prevents noUnusedLocals false positive
@@ -525,14 +577,14 @@ void getSyncTagType;
 function getSyncHint(src: RepoSourceInfo) {
   const state = getSyncState(src) ?? makeInitialSyncState(src);
   switch (state.status) {
-    case 'checking':
-      return '正在比较服务器与本地源码，@enabled 行会被忽略';
-    case 'synced':
+    case "checking":
+      return "正在比较服务器与本地源码，@enabled 行会被忽略";
+    case "synced":
       return `本地与服务器内容一致，比较时已忽略 @enabled 行`;
-    case 'update':
+    case "update":
       return `本地 ${formatVersion(state.localVersion)}，远端 ${formatVersion(state.remoteVersion)}，忽略 @enabled 后内容仍不一致`;
-    case 'error':
-      return state.error || '检查失败';
+    case "error":
+      return state.error || "检查失败";
     default:
       return `尚未检查，当前本地 ${formatVersion(state.localVersion)}，远端 ${formatVersion(state.remoteVersion)}`;
   }
@@ -546,25 +598,37 @@ function installSource(src: RepoSourceInfo) {
   showInstallDialog.value = true;
 }
 
-async function onInstallDialogInstalled(payload: { name: string; fileName: string; uuid: string }) {
+async function onInstallDialogInstalled(payload: {
+  name: string;
+  fileName: string;
+  uuid: string;
+}) {
   const src = onlineSources.value.find((s) => sourceUuid(s) === payload.uuid);
   if (src) {
     await refreshSingleSourceSync(src);
   }
-  emits('reload');
+  emits("reload");
 }
 
 /** 从已安装书源列表中找到适合写入的文件名（避免与不同 UUID 的书源文件冲突） */
-function resolveInstallFileName(srcFileName: string, srcUuid: string, reservedNames: Set<string>): string {
+function resolveInstallFileName(
+  srcFileName: string,
+  srcUuid: string,
+  reservedNames: Set<string>,
+): string {
   const localByFile = props.sources.find((s) => s.fileName === srcFileName);
   if (!localByFile || getBookSourceIdentity(localByFile) === srcUuid) {
     // 无冲突或找到同 UUID 的本地文件：直接用原始文件名
     return srcFileName;
   }
   // 存在同名但不同 UUID 的本地文件，自动生成不冲突的新文件名
-  const dot = srcFileName.toLowerCase().endsWith('.js') ? srcFileName.length - 3 : srcFileName.length;
-  const stem = srcFileName.slice(0, dot) || 'booksource';
-  const ext = srcFileName.toLowerCase().endsWith('.js') ? srcFileName.slice(dot) : '.js';
+  const dot = srcFileName.toLowerCase().endsWith(".js")
+    ? srcFileName.length - 3
+    : srcFileName.length;
+  const stem = srcFileName.slice(0, dot) || "booksource";
+  const ext = srcFileName.toLowerCase().endsWith(".js")
+    ? srcFileName.slice(dot)
+    : ".js";
   let index = 2;
   let candidate = `${stem}-${index}${ext}`;
   while (reservedNames.has(candidate)) {
@@ -576,13 +640,13 @@ function resolveInstallFileName(srcFileName: string, srcUuid: string, reservedNa
 
 async function installAll() {
   if (!filteredOnline.value.length) {
-    message.info('当前没有可安装的书源');
+    message.info("当前没有可安装的书源");
     return;
   }
 
   const toInstall = filteredOnline.value.filter((s) => !isInstalled(s));
   if (!toInstall.length) {
-    message.info('所有书源均已安装');
+    message.info("所有书源均已安装");
     return;
   }
 
@@ -593,21 +657,33 @@ async function installAll() {
     toInstall.map(async (src) => {
       installingSet.value.add(src.fileName);
       try {
-        const targetFileName = resolveInstallFileName(src.fileName, sourceUuid(src), reservedNames);
+        const targetFileName = resolveInstallFileName(
+          src.fileName,
+          sourceUuid(src),
+          reservedNames,
+        );
         reservedNames.add(targetFileName);
-        await installFromRepository(src.downloadUrl, targetFileName, sourceUuid(src));
+        await installFromRepository(
+          src.downloadUrl,
+          targetFileName,
+          sourceUuid(src),
+        );
         await refreshSingleSourceSync(src);
       } finally {
         installingSet.value.delete(src.fileName);
       }
     }),
   );
-  const ok = results.filter((r) => r.status === 'fulfilled').length;
-  emits('reload');
+  const ok = results.filter((r) => r.status === "fulfilled").length;
+  emits("reload");
   message.success(`批量安装 ${ok} 个书源`);
 }
 
-async function performRepositoryUpdate(src: RepoSourceInfo, force = false, silent = false) {
+async function performRepositoryUpdate(
+  src: RepoSourceInfo,
+  force = false,
+  silent = false,
+) {
   if (updatingSet.value.has(src.fileName)) {
     return false;
   }
@@ -616,18 +692,26 @@ async function performRepositoryUpdate(src: RepoSourceInfo, force = false, silen
   try {
     const local = getLocalSource(src);
     if (!local) {
-      throw new Error('未找到同一 UUID 的本地书源');
+      throw new Error("未找到同一 UUID 的本地书源");
     }
-    await installFromRepository(src.downloadUrl, local.fileName, sourceUuid(src));
+    await installFromRepository(
+      src.downloadUrl,
+      local.fileName,
+      sourceUuid(src),
+    );
     await refreshSingleSourceSync(src);
-    emits('reload');
+    emits("reload");
     if (!silent) {
-      message.success(force ? `已强制更新「${src.name}」` : `已更新「${src.name}」`);
+      message.success(
+        force ? `已强制更新「${src.name}」` : `已更新「${src.name}」`,
+      );
     }
     return true;
   } catch (e: unknown) {
     if (!silent) {
-      message.error(`${force ? '强制更新' : '更新'}失败: ${e instanceof Error ? e.message : String(e)}`);
+      message.error(
+        `${force ? "强制更新" : "更新"}失败: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
     return false;
   } finally {
@@ -637,22 +721,24 @@ async function performRepositoryUpdate(src: RepoSourceInfo, force = false, silen
 
 function confirmDeleteInstalled(src: RepoSourceInfo) {
   dialog.warning({
-    title: '删除书源',
+    title: "删除书源",
     content: `确认删除「${src.name}」？此操作将删除磁盘文件，不可恢复。`,
-    positiveText: '删除',
-    negativeText: '取消',
+    positiveText: "删除",
+    negativeText: "取消",
     onPositiveClick: async () => {
       deletingSet.value.add(src.fileName);
       try {
         const local = getLocalSource(src);
         if (!local) {
-          throw new Error('未找到同一 UUID 的本地书源');
+          throw new Error("未找到同一 UUID 的本地书源");
         }
         await deleteBookSource(local.fileName, local.sourceDir);
-        emits('reload');
+        emits("reload");
         message.success(`已删除「${src.name}」`);
       } catch (e: unknown) {
-        message.error(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
+        message.error(
+          `删除失败: ${e instanceof Error ? e.message : String(e)}`,
+        );
       } finally {
         deletingSet.value.delete(src.fileName);
       }
@@ -662,7 +748,7 @@ function confirmDeleteInstalled(src: RepoSourceInfo) {
 
 async function recheckInstalledSources() {
   if (!installedOnlineCount.value) {
-    message.info('当前仓库没有已安装书源需要检查');
+    message.info("当前仓库没有已安装书源需要检查");
     return;
   }
   await runInstalledSyncChecks(onlineSources.value, true);
@@ -671,10 +757,14 @@ async function recheckInstalledSources() {
 async function updateAll(force = false) {
   const targets = force
     ? installedOnlineSources.value.slice()
-    : installedOnlineSources.value.filter((src) => getSyncState(src)?.status === 'update');
+    : installedOnlineSources.value.filter(
+        (src) => getSyncState(src)?.status === "update",
+      );
 
   if (!targets.length) {
-    message.info(force ? '当前仓库没有可强制更新的已安装书源' : '当前没有需要更新的书源');
+    message.info(
+      force ? "当前仓库没有可强制更新的已安装书源" : "当前没有需要更新的书源",
+    );
     return;
   }
 
@@ -687,9 +777,11 @@ async function updateAll(force = false) {
   let ok = 0;
   let failed = 0;
   try {
-    const updateResults = await Promise.allSettled(targets.map((src) => performRepositoryUpdate(src, force, true)));
+    const updateResults = await Promise.allSettled(
+      targets.map((src) => performRepositoryUpdate(src, force, true)),
+    );
     for (const r of updateResults) {
-      if (r.status === 'fulfilled' && r.value) {
+      if (r.status === "fulfilled" && r.value) {
         ok++;
       } else {
         failed++;
@@ -703,7 +795,7 @@ async function updateAll(force = false) {
     }
   }
 
-  const prefix = force ? '批量强制更新' : '批量更新';
+  const prefix = force ? "批量强制更新" : "批量更新";
   if (failed) {
     message.warning(`${prefix}完成：成功 ${ok} 个，失败 ${failed} 个`);
   } else {
@@ -713,15 +805,15 @@ async function updateAll(force = false) {
 
 function confirmForceUpdateAll() {
   if (!installedOnlineCount.value) {
-    message.info('当前仓库没有可强制更新的已安装书源');
+    message.info("当前仓库没有可强制更新的已安装书源");
     return;
   }
 
   dialog.warning({
-    title: '批量强制更新',
+    title: "批量强制更新",
     content: `将覆盖当前仓库中全部 ${installedOnlineCount.value} 个已安装书源。比较时会忽略 @enabled 行，但强制更新仍会直接写入服务器版本。确认继续？`,
-    positiveText: '全部覆盖',
-    negativeText: '取消',
+    positiveText: "全部覆盖",
+    negativeText: "取消",
     onPositiveClick: async () => {
       await updateAll(true);
     },
@@ -730,12 +822,31 @@ function confirmForceUpdateAll() {
 
 function removeActiveRepo() {
   if (!activeRepoId.value) {
-    message.info('当前没有可移除的仓库');
+    message.info("当前没有可移除的仓库");
     return;
   }
   removeRepo(activeRepoId.value);
-  message.success('已移除当前仓库');
+  message.success("已移除当前仓库");
 }
+
+function openAddRepoFromDeepLink(url: string, name?: string) {
+  repoForm.value = { id: "", name: name ?? "", url, description: "" };
+  showRepoModal.value = true;
+}
+
+function handleAddRepoEvent(e: Event) {
+  const { url, name } =
+    (e as CustomEvent<{ url: string; name?: string }>).detail ?? {};
+  if (url) openAddRepoFromDeepLink(url, name);
+}
+
+onMounted(() => {
+  window.addEventListener("app:add-repo", handleAddRepoEvent);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("app:add-repo", handleAddRepoEvent);
+});
 
 defineExpose({
   openAddRepo,
@@ -793,9 +904,15 @@ void loadRepoConfig();
       <div class="bv-toolbar__spacer" />
       <div v-if="onlineSources.length" class="bv-toolbar__stats">
         <span class="bv-stat">已安装 {{ installedOnlineCount }}</span>
-        <span v-if="checkingCount" class="bv-stat">检查中 {{ checkingCount }}</span>
-        <span v-if="updateAvailableCount" class="bv-stat bv-stat--warning">待更新 {{ updateAvailableCount }}</span>
-        <span v-if="checkErrorCount" class="bv-stat bv-stat--error">失败 {{ checkErrorCount }}</span>
+        <span v-if="checkingCount" class="bv-stat"
+          >检查中 {{ checkingCount }}</span
+        >
+        <span v-if="updateAvailableCount" class="bv-stat bv-stat--warning"
+          >待更新 {{ updateAvailableCount }}</span
+        >
+        <span v-if="checkErrorCount" class="bv-stat bv-stat--error"
+          >失败 {{ checkErrorCount }}</span
+        >
       </div>
       <n-input
         v-model:value="onlineSearch"
@@ -812,7 +929,10 @@ void loadRepoConfig();
       {{ onlineManifest.name }} · v{{ onlineManifest.version }} · 更新于
       {{ onlineManifest.updatedAt }}
     </div>
-    <div class="bv-repo-desc" v-else-if="repositories.find((r) => r.id === activeRepoId)?.description">
+    <div
+      class="bv-repo-desc"
+      v-else-if="repositories.find((r) => r.id === activeRepoId)?.description"
+    >
       {{ repositories.find((r) => r.id === activeRepoId)?.description }}
     </div>
     <div v-if="onlineSources.length" class="bv-compare-note">
@@ -821,14 +941,31 @@ void loadRepoConfig();
 
     <!-- 加载态 / 错误态 -->
     <n-spin :show="onlineLoading" style="width: 100%">
-      <n-alert v-if="onlineError" type="error" :title="onlineError" style="margin: 12px 0" />
+      <n-alert
+        v-if="onlineError"
+        type="error"
+        :title="onlineError"
+        style="margin: 12px 0"
+      />
 
-      <div v-if="!repositories.length && !onlineLoading" class="bv-online-empty">
-        <n-empty description="尚未添加仓库，点击「+ 添加仓库」输入仓库 JSON 地址" style="padding: 48px 0" />
+      <div
+        v-if="!repositories.length && !onlineLoading"
+        class="bv-online-empty"
+      >
+        <n-empty
+          description="尚未添加仓库，点击「+ 添加仓库」输入仓库 JSON 地址"
+          style="padding: 48px 0"
+        />
       </div>
 
-      <div v-else-if="!onlineSources.length && !onlineLoading" class="bv-online-empty">
-        <n-empty description="点击「获取书源列表」从仓库拉取书源" style="padding: 48px 0" />
+      <div
+        v-else-if="!onlineSources.length && !onlineLoading"
+        class="bv-online-empty"
+      >
+        <n-empty
+          description="点击「获取书源列表」从仓库拉取书源"
+          style="padding: 48px 0"
+        />
       </div>
 
       <div v-else class="bv-source-list app-scrollbar">
@@ -866,11 +1003,21 @@ void loadRepoConfig();
         <n-input v-model:value="repoForm.url" placeholder="https://..." />
       </n-form-item>
       <n-form-item label="描述（可选）">
-        <n-input v-model:value="repoForm.description" placeholder="说明这个仓库的来源" />
+        <n-input
+          v-model:value="repoForm.description"
+          placeholder="说明这个仓库的来源"
+        />
       </n-form-item>
     </n-form>
     <template #footer>
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        "
+      >
         <!-- <n-button size="small" quaternary @click="addCommunityRepository"
           >一键添加社区书源</n-button
         > -->
