@@ -60,6 +60,13 @@ export interface TocAutoUpdatePreferences {
   minIntervalSecs: number;
 }
 
+// ── 开发者工具偏好 ───────────────────────────────────────────────────────
+
+export interface DevToolsPreferences {
+  /** 是否启用 vConsole 调试面板 */
+  vConsoleEnabled: boolean;
+}
+
 // ── 搜索偏好 ──────────────────────────────────────────────────────────────
 
 export interface SearchPreferences {
@@ -122,6 +129,14 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }),
   });
 
+  const devToolsConfig = useDynamicConfig<DevToolsPreferences>({
+    namespace: 'preferences.devTools',
+    version: 1,
+    defaults: () => ({
+      vConsoleEnabled: false,
+    }),
+  });
+
   const searchConfig = useDynamicConfig<SearchPreferences>({
     namespace: 'preferences.search',
     version: 1,
@@ -169,9 +184,15 @@ export const usePreferencesStore = defineStore('preferences', () => {
     searchConfig.replace({ ...searchConfig.state, ...patch });
   }
 
+  // ── 开发者工具 Actions ──────────────────────────────────────────────
+
+  function patchDevTools(patch: Partial<DevToolsPreferences>) {
+    devToolsConfig.replace({ ...devToolsConfig.state, ...patch });
+  }
+
   // ── ready 状态（等待所有后端存储加载完成） ────────────────────────────
 
-  const ready = Promise.all([readerConfig.ready, densityConfig.ready, searchConfig.ready, tocAutoUpdateConfig.ready]).then(
+  const ready = Promise.all([readerConfig.ready, densityConfig.ready, searchConfig.ready, tocAutoUpdateConfig.ready, devToolsConfig.ready]).then(
     () => undefined,
   );
 
@@ -190,6 +211,9 @@ export const usePreferencesStore = defineStore('preferences', () => {
     search: readonly(searchConfig.state) as SearchPreferences,
     setLastSearchSource,
     patchSearch,
+    // 开发者工具偏好
+    devTools: readonly(devToolsConfig.state) as DevToolsPreferences,
+    patchDevTools,
     // 就绪状态
     ready,
   };

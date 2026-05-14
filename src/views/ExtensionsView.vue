@@ -1,4 +1,5 @@
-﻿<script setup lang="ts">
+﻿<!-- ExtensionsView — 前端插件管理页，负责插件安装、编辑、启停、排序、示例与配置管理。 -->
+<script setup lang="ts">
 import { Folder, Search, Code2 } from 'lucide-vue-next';
 import { useMessage, useDialog, type DropdownOption } from 'naive-ui';
 import { storeToRefs } from 'pinia';
@@ -602,6 +603,10 @@ onUnmounted(() => {
       </template>
     </AppPageHeader>
 
+    <n-alert class="ext-feature-warning" type="warning" :show-icon="true">
+      插件系统暂时还是预览版，暂时还不好用，请谨慎使用并手动检查插件来源与运行结果。
+    </n-alert>
+
     <!-- 主 Tabs -->
     <n-tabs v-model:value="activeTab" type="line" animated class="ext-tabs">
       <!-- ===== 已安装 ===== -->
@@ -996,6 +1001,10 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   /* background: var(--color-bg-page); */
+}
+.ext-feature-warning {
+  margin: 8px 24px 0;
+  flex-shrink: 0;
 }
 
 .ext-header__dir {

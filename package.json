@@ -47,6 +47,7 @@
     "pinia": "^3.0.4",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.2.4",
+    "vconsole": "^3.15.1",
     "video.js": "^8.23.7",
     "vue": "^3.5.32",
     "xgplayer": "^3.0.24",

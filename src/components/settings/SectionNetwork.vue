@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { useMessage } from 'naive-ui';
-import { storeToRefs } from 'pinia';
-import { computed, ref, onMounted } from 'vue';
-import { BUILTIN_USER_AGENT } from '@/composables/useAppConfig';
-import { browserProbeClearData } from '@/composables/useBrowserProbe';
-import { isTransportAvailable } from '@/composables/useTransport';
-import { useAppConfigStore, usePreferencesStore } from '@/stores';
-import SettingItem from './SettingItem.vue';
-import SettingSection from './SettingSection.vue';
-import SettingsSubpanel from './SettingsSubpanel.vue';
-import { uaSelectOptions } from './uaPresets';
+import { useMessage } from "naive-ui";
+import { storeToRefs } from "pinia";
+import { computed, ref, onMounted } from "vue";
+import { BUILTIN_USER_AGENT } from "@/composables/useAppConfig";
+import { browserProbeClearData } from "@/composables/useBrowserProbe";
+import { isTransportAvailable } from "@/composables/useTransport";
+import { useAppConfigStore, usePreferencesStore } from "@/stores";
+import SettingItem from "./SettingItem.vue";
+import SettingSection from "./SettingSection.vue";
+import SettingsSubpanel from "./SettingsSubpanel.vue";
+import { uaSelectOptions } from "./uaPresets";
 
 const message = useMessage();
 const _appCfg = useAppConfigStore();
@@ -18,8 +18,8 @@ const { setConfig, resetConfig, loadConfig } = _appCfg;
 const prefsStore = usePreferencesStore();
 const searchCfg = computed(() => prefsStore.search);
 
-const uaInput = ref('');
-const probeUaInput = ref('');
+const uaInput = ref("");
+const probeUaInput = ref("");
 const selectedPresetUa = ref<string | null>(null);
 /** 是否已连接到后端 */
 const transportReady = ref(false);
@@ -27,7 +27,7 @@ const transportReady = ref(false);
 async function handleSet(key: string, value: string) {
   try {
     await setConfig(key, value);
-    message.success('已保存');
+    message.success("已保存");
   } catch (e: unknown) {
     message.error(`保存失败: ${e}`);
   }
@@ -36,13 +36,13 @@ async function handleSet(key: string, value: string) {
 async function handleReset(key: string) {
   try {
     await resetConfig(key);
-    if (key === 'http_user_agent') {
+    if (key === "http_user_agent") {
       uaInput.value = config.value.http_user_agent;
     }
-    if (key === 'browser_probe_user_agent') {
+    if (key === "browser_probe_user_agent") {
       probeUaInput.value = config.value.browser_probe_user_agent;
     }
-    message.success('已重置为默认值');
+    message.success("已重置为默认值");
   } catch (e: unknown) {
     message.error(`重置失败: ${e}`);
   }
@@ -58,17 +58,17 @@ function applyPreset(val: string | null) {
 }
 
 function saveUa() {
-  handleSet('http_user_agent', uaInput.value.trim() || BUILTIN_USER_AGENT);
+  handleSet("http_user_agent", uaInput.value.trim() || BUILTIN_USER_AGENT);
 }
 
 function saveProbeUa() {
-  handleSet('browser_probe_user_agent', probeUaInput.value.trim());
+  handleSet("browser_probe_user_agent", probeUaInput.value.trim());
 }
 
 async function clearBrowserProbeData() {
   try {
     await browserProbeClearData();
-    message.success('已清空浏览器探测数据');
+    message.success("已清空浏览器探测数据");
   } catch (e: unknown) {
     message.error(`清空失败: ${e}`);
   }
@@ -84,15 +84,23 @@ onMounted(async () => {
     uaInput.value = config.value.http_user_agent;
     probeUaInput.value = config.value.browser_probe_user_agent;
   } catch (e) {
-    console.error('加载配置失败', e);
+    console.error("加载配置失败", e);
   }
 });
 </script>
 
 <template>
-  <SettingSection title="网络" section-id="section-network" v-if="transportReady">
+  <SettingSection
+    title="网络"
+    section-id="section-network"
+    v-if="transportReady"
+  >
     <!-- User-Agent -->
-    <SettingItem label="User-Agent" desc="书源脚本未显式设置 UA 时使用此值" :vertical="true">
+    <SettingItem
+      label="User-Agent"
+      desc="书源脚本未显式设置 UA 时使用此值"
+      :vertical="true"
+    >
       <SettingsSubpanel
         title="User-Agent 配置"
         description="预设选择、自定义 UA 和当前生效值收纳到二级面板，避免主设置页被超长字符串撑开。"
@@ -163,8 +171,10 @@ onMounted(async () => {
       >
         <template #summary>
           <div class="panel-summary">
-            <div>启用：{{ config.browser_probe_enabled ? '是' : '否' }}</div>
-            <div>探测 UA：{{ config.browser_probe_user_agent || '跟随 HTTP UA' }}</div>
+            <div>启用：{{ config.browser_probe_enabled ? "是" : "否" }}</div>
+            <div>
+              探测 UA：{{ config.browser_probe_user_agent || "跟随 HTTP UA" }}
+            </div>
             <div>默认超时：{{ config.browser_probe_timeout_secs || 0 }} 秒</div>
           </div>
         </template>
@@ -175,7 +185,9 @@ onMounted(async () => {
             <n-switch
               :value="config.browser_probe_enabled"
               :loading="savingKey === 'browser_probe_enabled'"
-              @update:value="(v: boolean) => handleSet('browser_probe_enabled', String(v))"
+              @update:value="
+                (v: boolean) => handleSet('browser_probe_enabled', String(v))
+              "
             />
           </div>
           <div class="probe-row">
@@ -184,7 +196,8 @@ onMounted(async () => {
               :value="config.browser_probe_visible_by_default"
               :loading="savingKey === 'browser_probe_visible_by_default'"
               @update:value="
-                (v: boolean) => handleSet('browser_probe_visible_by_default', String(v))
+                (v: boolean) =>
+                  handleSet('browser_probe_visible_by_default', String(v))
               "
             />
           </div>
@@ -193,7 +206,10 @@ onMounted(async () => {
             <n-switch
               :value="config.browser_probe_force_visible"
               :loading="savingKey === 'browser_probe_force_visible'"
-              @update:value="(v: boolean) => handleSet('browser_probe_force_visible', String(v))"
+              @update:value="
+                (v: boolean) =>
+                  handleSet('browser_probe_force_visible', String(v))
+              "
             />
           </div>
           <div class="probe-hint">
@@ -205,7 +221,10 @@ onMounted(async () => {
             <n-switch
               :value="config.browser_probe_persist_profile"
               :loading="savingKey === 'browser_probe_persist_profile'"
-              @update:value="(v: boolean) => handleSet('browser_probe_persist_profile', String(v))"
+              @update:value="
+                (v: boolean) =>
+                  handleSet('browser_probe_persist_profile', String(v))
+              "
             />
           </div>
           <div class="probe-field">
@@ -244,13 +263,19 @@ onMounted(async () => {
                 style="width: 90px"
                 @update:value="
                   (v: number | null) =>
-                    v != null && handleSet('browser_probe_timeout_secs', String(v))
+                    v != null &&
+                    handleSet('browser_probe_timeout_secs', String(v))
                 "
               />
               <span class="unit-label">秒</span>
             </div>
           </div>
-          <n-button size="small" type="warning" ghost @click="clearBrowserProbeData">
+          <n-button
+            size="small"
+            type="warning"
+            ghost
+            @click="clearBrowserProbeData"
+          >
             清空探测浏览器数据
           </n-button>
         </div>
@@ -267,7 +292,8 @@ onMounted(async () => {
           :max="300"
           style="width: 90px"
           @update:value="
-            (v: number | null) => v != null && handleSet('http_connect_timeout_secs', String(v))
+            (v: number | null) =>
+              v != null && handleSet('http_connect_timeout_secs', String(v))
           "
         />
         <span class="unit-label">秒</span>
@@ -288,7 +314,8 @@ onMounted(async () => {
           :step="100"
           style="width: 100px"
           @update:value="
-            (v: number | null) => v != null && handleSet('request_min_delay_ms', String(v))
+            (v: number | null) =>
+              v != null && handleSet('request_min_delay_ms', String(v))
           "
         />
         <span class="unit-label">毫秒</span>
@@ -305,7 +332,8 @@ onMounted(async () => {
           :max="600"
           style="width: 90px"
           @update:value="
-            (v: number | null) => v != null && handleSet('engine_timeout_secs', String(v))
+            (v: number | null) =>
+              v != null && handleSet('engine_timeout_secs', String(v))
           "
         />
         <span class="unit-label">秒</span>
@@ -313,7 +341,10 @@ onMounted(async () => {
     </SettingItem>
 
     <!-- 搜索超时 -->
-    <SettingItem label="搜索超时" desc="单个书源搜索请求的最长等待时间，超时后该书源标记为失败（秒），默认 35">
+    <SettingItem
+      label="搜索超时"
+      desc="单个书源搜索请求的最长等待时间，超时后该书源标记为失败（秒），默认 35"
+    >
       <div style="display: flex; gap: 6px; align-items: center">
         <n-input-number
           :value="searchCfg.searchTimeoutSecs ?? 35"
@@ -321,14 +352,22 @@ onMounted(async () => {
           :min="5"
           :max="300"
           style="width: 90px"
-          @update:value="(v: number | null) => prefsStore.patchSearch({ searchTimeoutSecs: Math.max(5, v ?? 35) })"
+          @update:value="
+            (v: number | null) =>
+              prefsStore.patchSearch({
+                searchTimeoutSecs: Math.max(5, v ?? 35),
+              })
+          "
         />
         <span class="unit-label">秒</span>
       </div>
     </SettingItem>
 
     <!-- 发现页超时 -->
-    <SettingItem label="发现页超时" desc="书源发现页（Explore）加载的最长等待时间（秒），默认 35">
+    <SettingItem
+      label="发现页超时"
+      desc="书源发现页（Explore）加载的最长等待时间（秒），默认 35"
+    >
       <div style="display: flex; gap: 6px; align-items: center">
         <n-input-number
           :value="searchCfg.exploreTimeoutSecs ?? 35"
@@ -336,14 +375,22 @@ onMounted(async () => {
           :min="5"
           :max="300"
           style="width: 90px"
-          @update:value="(v: number | null) => prefsStore.patchSearch({ exploreTimeoutSecs: Math.max(5, v ?? 35) })"
+          @update:value="
+            (v: number | null) =>
+              prefsStore.patchSearch({
+                exploreTimeoutSecs: Math.max(5, v ?? 35),
+              })
+          "
         />
         <span class="unit-label">秒</span>
       </div>
     </SettingItem>
 
     <!-- 目录更新超时 -->
-    <SettingItem label="目录更新超时" desc="获取书籍章节列表的最长等待时间，长篇小说可能需要更长时间（秒），默认 125">
+    <SettingItem
+      label="目录更新超时"
+      desc="获取书籍章节列表的最长等待时间，长篇小说可能需要更长时间（秒），默认 125"
+    >
       <div style="display: flex; gap: 6px; align-items: center">
         <n-input-number
           :value="searchCfg.chapterListTimeoutSecs ?? 125"
@@ -351,14 +398,22 @@ onMounted(async () => {
           :min="10"
           :max="600"
           style="width: 90px"
-          @update:value="(v: number | null) => prefsStore.patchSearch({ chapterListTimeoutSecs: Math.max(10, v ?? 125) })"
+          @update:value="
+            (v: number | null) =>
+              prefsStore.patchSearch({
+                chapterListTimeoutSecs: Math.max(10, v ?? 125),
+              })
+          "
         />
         <span class="unit-label">秒</span>
       </div>
     </SettingItem>
 
     <!-- 章节正文超时 -->
-    <SettingItem label="章节正文超时" desc="获取单章节正文内容的最长等待时间（秒），默认 35">
+    <SettingItem
+      label="章节正文超时"
+      desc="获取单章节正文内容的最长等待时间（秒），默认 35"
+    >
       <div style="display: flex; gap: 6px; align-items: center">
         <n-input-number
           :value="searchCfg.chapterContentTimeoutSecs ?? 35"
@@ -366,7 +421,12 @@ onMounted(async () => {
           :min="5"
           :max="300"
           style="width: 90px"
-          @update:value="(v: number | null) => prefsStore.patchSearch({ chapterContentTimeoutSecs: Math.max(5, v ?? 35) })"
+          @update:value="
+            (v: number | null) =>
+              prefsStore.patchSearch({
+                chapterContentTimeoutSecs: Math.max(5, v ?? 35),
+              })
+          "
         />
         <span class="unit-label">秒</span>
       </div>
@@ -377,11 +437,20 @@ onMounted(async () => {
       label="忽略 TLS 证书错误"
       desc="规避 Android 对部分有效证书误判为 Revoked 的兼容问题。降低安全性，修改后需重启生效。"
     >
-      <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start">
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          align-items: flex-start;
+        "
+      >
         <n-switch
           :value="config.http_ignore_tls_errors"
           :loading="savingKey === 'http_ignore_tls_errors'"
-          @update:value="(v: boolean) => handleSet('http_ignore_tls_errors', String(v))"
+          @update:value="
+            (v: boolean) => handleSet('http_ignore_tls_errors', String(v))
+          "
         />
         <n-alert
           v-if="config.http_ignore_tls_errors"
@@ -391,6 +460,16 @@ onMounted(async () => {
         >
           已跳过证书验证，连接安全性降低，仅在必要时开启
         </n-alert>
+        <span
+          style="
+            font-size: 0.72rem;
+            color: var(--color-text-muted);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+          "
+          >↺ 重启后生效</span
+        >
       </div>
     </SettingItem>
 
@@ -409,15 +488,17 @@ onMounted(async () => {
           <div class="panel-summary">
             <div>
               模式：{{
-                config.proxy_mode === 'system'
-                  ? '系统代理'
-                  : config.proxy_mode === 'none'
-                    ? '无代理'
+                config.proxy_mode === "system"
+                  ? "系统代理"
+                  : config.proxy_mode === "none"
+                    ? "无代理"
                     : `自定义（${config.proxy_type.toUpperCase()}）`
               }}
             </div>
             <div v-if="config.proxy_mode === 'custom'">
-              地址：{{ config.proxy_host || '未设置' }}:{{ config.proxy_port || '-' }}
+              地址：{{ config.proxy_host || "未设置" }}:{{
+                config.proxy_port || "-"
+              }}
             </div>
           </div>
         </template>
@@ -438,7 +519,9 @@ onMounted(async () => {
 
           <!-- 自定义代理详细配置 -->
           <template v-if="config.proxy_mode === 'custom'">
-            <div class="proxy-panel__label" style="margin-top: 12px">代理类型</div>
+            <div class="proxy-panel__label" style="margin-top: 12px">
+              代理类型
+            </div>
             <n-radio-group
               :value="config.proxy_type"
               @update:value="(v: string) => handleSet('proxy_type', v)"
@@ -449,7 +532,9 @@ onMounted(async () => {
               </n-space>
             </n-radio-group>
 
-            <div class="proxy-panel__label" style="margin-top: 12px">代理地址</div>
+            <div class="proxy-panel__label" style="margin-top: 12px">
+              代理地址
+            </div>
             <div class="proxy-host-row">
               <n-input
                 :value="config.proxy_host"
@@ -467,12 +552,15 @@ onMounted(async () => {
                 placeholder="端口"
                 style="width: 90px"
                 @update:value="
-                  (v: number | null) => v != null && handleSet('proxy_port', String(v))
+                  (v: number | null) =>
+                    v != null && handleSet('proxy_port', String(v))
                 "
               />
             </div>
 
-            <div class="proxy-panel__label" style="margin-top: 12px">认证（可选）</div>
+            <div class="proxy-panel__label" style="margin-top: 12px">
+              认证（可选）
+            </div>
             <div class="proxy-auth-row">
               <n-input
                 :value="config.proxy_username"
@@ -493,7 +581,11 @@ onMounted(async () => {
             </div>
           </template>
 
-          <n-alert type="info" :show-icon="false" style="margin-top: 12px; font-size: 0.75rem">
+          <n-alert
+            type="info"
+            :show-icon="false"
+            style="margin-top: 12px; font-size: 0.75rem"
+          >
             修改代理设置后需重启应用生效，效果与忽略 TLS 证书设置相同。
           </n-alert>
         </div>

@@ -1,3 +1,7 @@
+/**
+ * SectionAbout — 设置页“关于”面板，展示应用版本、运行环境、桥接能力与 WebView 诊断信息。
+ */
+
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import {
@@ -17,6 +21,8 @@ type TransportMode = 'tauri' | 'harmony' | 'websocket' | 'none';
 
 const transportMode = ref<TransportMode>(getTransportType());
 const transportReady = ref(hasNativeTransport);
+
+const rawUserAgent = ref('读取中');
 
 const contributors = [
   'Mg',
@@ -69,6 +75,37 @@ const wsEndpoint = computed(() => {
   return getCustomWsUrl() || '同源 WebSocket 自动探测';
 });
 
+const detectWebViewVersion = (ua: string) => {
+  const harmonyWebView = ua.match(/ArkWeb\/([^\s]+)/i);
+  if (harmonyWebView) {
+    return `ArkWeb ${harmonyWebView[1]}`;
+  }
+
+  const edge = ua.match(/Edg\/([^\s]+)/i);
+  if (edge) {
+    return `Edge WebView2 ${edge[1]}`;
+  }
+
+  const webview = ua.match(/Version\/([^\s]+).*Chrome\/([^\s]+).*Mobile Safari/i);
+  if (webview) {
+    return `Android WebView / Chromium ${webview[2]}`;
+  }
+
+  const chrome = ua.match(/(?:Chrome|Chromium|CriOS)\/([^\s]+)/i);
+  if (chrome) {
+    return `Chromium ${chrome[1]}`;
+  }
+
+  const safari = ua.match(/Version\/([^\s]+).*Safari\/([^\s]+)/i);
+  if (safari) {
+    return `WebKit / Safari ${safari[1]}`;
+  }
+
+  return '未能从 UA 识别';
+};
+
+const webViewVersion = computed(() => detectWebViewVersion(rawUserAgent.value));
+
 const environmentCards = computed(() => [
   {
     label: '运行环境',
@@ -85,9 +122,32 @@ const environmentCards = computed(() => [
     value: platform.value || '未知',
     desc: isMobile.value ? '当前为移动端布局。' : '当前为桌面端布局。',
   },
+  {
+    label: 'WebView / 内核',
+    value: webViewVersion.value,
+    desc: '由当前页面原始 UA 解析，完整字段见下方诊断信息。',
+  },
 ]);
 
+const uaRows = computed(() => [
+  {
+    label: '系统原始 UA',
+    value: rawUserAgent.value,
+    desc: '本软件当前运行环境上报的原始 User-Agent，可用于查看系统 WebView 或浏览器内核版本。',
+  },
+]);
+
+function collectUserAgentInfo() {
+  if (typeof navigator === 'undefined') {
+    rawUserAgent.value = '当前环境没有 navigator';
+    return;
+  }
+
+  rawUserAgent.value = navigator.userAgent || '空';
+}
+
 onMounted(async () => {
+  collectUserAgentInfo();
   transportReady.value = await isTransportAvailable();
   transportMode.value = getTransportType();
 });
@@ -118,6 +178,22 @@ onMounted(async () => {
         <span class="about-label">{{ item.label }}</span>
         <strong class="about-card__value">{{ item.value }}</strong>
         <p class="about-card__desc">{{ item.desc }}</p>
+      </div>
+    </div>
+
+    <div class="about-panel about-panel--ua">
+      <div class="about-panel__head">
+        <h4 class="about-panel__title">系统原始 UA</h4>
+        <span class="about-panel__hint">当前软件运行环境</span>
+      </div>
+      <div class="about-ua-list">
+        <div v-for="item in uaRows" :key="item.label" class="about-ua-row">
+          <div class="about-ua-row__meta">
+            <span class="about-badge-row__label">{{ item.label }}</span>
+            <p>{{ item.desc }}</p>
+          </div>
+          <pre class="about-ua-row__value">{{ item.value }}</pre>
+        </div>
       </div>
     </div>
 
@@ -222,7 +298,7 @@ onMounted(async () => {
 
 .about-runtime-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
   margin-top: var(--space-2);
 }
@@ -261,6 +337,10 @@ onMounted(async () => {
 
 .about-panel {
   padding: 14px;
+}
+
+.about-panel--ua {
+  margin-top: var(--space-3);
 }
 
 .about-panel__head {
@@ -306,6 +386,49 @@ onMounted(async () => {
   color: var(--color-text-soft);
 }
 
+.about-ua-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.about-ua-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.28fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.about-ua-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.about-ua-row__meta p {
+  margin-top: 4px;
+  font-size: var(--fs-12);
+  line-height: 1.55;
+  color: var(--color-text-muted);
+}
+
+.about-ua-row__value {
+  min-width: 0;
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-border) 22%, transparent);
+  color: var(--color-text);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: var(--fs-12);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .about-contributors {
   display: flex;
   flex-wrap: wrap;
@@ -340,6 +463,10 @@ onMounted(async () => {
   }
 
   .about-runtime-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .about-ua-row {
     grid-template-columns: 1fr;
   }
 

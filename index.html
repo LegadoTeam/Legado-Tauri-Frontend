@@ -123,9 +123,25 @@
           });
         }
 
+        function loadVConsoleForDebug() {
+          if (window.__vcDebugLoading) return;
+          window.__vcDebugLoading = true;
+          var s = document.createElement('script');
+          s.src = 'https://unpkg.com/vconsole@latest/dist/vconsole.min.js';
+          s.onload = function () {
+            var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            var vc = new window.VConsole({
+              theme: isDark ? 'dark' : 'light',
+            });
+            vc.show();
+          };
+          document.head.appendChild(s);
+        }
+
         function renderBootError(message) {
           if (state.errorShown) return;
           state.errorShown = true;
+          loadVConsoleForDebug();
           const skeleton = document.getElementById('app-skeleton');
           if (!skeleton) return;
           skeleton.classList.remove('hidden');

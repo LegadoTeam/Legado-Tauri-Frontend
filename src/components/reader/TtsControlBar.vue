@@ -1,3 +1,6 @@
+<!--
+  TtsControlBar — 阅读器朗读功能的浮动控制条，展示进度、播放控制、倍速和测试提示。
+-->
 <script setup lang="ts">
 import { SkipBack, Loader2, Pause, Play, SkipForward, X } from 'lucide-vue-next';
 /**
@@ -47,6 +50,8 @@ function togglePlayPause() {
 <template>
   <Transition name="tts-bar">
     <div v-if="visible" class="tts-control-bar" role="toolbar" aria-label="朗读控制">
+      <div class="tts-control-bar__notice">朗读功能仅供测试，很多人反馈有问题</div>
+
       <!-- 进度（由父组件提供） -->
       <span class="tts-control-bar__progress">
         {{ progressText ?? '—' }}
@@ -124,8 +129,7 @@ function togglePlayPause() {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
   max-width: calc(100vw - 32px);
-  /* 防止内容溢出 */
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tts-control-bar__progress {
@@ -133,6 +137,24 @@ function togglePlayPause() {
   opacity: 0.7;
   min-width: 3.5em;
   text-align: center;
+}
+
+.tts-control-bar__notice {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 48px);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(30, 30, 35, 0.92);
+  color: #ffd98a;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .tts-control-bar__btn {

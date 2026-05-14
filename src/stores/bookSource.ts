@@ -142,6 +142,37 @@ export const useBookSourceStore = defineStore('bookSource', () => {
 
   // ── Actions ──────────────────────────────────────────────────────────
 
+  /** 将新扫描到的列表增量合并进 sources.value，不清空数组以保持滚动位置。
+   * - 已有项：就地更新字段
+   * - 新增项：插入到列表顶部
+   * - 已删除项：从数组中移除
+   */
+  function applySourcesBatch(next: BookSourceMeta[]): void {
+    const nextByFileName = new Map(next.map((s) => [s.fileName, s]));
+    const currentByFileName = new Map(sources.value.map((s) => [s.fileName, s]));
+
+    // 移除已删除的项（逆序遍历避免索引偏移）
+    for (let i = sources.value.length - 1; i >= 0; i--) {
+      if (!nextByFileName.has(sources.value[i].fileName)) {
+        sources.value.splice(i, 1);
+      }
+    }
+
+    // 就地更新已有项
+    for (let i = 0; i < sources.value.length; i++) {
+      const updated = nextByFileName.get(sources.value[i].fileName);
+      if (updated) {
+        Object.assign(sources.value[i], updated);
+      }
+    }
+
+    // 将新增项插入到列表顶部
+    const newItems = next.filter((s) => !currentByFileName.has(s.fileName));
+    if (newItems.length > 0) {
+      sources.value.unshift(...newItems);
+    }
+  }
+
   /** 统一书源加载（去重保护，三个视图共用此接口），流式分批推送到 sources */
   async function loadSources(): Promise<void> {
     if (_loadInFlight) {
@@ -149,8 +180,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
     }
     _loadInFlight = (async () => {
       loading.value = true;
-      sources.value = [];
       streamingLoaded.value = 0;
+      // freshItems 收集本次流式批次，全部到齐后再增量合并进 sources.value
+      const freshItems: BookSourceMeta[] = [];
 
       try {
         const requestId = safeRandomUUID();
@@ -180,13 +212,13 @@ export const useBookSourceStore = defineStore('bookSource', () => {
             }
 
             if (items.length > 0) {
-              sources.value = sources.value.concat(items);
+              freshItems.push(...items);
               streamingLoaded.value += items.length;
             }
 
             if (done) {
-              // 全部到达后按名称排序一次
-              sources.value = sources.value.toSorted((a, b) => a.name.localeCompare(b.name));
+              // 全部到达后按名称排序后增量合并，不清空现有列表
+              applySourcesBatch(freshItems.toSorted((a, b) => a.name.localeCompare(b.name)));
               unlisten();
               if (typeof error === 'string' && error.length > 0) {
                 reject(new Error(error));
@@ -202,7 +234,8 @@ export const useBookSourceStore = defineStore('bookSource', () => {
               unlisten();
               listBookSources()
                 .then((items) => {
-                  sources.value = items.toSorted((a, b) => a.name.localeCompare(b.name));
+                  const sorted = items.toSorted((a, b) => a.name.localeCompare(b.name));
+                  applySourcesBatch(sorted);
                   streamingLoaded.value = sources.value.length;
                   resolve();
                 })

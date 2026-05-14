@@ -1,3 +1,4 @@
+<!-- AiSourceTab — AI 写书源工作台，管理 AI 配置、会话草稿、生成日志与调试面板。 -->
 <script setup lang="ts">
 import { useMessage, useDialog } from 'naive-ui';
 import { storeToRefs } from 'pinia';
@@ -436,6 +437,10 @@ const displayTestResults = computed(() =>
 
     <!-- ── 主内容区 ────────────────────────────────────────── -->
     <div class="ai-main">
+      <n-alert class="ai-feature-warning" type="warning" :show-icon="true">
+        AI 写书源是测试功能，暂时还不好用，请谨慎使用并手动检查生成结果。
+      </n-alert>
+
       <!-- 顶部工具栏 -->
       <div class="main-toolbar">
         <n-radio-group v-model:value="workMode" size="small">
@@ -956,6 +961,10 @@ const displayTestResults = computed(() =>
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+}
+.ai-feature-warning {
+  margin: 8px 12px 0;
+  flex-shrink: 0;
 }
 
 /* ── 顶部工具栏 ── */

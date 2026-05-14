@@ -75,6 +75,9 @@ importers:
       tailwindcss:
         specifier: ^4.2.4
         version: 4.2.4
+      vconsole:
+        specifier: ^3.15.1
+        version: 3.15.1
       video.js:
         specifier: ^8.23.7
         version: 8.23.7
@@ -1018,6 +1021,10 @@ packages:
     resolution: {integrity: sha512-7Vv6asjS4gMOuILabD3l739tsaxFQmC+a7pLZm02zyvs8p977bL3zEgq3yDk5rn9B0PbYgIv++jmHcuUab4RhA==}
     engines: {node: '>=18'}
 
+  copy-text-to-clipboard@3.2.2:
+    resolution: {integrity: sha512-T6SqyLd1iLuqPA90J5N4cTalrtovCySh58iiZDGJ6FGznbclKh4UI+FGacQSgFzwKG77W7XT5gwbVEbd9cIH1A==}
+    engines: {node: '>=12'}
+
   core-js@3.49.0:
     resolution: {integrity: sha512-es1U2+YTtzpwkxVLwAFdSpaIMyQaq0PBgm3YD1W3Qpsn1NAmO3KSgZfu+oGSWVu6NvLHoHCV/aYcsE5wiB7ALg==}
 
@@ -1384,6 +1391,9 @@ packages:
   muggle-string@0.4.1:
     resolution: {integrity: sha512-VNTrAak/KhO2i8dqqnqnAHOa3cYBwXEZe9h+D5h/1ZqFSTEFHdM65lR7RoIqq3tBBYavsOXV84NoHXZ0AkPyqQ==}
 
+  mutation-observer@1.0.3:
+    resolution: {integrity: sha512-M/O/4rF2h776hV7qGMZUH3utZLO/jK7p8rnNgGkjKUw8zCGjRQPxB8z6+5l8+VjRUQ3dNYu4vjqXYLr+U8ZVNA==}
+
   mux.js@7.1.0:
     resolution: {integrity: sha512-NTxawK/BBELJrYsZThEulyUMDVlLizKdxyAsMuzoCD1eFj97BVaA8D/CvKsKu6FOLYkFojN5CbM9h++ZTZtknA==}
     engines: {node: '>=8', npm: '>=5'}
@@ -1581,6 +1591,9 @@ packages:
 
   undici-types@7.19.2:
     resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
+
+  vconsole@3.15.1:
+    resolution: {integrity: sha512-KH8XLdrq9T5YHJO/ixrjivHfmF2PC2CdVoK6RWZB4yftMykYIaXY1mxZYAic70vADM54kpMQF+dYmvl5NRNy1g==}
 
   vdirs@0.1.8:
     resolution: {integrity: sha512-H9V1zGRLQZg9b+GdMk8MXDN2Lva0zx72MPahDKc30v+DtwKjfyOSXWRIX4t2mhDubM1H09gPhWeth/BJWPHGUw==}
@@ -2406,6 +2419,8 @@ snapshots:
     dependencies:
       is-what: 5.5.0
 
+  copy-text-to-clipboard@3.2.2: {}
+
   core-js@3.49.0: {}
 
   cross-env@10.1.0:
@@ -2729,6 +2744,8 @@ snapshots:
 
   muggle-string@0.4.1: {}
 
+  mutation-observer@1.0.3: {}
+
   mux.js@7.1.0:
     dependencies:
       '@babel/runtime': 7.29.2
@@ -2951,6 +2968,13 @@ snapshots:
   typescript@6.0.2: {}
 
   undici-types@7.19.2: {}
+
+  vconsole@3.15.1:
+    dependencies:
+      '@babel/runtime': 7.29.2
+      copy-text-to-clipboard: 3.2.2
+      core-js: 3.49.0
+      mutation-observer: 1.0.3
 
   vdirs@0.1.8(vue@3.5.32):
     dependencies:
