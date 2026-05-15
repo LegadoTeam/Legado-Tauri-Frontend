@@ -18,6 +18,31 @@ const { setConfig, resetConfig, loadConfig } = _appCfg;
 const prefsStore = usePreferencesStore();
 const searchCfg = computed(() => prefsStore.search);
 
+// DoH 服务器预设（分国内 / 国际分组）
+const DOH_OPTIONS = [
+  { label: "不使用（系统 DNS）", value: "none" },
+  {
+    type: "group" as const,
+    label: "── 国内公共 DNS ──",
+    key: "cn",
+    children: [
+      { label: "阿里云 DNS（223.5.5.5）", value: "alidns" },
+      { label: "DNSPod 腾讯（119.29.29.29）", value: "dnspod" },
+      { label: "360 安全 DNS（101.226.4.6）", value: "360dns" },
+      { label: "OneDNS 点一（117.50.10.10）", value: "onedns" },
+    ],
+  },
+  {
+    type: "group" as const,
+    label: "── 国际公共 DNS ──",
+    key: "intl",
+    children: [
+      { label: "Cloudflare（1.1.1.1）", value: "cloudflare" },
+      { label: "Google（8.8.8.8）", value: "google" },
+    ],
+  },
+];
+
 const uaInput = ref("");
 const probeUaInput = ref("");
 const selectedPresetUa = ref<string | null>(null);
@@ -470,6 +495,35 @@ onMounted(async () => {
           "
           >↺ 重启后生效</span
         >
+      </div>
+    </SettingItem>
+
+    <!-- DNS-over-HTTPS -->
+    <SettingItem
+      label="DNS-over-HTTPS"
+      desc="使用加密 DNS 查询，绕过系统 DNS 劫持或污染。修改后需重启生效。"
+    >
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          align-items: flex-start;
+        "
+      >
+        <n-select
+          :value="config.http_doh_server"
+          :options="DOH_OPTIONS"
+          size="small"
+          style="width: 220px"
+          :loading="savingKey === 'http_doh_server'"
+          @update:value="(v: string) => handleSet('http_doh_server', v)"
+        />
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="font-size: 0.72rem; color: var(--color-text-muted)"
+            >↺ 重启后生效</span
+          >
+        </div>
       </div>
     </SettingItem>
 

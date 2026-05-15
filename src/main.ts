@@ -6,6 +6,7 @@ window.__LEGADO_SET_BOOT_STAGE?.('main-ts-started');
 import naive from 'naive-ui';
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
+import { analyticsPlugin } from './plugins/analytics';
 import './style.css';
 import './styles/tokens.css';
 import './styles/theme.css';
@@ -21,6 +22,7 @@ import { initFrontendStorage } from './composables/useFrontendStorage';
 // Naive UI 已通过 unplugin-vue-components 按需自动导入，无需全量 app.use(naive)
 const app = createApp(App);
 app.use(createPinia());
+app.use(analyticsPlugin);
 app.config.errorHandler = (err, instance, info) => {
   const details = err instanceof Error ? err.stack || err.message : String(err);
   console.error('[BOOT][Frontend] Vue error', { err, info, instance });

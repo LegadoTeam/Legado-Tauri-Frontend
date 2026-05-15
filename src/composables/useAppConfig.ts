@@ -22,6 +22,8 @@ export interface AppConfig {
   http_connect_timeout_secs: number;
   /** 是否忽略 TLS 证书错误（Android 兼容性开关，重启后生效） */
   http_ignore_tls_errors: boolean;
+  /** DNS-over-HTTPS 服务器，修改后需重启生效。可选："none"(系统DNS) | "alidns" | "dnspod" | "360dns" | "onedns" | "cloudflare" | "google" */
+  http_doh_server: string;
   /** 代理模式："system"（系统代理）| "none"（无代理）| "custom"（自定义），修改后需重启 */
   proxy_mode: string;
   /** 代理协议类型（仅 proxy_mode=custom 时生效）："http" | "socks5" */
@@ -135,6 +137,7 @@ const config = ref<AppConfig>({
   http_follow_redirects: true,
   http_connect_timeout_secs: 10,
   http_ignore_tls_errors: true,
+  http_doh_server: 'none',
   proxy_mode: 'system',
   proxy_type: 'http',
   proxy_host: '',
