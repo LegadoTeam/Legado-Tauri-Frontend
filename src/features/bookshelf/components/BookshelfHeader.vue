@@ -1,3 +1,6 @@
+<!--
+  BookshelfHeader — 书架页顶部标题、操作入口与分组标签栏。
+-->
 <script setup lang="ts">
 import {
   LayoutGrid,
@@ -10,7 +13,9 @@ import {
   Pencil,
   Settings2,
 } from 'lucide-vue-next';
+import type { DropdownOption } from 'naive-ui';
 import { computed } from 'vue';
+import MobileToolbarMenu from '@/components/layout/MobileToolbarMenu.vue';
 import type { CardSizeKey } from '@/composables/useViewCardDensity';
 import type { ShelfGroup } from '@/types/shelfGroup';
 
@@ -46,6 +51,66 @@ const enabledGroups = computed(() => {
 const showGroupBar = computed(() => {
   return enabledGroups.value.length > 0;
 });
+
+const mobileMenuOptions = computed<DropdownOption[]>(() => [
+  {
+    label: '搜索书架',
+    key: 'search',
+  },
+  {
+    label: props.showGroupMenu ? '关闭分组管理' : '分组管理',
+    key: 'group-menu',
+  },
+  {
+    label: '刷新书架',
+    key: 'refresh',
+    disabled: props.loading,
+  },
+  {
+    label: '导入本地 TXT',
+    key: 'import-txt',
+  },
+  ...props.cardSizes.map((size) => ({
+    label: `卡片大小：${size.label}`,
+    key: `size-${size.key}`,
+    disabled: props.activeSizeKey === size.key,
+  })),
+  {
+    label: props.privacyModeEnabled ? '退出隐私模式' : '进入隐私模式',
+    key: 'privacy',
+  },
+  {
+    label: '编辑书架',
+    key: 'edit',
+  },
+]);
+
+function handleMobileMenuSelect(key: string) {
+  if (key.startsWith('size-')) {
+    emit('set-size', key.slice(5) as CardSizeKey);
+    return;
+  }
+  switch (key) {
+    case 'search':
+      emit('toggle-search');
+      break;
+    case 'group-menu':
+      emit('toggle-group-menu');
+      break;
+    case 'refresh':
+      emit('refresh');
+      break;
+    case 'import-txt':
+      emit('import-txt');
+      break;
+    case 'privacy':
+      emit('toggle-privacy');
+      break;
+    case 'edit':
+      emit('toggle-edit');
+      break;
+  }
+}
 </script>
 
 <template>
@@ -58,85 +123,87 @@ const showGroupBar = computed(() => {
         </p>
       </div>
       <div class="bs-header__actions">
-        <!-- 搜索按钮 -->
-        <button
-          class="bs-icon-btn"
-          type="button"
-          title="搜索书架"
-          aria-label="搜索书架"
-          @click="emit('toggle-search')"
-        >
-          <Search :size="16" />
-        </button>
-        <!-- 分组按钮 -->
-        <button
-          class="bs-icon-btn"
-          :class="{ 'bs-icon-btn--active': showGroupMenu }"
-          type="button"
-          title="分组管理"
-          aria-label="分组管理"
-          @click="emit('toggle-group-menu')"
-        >
-          <FolderPlus :size="16" />
-        </button>
-        <!-- 刷新书架 -->
-        <button
-          class="bs-icon-btn"
-          :class="{ 'bs-icon-btn--spinning': loading }"
-          type="button"
-          title="刷新书架"
-          aria-label="刷新书架"
-          :disabled="loading"
-          @click="emit('refresh')"
-        >
-          <RefreshCw :size="16" />
-        </button>
-        <!-- TXT 导入 -->
-        <button
-          class="bs-icon-btn"
-          type="button"
-          title="导入本地 TXT"
-          aria-label="导入本地 TXT"
-          @click="emit('import-txt')"
-        >
-          <FilePlus :size="16" />
-        </button>
-        <n-dropdown
-          trigger="click"
-          :options="cardSizes.map((size) => ({ label: size.label, key: size.key }))"
-          :value="activeSizeKey"
-          @select="(key: string) => emit('set-size', key as CardSizeKey)"
-        >
+        <MobileToolbarMenu :options="mobileMenuOptions" @select="handleMobileMenuSelect">
+          <!-- 搜索按钮 -->
           <button
             class="bs-icon-btn"
             type="button"
-            :title="`卡片大小（${activeSizeLabel}）`"
-            aria-label="卡片大小"
+            title="搜索书架"
+            aria-label="搜索书架"
+            @click="emit('toggle-search')"
           >
-            <LayoutGrid :size="16" />
+            <Search :size="16" />
           </button>
-        </n-dropdown>
-        <button
-          class="bs-icon-btn"
-          :class="{ 'bs-icon-btn--active': privacyModeEnabled }"
-          type="button"
-          :title="privacyModeEnabled ? '退出隐私模式' : '进入隐私模式'"
-          aria-label="隐私模式"
-          @click="emit('toggle-privacy')"
-        >
-          <EyeOff v-if="privacyModeEnabled" :size="16" />
-          <Eye v-else :size="16" />
-        </button>
-        <!-- 编辑书架 -->
-        <button
-          class="bs-icon-btn"
-          type="button"
-          title="编辑书架"
-          aria-label="编辑书架"
-          @click="emit('toggle-edit')"
-        >
-          <Pencil :size="16" />
-        </button>
+          <!-- 分组按钮 -->
+          <button
+            class="bs-icon-btn"
+            :class="{ 'bs-icon-btn--active': showGroupMenu }"
+            type="button"
+            title="分组管理"
+            aria-label="分组管理"
+            @click="emit('toggle-group-menu')"
+          >
+            <FolderPlus :size="16" />
+          </button>
+          <!-- 刷新书架 -->
+          <button
+            class="bs-icon-btn"
+            :class="{ 'bs-icon-btn--spinning': loading }"
+            type="button"
+            title="刷新书架"
+            aria-label="刷新书架"
+            :disabled="loading"
+            @click="emit('refresh')"
+          >
+            <RefreshCw :size="16" />
+          </button>
+          <!-- TXT 导入 -->
+          <button
+            class="bs-icon-btn"
+            type="button"
+            title="导入本地 TXT"
+            aria-label="导入本地 TXT"
+            @click="emit('import-txt')"
+          >
+            <FilePlus :size="16" />
+          </button>
+          <n-dropdown
+            trigger="click"
+            :options="cardSizes.map((size) => ({ label: size.label, key: size.key }))"
+            :value="activeSizeKey"
+            @select="(key: string) => emit('set-size', key as CardSizeKey)"
+          >
+            <button
+              class="bs-icon-btn"
+              type="button"
+              :title="`卡片大小（${activeSizeLabel}）`"
+              aria-label="卡片大小"
+            >
+              <LayoutGrid :size="16" />
+            </button>
+          </n-dropdown>
+          <button
+            class="bs-icon-btn"
+            :class="{ 'bs-icon-btn--active': privacyModeEnabled }"
+            type="button"
+            :title="privacyModeEnabled ? '退出隐私模式' : '进入隐私模式'"
+            aria-label="隐私模式"
+            @click="emit('toggle-privacy')"
+          >
+            <EyeOff v-if="privacyModeEnabled" :size="16" />
+            <Eye v-else :size="16" />
+          </button>
+          <!-- 编辑书架 -->
+          <button
+            class="bs-icon-btn"
+            type="button"
+            title="编辑书架"
+            aria-label="编辑书架"
+            @click="emit('toggle-edit')"
+          >
+            <Pencil :size="16" />
+          </button>
+        </MobileToolbarMenu>
       </div>
     </div>
 
