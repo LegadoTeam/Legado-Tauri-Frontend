@@ -30,9 +30,7 @@ const emit = defineEmits<{
       :step="4"
       style="flex: 1"
     />
-    <span class="reader-settings__val" style="width: 40px"
-      >{{ settings.pagePadding.top }}px</span
-    >
+    <span class="reader-settings__val" style="width: 40px">{{ settings.pagePadding.top }}px</span>
   </div>
   <div class="reader-settings__row">
     <span class="reader-settings__label">右边距</span>
@@ -44,9 +42,7 @@ const emit = defineEmits<{
       :step="4"
       style="flex: 1"
     />
-    <span class="reader-settings__val" style="width: 40px"
-      >{{ settings.pagePadding.right }}px</span
-    >
+    <span class="reader-settings__val" style="width: 40px">{{ settings.pagePadding.right }}px</span>
   </div>
   <div class="reader-settings__row">
     <span class="reader-settings__label">下边距</span>
@@ -72,8 +68,6 @@ const emit = defineEmits<{
       :step="4"
       style="flex: 1"
     />
-    <span class="reader-settings__val" style="width: 40px"
-      >{{ settings.pagePadding.left }}px</span
-    >
+    <span class="reader-settings__val" style="width: 40px">{{ settings.pagePadding.left }}px</span>
   </div>
 </template>

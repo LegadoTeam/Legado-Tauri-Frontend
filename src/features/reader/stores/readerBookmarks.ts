@@ -33,10 +33,7 @@ export const useReaderBookmarksStore = defineStore('readerBookmarks', () => {
     chapterIndex: number,
   ): BookmarkEntry[] {
     return (config.state.items as BookmarkEntry[]).filter(
-      (b) =>
-        b.fileName === fileName &&
-        b.chapterIndex === chapterIndex &&
-        b.bookUrl === bookUrl,
+      (b) => b.fileName === fileName && b.chapterIndex === chapterIndex && b.bookUrl === bookUrl,
     );
   }
 
@@ -55,9 +52,7 @@ export const useReaderBookmarksStore = defineStore('readerBookmarks', () => {
     );
   }
 
-  async function addBookmark(
-    entry: Omit<BookmarkEntry, 'id' | 'createdAt'>,
-  ): Promise<void> {
+  async function addBookmark(entry: Omit<BookmarkEntry, 'id' | 'createdAt'>): Promise<void> {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const items: BookmarkEntry[] = [
       ...(config.state.items as BookmarkEntry[]),

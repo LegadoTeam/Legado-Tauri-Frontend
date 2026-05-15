@@ -2,9 +2,9 @@
 import { Edit3, Eye, Save, X } from 'lucide-vue-next';
 import { useMessage, type SelectOption } from 'naive-ui';
 import { computed, reactive, ref, watch } from 'vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import { useBookshelfStore, type ShelfBook, type UpdateShelfBookPayload } from '@/stores';
 import BookCoverImg from '../BookCoverImg.vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 type DetailMode = 'view' | 'edit';
 
@@ -219,8 +219,10 @@ async function saveDetail() {
     mode.value = 'view';
     emit('saved', saved.id);
     message.success('书籍详情已保存');
-  } catch (error) {
-    message.error(`保存失败: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (saveError) {
+    message.error(
+      `保存失败: ${saveError instanceof Error ? saveError.message : String(saveError)}`,
+    );
   } finally {
     saving.value = false;
   }
@@ -288,7 +290,11 @@ watch(
       <div class="bd-summary">
         <div class="bd-cover">
           <BookCoverImg
-            :src="detailBook.coverReferer && detailBook.coverUrl ? { url: detailBook.coverUrl, referer: detailBook.coverReferer } : detailBook.coverUrl"
+            :src="
+              detailBook.coverReferer && detailBook.coverUrl
+                ? { url: detailBook.coverUrl, referer: detailBook.coverReferer }
+                : detailBook.coverUrl
+            "
             :alt="detailBook.name"
             :base-url="detailBook.bookUrl"
           />
@@ -298,7 +304,8 @@ watch(
           <h3>{{ detailBook.name || '未知书名' }}</h3>
           <p>{{ detailBook.author || '佚名' }}</p>
           <p>
-            {{ sourceTypeLabel(detailBook.sourceType) }} · {{ detailBook.sourceName || '未知书源' }}
+            {{ sourceTypeLabel(detailBook.sourceType) }} ·
+            {{ detailBook.sourceName || '未知书源' }}
           </p>
         </div>
       </div>

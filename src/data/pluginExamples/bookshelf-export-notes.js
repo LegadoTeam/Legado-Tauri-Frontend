@@ -18,10 +18,12 @@ legado.registerPlugin({
       var lines = [];
       Object.keys(notes).forEach(function (url) {
         var items = notes[url];
-        if (!Array.isArray(items) || items.length === 0) return;
+        if (!Array.isArray(items) || items.length === 0) {
+          return;
+        }
         lines.push('--- ' + url + ' ---');
         items.forEach(function (note) {
-          var d = new Date(note.time || 0).toLocaleString();
+          var d = new Date(note.time ?? 0).toLocaleString();
           lines.push('[' + d + '] ' + note.text);
         });
         lines.push('');
@@ -55,7 +57,9 @@ legado.registerPlugin({
         cancelText: '取消',
       });
 
-      if (!values) return;
+      if (!values) {
+        return;
+      }
       if (values.copy && count > 0) {
         try {
           await navigator.clipboard.writeText(formatted);
@@ -78,7 +82,7 @@ legado.registerPlugin({
             return true;
           },
           run: async function (context) {
-            await runExport(context && context.book);
+            await runExport(context?.book);
           },
         },
       ],
@@ -122,7 +126,9 @@ legado.registerPlugin({
               submitText: '保存',
             });
 
-            if (!values || !values.note || !String(values.note).trim()) return;
+            if (!values?.note || !String(values.note).trim()) {
+              return;
+            }
 
             var notes = api.storage.readJson('notes', {});
             if (!Array.isArray(notes[chapterUrl])) {
@@ -135,7 +141,9 @@ legado.registerPlugin({
 
           container.appendChild(btn);
           return function () {
-            if (btn.parentNode) btn.parentNode.removeChild(btn);
+            if (btn.parentNode) {
+              btn.parentNode.removeChild(btn);
+            }
           };
         },
       },

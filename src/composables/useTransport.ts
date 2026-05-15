@@ -336,7 +336,7 @@ class WsTransport {
 
   /** 拒绝所有待处理请求 */
   private rejectAllPending(reason: string) {
-    for (const [id, req] of this.pending) {
+    for (const [, req] of this.pending) {
       clearTimeout(req.timer);
       req.reject(new Error(reason));
     }
@@ -388,7 +388,9 @@ function getHarmonyNativeBridge(): HarmonyNativeBridge | null {
   if (typeof window === 'undefined') {
     return null;
   }
-  return ((window as Record<string, unknown>).__legadoNative as HarmonyNativeBridge) ?? null;
+  return (
+    ((window as unknown as Record<string, unknown>).__legadoNative as HarmonyNativeBridge) ?? null
+  );
 }
 
 function ensureHarmonyBridgeRuntime(): HarmonyUiBridgeRuntime {
@@ -484,7 +486,7 @@ function ensureHarmonyBridgeRuntime(): HarmonyUiBridgeRuntime {
     isHarmony: true,
   };
 
-  (window as Record<string, unknown>).__legadoUiBridge = globalBridge;
+  (window as unknown as Record<string, unknown>).__legadoUiBridge = globalBridge;
 
   try {
     nativeBridge.subscribe?.();

@@ -138,7 +138,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
     ),
   );
 
-  const getSourceByFileName = computed(() => (fileName: string) => sources.value.find((s) => s.fileName === fileName));
+  const getSourceByFileName = computed(
+    () => (fileName: string) => sources.value.find((s) => s.fileName === fileName),
+  );
 
   // ── Actions ──────────────────────────────────────────────────────────
 
@@ -240,7 +242,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
                   resolve();
                 })
                 .catch((fallbackErr: unknown) => {
-                  reject(fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr)));
+                  reject(
+                    fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr)),
+                  );
                 });
               return;
             }
@@ -275,7 +279,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
     const stored = listFrontendStorageNamespaceSync(STORAGE_NAMESPACE);
     const patch: Record<string, Set<string>> = {};
     for (const [key, val] of Object.entries(stored)) {
-      if (!key.startsWith(CAP_KEY_PREFIX)) continue;
+      if (!key.startsWith(CAP_KEY_PREFIX)) {
+        continue;
+      }
       const fn = key.slice(CAP_KEY_PREFIX.length);
       if (!fnsCache.value[fn]) {
         patch[fn] = new Set(val ? val.split(',').filter(Boolean) : []);
@@ -330,7 +336,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
       const CONCURRENCY = 5;
       try {
         for (let i = 0; i < pending.length; i += CONCURRENCY) {
-          await Promise.all(pending.slice(i, i + CONCURRENCY).map((src) => detectCapabilities(src.fileName)));
+          await Promise.all(
+            pending.slice(i, i + CONCURRENCY).map((src) => detectCapabilities(src.fileName)),
+          );
         }
       } finally {
         capabilityDetecting.value = false;
@@ -367,7 +375,11 @@ export const useBookSourceStore = defineStore('bookSource', () => {
   }
 
   /** 切换书源启用/禁用状态（包含 API 调用 + 本地状态同步）*/
-  async function toggleSource(fileName: string, enabled: boolean, sourceDir?: string): Promise<void> {
+  async function toggleSource(
+    fileName: string,
+    enabled: boolean,
+    sourceDir?: string,
+  ): Promise<void> {
     await toggleBookSource(fileName, enabled, sourceDir);
     const src = sources.value.find((s) => s.fileName === fileName);
     if (src) {
@@ -418,7 +430,10 @@ export const useBookSourceStore = defineStore('bookSource', () => {
     const now = Date.now();
     const lastCheckedRaw = getFrontendStorageItem(UPDATE_NS, LAST_CHECK_KEY);
     const lastChecked = lastCheckedRaw ? parseInt(lastCheckedRaw, 10) : 0;
-    const effectiveLastChecked = Math.max(updatesCheckedAt, Number.isNaN(lastChecked) ? 0 : lastChecked);
+    const effectiveLastChecked = Math.max(
+      updatesCheckedAt,
+      Number.isNaN(lastChecked) ? 0 : lastChecked,
+    );
     if (pendingUpdates.value.length > 0 && now - effectiveLastChecked < MIN_CHECK_INTERVAL_MS) {
       return;
     }
@@ -436,7 +451,9 @@ export const useBookSourceStore = defineStore('bookSource', () => {
     const CONCURRENCY = 3;
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
-      const batchResults = await Promise.allSettled(batch.map((src) => checkBookSourceUpdate(src.fileName)));
+      const batchResults = await Promise.allSettled(
+        batch.map((src) => checkBookSourceUpdate(src.fileName)),
+      );
       for (const r of batchResults) {
         if (r.status === 'fulfilled' && r.value.hasUpdate) {
           results.push(r.value);

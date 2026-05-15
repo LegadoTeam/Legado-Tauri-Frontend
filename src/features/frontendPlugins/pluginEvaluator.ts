@@ -1,3 +1,11 @@
+import type { ExtensionMeta } from '@/composables/useExtension';
+import type { RuntimePluginRecord } from './pluginRuntimeTypes';
+import type {
+  FrontendPluginApi,
+  FrontendPluginRegistration,
+  PluginHookHandler,
+  ReaderSlotMount,
+} from './pluginTypes';
 import {
   normalizeHandlers,
   normalizeRuntimeMetadata,
@@ -12,14 +20,6 @@ import {
 } from './pluginNormalizer';
 import { createEmptyHookMap, SUPPORTED_FRONTEND_PLUGIN_HOOKS } from './readerHooks';
 import { createEmptySlotMap, SUPPORTED_READER_PLUGIN_SLOTS } from './readerSlots';
-import type { RuntimePluginRecord } from './pluginRuntimeTypes';
-import type {
-  FrontendPluginApi,
-  FrontendPluginRegistration,
-  PluginHookHandler,
-  ReaderSlotMount,
-} from './pluginTypes';
-import type { ExtensionMeta } from '@/composables/useExtension';
 
 export async function evaluatePlugin(
   meta: ExtensionMeta,
@@ -109,7 +109,10 @@ export async function evaluatePlugin(
   baseRecord.themes = normalizeThemeDefinitions(baseRecord, themeDefs);
   baseRecord.backgrounds = normalizeBackgroundDefinitions(baseRecord, backgroundDefs);
   baseRecord.skins = normalizeSkinDefinitions(baseRecord, skinDefs);
-  baseRecord.bookshelfActions = normalizeBookshelfActionDefinitions(baseRecord, bookshelfActionDefs);
+  baseRecord.bookshelfActions = normalizeBookshelfActionDefinitions(
+    baseRecord,
+    bookshelfActionDefs,
+  );
   baseRecord.readerContextActions = normalizeReaderContextActionDefinitions(
     baseRecord,
     readerContextActionDefs,

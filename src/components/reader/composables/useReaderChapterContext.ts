@@ -35,7 +35,7 @@ function readSource<T>(source: ValueSource<T>): T {
 
 export function useReaderChapterContext(options: UseReaderChapterContextOptions) {
   const localAddedShelfId = ref('');
-  const currentShelfId = computed(() => readSource(options.shelfBookId) || localAddedShelfId.value);
+  const currentShelfId = computed(() => readSource(options.shelfBookId) ?? localAddedShelfId.value);
   const isOnShelf = computed(() => !!currentShelfId.value);
   const addingToShelf = ref(false);
   const chapters = computed(() => readSource(options.chapters));
@@ -63,9 +63,13 @@ export function useReaderChapterContext(options: UseReaderChapterContextOptions)
     if (!skinId) {
       return null;
     }
-    return options.readerSkins.value.find((skin) => skin.localId === skinId)?.lockedFlipMode ?? null;
+    return (
+      options.readerSkins.value.find((skin) => skin.localId === skinId)?.lockedFlipMode ?? null
+    );
   });
-  const effectiveFlipMode = computed(() => activeSkinLockedFlipMode.value ?? options.settings.flipMode);
+  const effectiveFlipMode = computed(
+    () => activeSkinLockedFlipMode.value ?? options.settings.flipMode,
+  );
   const isScrollMode = computed(
     () => !isComicMode.value && !isVideoMode.value && effectiveFlipMode.value === 'scroll',
   );
@@ -91,7 +95,8 @@ export function useReaderChapterContext(options: UseReaderChapterContextOptions)
       base['--reader-text-color'] = '#ffffff';
     }
     Object.assign(base, options.readerAppearanceVars.value);
-    base['--reader-tts-hl-bg'] = 'color-mix(in srgb, var(--reader-selection-color) 65%, transparent)';
+    base['--reader-tts-hl-bg'] =
+      'color-mix(in srgb, var(--reader-selection-color) 65%, transparent)';
     return base;
   });
 

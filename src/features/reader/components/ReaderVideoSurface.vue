@@ -2,8 +2,8 @@
 import { storeToRefs } from 'pinia';
 import { ref } from 'vue';
 import type { ChapterGroup } from '@/stores';
-import { useReaderActionsStore, useReaderSessionStore, useReaderViewStore } from '@/stores';
 import VideoPlayerPage from '@/components/reader/modes/VideoPlayerPage.vue';
+import { useReaderActionsStore, useReaderSessionStore, useReaderViewStore } from '@/stores';
 
 defineProps<{
   chapterGroups?: ChapterGroup[];
@@ -21,8 +21,10 @@ const playerRef = ref<{
   getDuration?: () => number;
 } | null>(null);
 
-const { activeChapterIndex, content, error, pendingResumePlaybackTime } = storeToRefs(readerSessionStore);
-const { blockingLoading, bookInfo, chapters, fileName, hasNext, hasPrev } = storeToRefs(readerViewStore);
+const { activeChapterIndex, content, error, pendingResumePlaybackTime } =
+  storeToRefs(readerSessionStore);
+const { blockingLoading, bookInfo, chapters, fileName, hasNext, hasPrev } =
+  storeToRefs(readerViewStore);
 
 function getCurrentTime() {
   return playerRef.value?.getCurrentTime?.() ?? 0;

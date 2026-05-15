@@ -1,13 +1,15 @@
 ﻿/**
  * usePagination — 文本分页引擎
  *
- * 默认使用真实 DOM 渲染测量（dom 引擎）：
+ * 默认使用 Pretext 引擎（pretext）：
+ *   使用 Canvas measureText + Pretext 库做逐行布局，支持 letterSpacing、wordBreak: keep-all、
+ *   CJK/标点/混排更贴近浏览器。@chenglou/pretext 0.0.6+ 起支持 letterSpacing 数字像素，
+ *   0.0.7 修复大量 CJK/标点/软连字符/字距边界问题。
+ *   部分旧版 Android WebView 的 Canvas 测量存在偏差，可切换为 DOM 引擎。
+ *
+ * 可选 DOM 引擎（dom）：
  *   将文本注入隐藏 DOM 容器，通过 Range.getClientRects() 获取精确行高与行字符边界。
  *   天然支持系统字体缩放、WebView 字体自适应、所有 CSS 排版属性，无需任何补偿系数。
- *
- * 可选 Pretext 引擎（pretext）：
- *   使用 Canvas measureText + Pretext 库做逐行布局。
- *   在大多数现代设备上表现良好，但部分旧版 Android WebView 的 Canvas 测量存在偏差。
  *
  * 连续标点保护（Pretext 引擎）：连续的 `……`、`——` 等在传入 Pretext 前先插入 U+2060
  * WORD JOINER，阻止在其间产生换行机会；渲染输出前自动剥离。
@@ -61,6 +63,8 @@ interface PaginationBlockInput {
   trailingGapPx: number;
   firstLineIndentPx: number;
   textAlign: ReaderTypography['textAlign'];
+  /** 字间距 px，传给 Pretext 引擎的 letterSpacing 选项 */
+  letterSpacingPx: number;
   /** 该 block 在原始全文中的字符偏移起始 */
   charOffsetInContent: number;
   /** 该 block 在段落列表中的索引（title = -1） */
@@ -291,6 +295,7 @@ function resolveHorizontalBlocks(
       trailingGapPx: titleBaseFontSize * 1.5,
       firstLineIndentPx: 0,
       textAlign: 'left',
+      letterSpacingPx: typography.letterSpacing,
       charOffsetInContent: -1,
       paragraphIndex: -1,
     });
@@ -311,6 +316,7 @@ function resolveHorizontalBlocks(
       trailingGapPx: Math.max(0, typography.paragraphSpacing),
       firstLineIndentPx: Math.max(0, typography.textIndent * typography.fontSize),
       textAlign: typography.textAlign,
+      letterSpacingPx: typography.letterSpacing,
       charOffsetInContent: charOffset,
       paragraphIndex: i,
     });
@@ -611,7 +617,10 @@ function resolveBlockPretext(block: PaginationBlockInput, availW: number): Pagin
     };
   }
 
-  const prepared = prepareWithSegments(protectStickyPunct(block.text), block.font);
+  const prepared = prepareWithSegments(protectStickyPunct(block.text), block.font, {
+    wordBreak: 'keep-all',
+    letterSpacing: block.letterSpacingPx > 0 ? block.letterSpacingPx : undefined,
+  });
   const firstLineIndentPx = Math.min(block.firstLineIndentPx, Math.max(0, availW - 1));
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 };
   let isFirstLine = true;
@@ -747,11 +756,11 @@ export function usePagination() {
     anchor?: ReadingAnchor,
     /**
      * 排版引擎选择：
-     * - 'dom'     真实 DOM 渲染测量（默认），天然支持系统缩放，兼容性最佳
-     * - 'pretext' Canvas + Pretext 精确排版，部分旧版 Android WebView 可能字间距异常
-     * 旧值 'auto'/'simple' 向后兼容，均视为 'dom'
+     * - 'pretext' Canvas + Pretext 精确排版（默认），支持 letterSpacing/wordBreak/CJK 优化
+     * - 'dom'     真实 DOM 渲染测量，天然支持系统缩放，兼容性最佳，部分旧版 Android 可能更准
+     * 旧值 'auto'/'simple' 向后兼容，均视为 'pretext'
      */
-    paginationEngine: PaginationEngine = 'dom',
+    paginationEngine: PaginationEngine = 'pretext',
   ) {
     const myToken = ++cancelToken;
     isPaginating.value = true;
@@ -776,8 +785,8 @@ export function usePagination() {
       return;
     }
 
-    // 向后兼容旧存储值 'auto'/'simple'
-    const effectiveEngine: 'dom' | 'pretext' = paginationEngine === 'pretext' ? 'pretext' : 'dom';
+    // 向后兼容旧存储值 'auto'/'simple'，默认为 'pretext'
+    const effectiveEngine: 'dom' | 'pretext' = paginationEngine === 'dom' ? 'dom' : 'pretext';
 
     const blocks = resolveHorizontalBlocks(content, prefixHtml, typography);
 

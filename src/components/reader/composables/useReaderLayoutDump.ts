@@ -210,8 +210,7 @@ export function useReaderLayoutDump(options: UseReaderLayoutDumpOptions) {
     const pageText = pageElement.innerText;
     const pageRect = pageElement.getBoundingClientRect();
     const readerRect = readerRoot.getBoundingClientRect();
-    const modeRoot =
-      readerRoot.querySelector<HTMLElement>('.paged-mode') ?? readerRoot;
+    const modeRoot = readerRoot.querySelector<HTMLElement>('.paged-mode') ?? readerRoot;
 
     const dump = {
       tag: 'ReaderLayoutDump',

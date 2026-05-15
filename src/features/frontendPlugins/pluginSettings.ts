@@ -35,7 +35,9 @@ function resolveDynamicBoolean(
 }
 
 export async function resolvePluginSettingFields(
-  rawSchema: PluginSettingField[] | ((context: PluginSettingsContext) => PluginSettingField[] | Promise<PluginSettingField[]>),
+  rawSchema:
+    | PluginSettingField[]
+    | ((context: PluginSettingsContext) => PluginSettingField[] | Promise<PluginSettingField[]>),
   context: PluginSettingsContext,
 ): Promise<ResolvedPluginSettingField[]> {
   const rawFields = typeof rawSchema === 'function' ? await rawSchema(context) : rawSchema;

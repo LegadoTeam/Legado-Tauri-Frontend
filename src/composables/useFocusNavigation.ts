@@ -56,7 +56,7 @@ function isInputEditingTarget(target: EventTarget | null): target is HTMLElement
 }
 
 function getActiveScopeContainer(): HTMLElement | null {
-  return scopeStack.length > 0 ? scopeStack[scopeStack.length - 1]!.container : null;
+  return scopeStack.length > 0 ? scopeStack[scopeStack.length - 1].container : null;
 }
 
 export function getFocusableElements(container: ParentNode = document): HTMLElement[] {
@@ -171,7 +171,7 @@ export function installGlobalFocusNavigation(options?: {
 
     if (isInputEditingTarget(event.target)) {
       if (event.key === 'Escape') {
-        (event.target as HTMLElement).blur();
+        event.target.blur();
         event.preventDefault();
       }
       // 输入框为空时，方向键允许导航出去
@@ -325,7 +325,7 @@ export function useFocusNavigation(containerRef: Ref<HTMLElement | null>) {
       trapHandler = null;
     }
 
-    if (trappedScopeId != null) {
+    if (trappedScopeId !== null && trappedScopeId !== undefined) {
       const idx = scopeStack.findIndex((scope) => scope.id === trappedScopeId);
       if (idx >= 0) {
         scopeStack.splice(idx, 1);

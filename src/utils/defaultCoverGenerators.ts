@@ -1,3 +1,4 @@
+import type { BuiltinCoverGeneratorDefinition } from './coverGenerators/types';
 import { authorBandCoverGenerator } from './coverGenerators/authorBandCover';
 import { businessWorkplaceCoverGenerator } from './coverGenerators/businessWorkplaceCover';
 import { childrenStoryCoverGenerator } from './coverGenerators/childrenStoryCover';
@@ -15,7 +16,6 @@ import { sciFiCoverGenerator } from './coverGenerators/sciFiCover';
 import { suspenseNoirCoverGenerator } from './coverGenerators/suspenseNoirCover';
 import { titleBlockCoverGenerator } from './coverGenerators/titleBlockCover';
 import { traditionalBindingCoverGenerator } from './coverGenerators/traditionalBindingCover';
-import type { BuiltinCoverGeneratorDefinition } from './coverGenerators/types';
 import { webNovelMaleCoverGenerator } from './coverGenerators/webNovelMaleCover';
 import { wuxiaCoverGenerator } from './coverGenerators/wuxiaCover';
 import { youthCampusCoverGenerator } from './coverGenerators/youthCampusCover';

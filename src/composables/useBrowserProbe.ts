@@ -40,7 +40,9 @@ export interface BrowserCookie {
 const DEFAULT_TIMEOUT = 60_000;
 
 function browserTimeoutMs(options: { timeoutSecs?: number; timeout?: number; timeoutMs?: number }) {
-  return (options.timeoutSecs ?? options.timeout ?? ((options.timeoutMs ?? DEFAULT_TIMEOUT) / 1000)) * 1000;
+  return (
+    (options.timeoutSecs ?? options.timeout ?? (options.timeoutMs ?? DEFAULT_TIMEOUT) / 1000) * 1000
+  );
 }
 
 export function browserProbeCreate(options: BrowserCreateOptions = {}) {

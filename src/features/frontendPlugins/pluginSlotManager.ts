@@ -15,7 +15,9 @@ export interface SlotManagerDeps {
 }
 
 async function runSlotCleanup(cleanup?: CleanupFn | null): Promise<void> {
-  if (!cleanup) return;
+  if (!cleanup) {
+    return;
+  }
   await cleanup();
 }
 
@@ -37,7 +39,9 @@ export function createSlotManager(deps: SlotManagerDeps) {
 
   async function remountSlot(slot: ReaderPluginSlot): Promise<void> {
     const hosts = slotHosts.get(slot);
-    if (!hosts || hosts.size === 0) return;
+    if (!hosts || hosts.size === 0) {
+      return;
+    }
 
     const runtimePlugins = deps.getRuntimePlugins();
     for (const record of runtimePlugins) {
@@ -52,13 +56,17 @@ export function createSlotManager(deps: SlotManagerDeps) {
       record.mountedSlots.set(slot, []);
     }
 
-    if (!deps.getCurrentSession()) return;
+    if (!deps.getCurrentSession()) {
+      return;
+    }
 
     for (const host of hosts) {
       host.replaceChildren();
       for (const record of runtimePlugins.filter((item) => item.enabled)) {
         const slotHandlers = record.slotMap[slot];
-        if (!slotHandlers.length) continue;
+        if (!slotHandlers.length) {
+          continue;
+        }
         for (const mount of slotHandlers) {
           const root = document.createElement('div');
           root.dataset.pluginId = record.pluginId;
@@ -87,13 +95,17 @@ export function createSlotManager(deps: SlotManagerDeps) {
   }
 
   function registerReaderHost(slot: ReaderPluginSlot, element: HTMLElement): CleanupFn {
-    if (!slotHosts.has(slot)) slotHosts.set(slot, new Set());
+    if (!slotHosts.has(slot)) {
+      slotHosts.set(slot, new Set());
+    }
     slotHosts.get(slot)!.add(element);
     void remountSlot(slot);
     return () => {
       const hosts = slotHosts.get(slot);
       hosts?.delete(element);
-      if (hosts && hosts.size === 0) slotHosts.delete(slot);
+      if (hosts?.size === 0) {
+        slotHosts.delete(slot);
+      }
       element.replaceChildren();
     };
   }

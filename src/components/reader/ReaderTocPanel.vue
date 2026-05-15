@@ -7,11 +7,11 @@ import { useVirtualList } from '@vueuse/core';
 import { Trash2, RefreshCw, Download } from 'lucide-vue-next';
 import { ref, nextTick, watch, computed } from 'vue';
 import type { ChapterItem } from '@/stores';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import type { ReaderBookInfo } from './types';
 import AppInput from '../base/AppInput.vue';
 import AppTabs from '../base/AppTabs.vue';
 import BookCoverImg from '../BookCoverImg.vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 defineOptions({ inheritAttrs: false });
 
@@ -84,9 +84,7 @@ async function scrollCurrentChapterIntoView() {
   }
 
   const listEl = getTocListElement();
-  const visibleCount = listEl
-    ? Math.max(1, Math.floor(listEl.clientHeight / TOC_ITEM_HEIGHT))
-    : 1;
+  const visibleCount = listEl ? Math.max(1, Math.floor(listEl.clientHeight / TOC_ITEM_HEIGHT)) : 1;
   const firstVisibleIndex = Math.max(0, idx - Math.floor(visibleCount / 2));
 
   // 虚拟列表的 scrollTo 默认会把目标项贴到顶部；这里先滚到目标附近，
@@ -220,7 +218,6 @@ const detailRows = computed(() => {
   }
   return rows;
 });
-
 </script>
 
 <template>
@@ -321,10 +318,7 @@ const detailRows = computed(() => {
           <AppInput v-model="searchQuery" placeholder="搜索章节…" />
         </div>
         <!-- 虚拟滚动章节列表 -->
-        <div
-          v-bind="containerProps"
-          class="reader-toc__list app-scrollbar app-scrollbar--inverse"
-        >
+        <div v-bind="containerProps" class="reader-toc__list app-scrollbar app-scrollbar--inverse">
           <div v-bind="wrapperProps">
             <div
               v-for="item in virtualList"

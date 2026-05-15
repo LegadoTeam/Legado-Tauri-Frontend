@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { Check, ChevronLeft, Pencil, Trash2, Upload } from 'lucide-vue-next';
+import { ref } from 'vue';
 import type { ReaderSettings, ReaderTypography } from '@/components/reader/types';
 import type { UserFontMeta } from '@/composables/useUserFonts';
 
@@ -32,9 +32,7 @@ function triggerUpload() {
 
 function processFiles(files: FileList | File[]) {
   const arr = Array.from(files);
-  const valid = arr.filter((f) =>
-    /\.(ttf|otf|woff|woff2)$/i.test(f.name),
-  );
+  const valid = arr.filter((f) => /\.(ttf|otf|woff|woff2)$/i.test(f.name));
   for (const file of valid) {
     emit('upload-font', file);
   }
@@ -94,105 +92,108 @@ function cancelRename() {
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-  <!-- 标题栏 -->
-  <div class="uf-header">
-    <button class="uf-back" @click="emit('back')">
-      <ChevronLeft :size="16" />
-    </button>
-    <span class="uf-title">上传字体</span>
-    <button class="uf-upload-btn" :disabled="uploading" @click="triggerUpload">
-      <Upload :size="14" />
-      <span>选择文件</span>
-    </button>
-    <!-- 隐藏的文件选择 input，支持多选，跨平台兼容 -->
-    <input
-      ref="fileInput"
-      type="file"
-      accept=".ttf,.otf,.woff,.woff2"
-      multiple
-      style="display: none"
-      @change="onFileChange"
-    />
-  </div>
+    <!-- 标题栏 -->
+    <div class="uf-header">
+      <button class="uf-back" @click="emit('back')">
+        <ChevronLeft :size="16" />
+      </button>
+      <span class="uf-title">上传字体</span>
+      <button class="uf-upload-btn" :disabled="uploading" @click="triggerUpload">
+        <Upload :size="14" />
+        <span>选择文件</span>
+      </button>
+      <!-- 隐藏的文件选择 input，支持多选，跨平台兼容 -->
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".ttf,.otf,.woff,.woff2"
+        multiple
+        style="display: none"
+        @change="onFileChange"
+      />
+    </div>
 
-  <!-- 拖拽提示条 -->
-  <div v-if="isDragOver" class="uf-drop-hint">
-    <Upload :size="20" />
-    <span>松手即可导入字体</span>
-  </div>
+    <!-- 拖拽提示条 -->
+    <div v-if="isDragOver" class="uf-drop-hint">
+      <Upload :size="20" />
+      <span>松手即可导入字体</span>
+    </div>
 
-  <!-- 上传中状态 -->
-  <div v-if="uploading" class="uf-state">
-    <n-spin size="small" />
-    <span>正在上传字体…</span>
-  </div>
-  <!-- 上传错误 -->
-  <div v-if="uploadError" class="uf-state uf-state--error">
-    {{ uploadError }}
-  </div>
+    <!-- 上传中状态 -->
+    <div v-if="uploading" class="uf-state">
+      <n-spin size="small" />
+      <span>正在上传字体…</span>
+    </div>
+    <!-- 上传错误 -->
+    <div v-if="uploadError" class="uf-state uf-state--error">
+      {{ uploadError }}
+    </div>
 
-  <!-- 空状态 -->
-  <div v-if="userFonts.length === 0 && !uploading" class="uf-state uf-empty">
-    <span>暂无上传字体</span>
-    <span class="uf-empty-hint">支持 TTF、OTF、WOFF、WOFF2，可拖拽到此导入</span>
-  </div>
+    <!-- 空状态 -->
+    <div v-if="userFonts.length === 0 && !uploading" class="uf-state uf-empty">
+      <span>暂无上传字体</span>
+      <span class="uf-empty-hint">支持 TTF、OTF、WOFF、WOFF2，可拖拽到此导入</span>
+    </div>
 
-  <!-- 字体列表 -->
-  <div v-else-if="userFonts.length > 0" class="uf-list">
-    <div
-      v-for="font in userFonts"
-      :key="font.id"
-      class="uf-item"
-      :class="{ 'uf-item--active': settings.typography.fontFamily === font.displayName }"
-    >
-      <!-- 名称区（可内联重命名） -->
-      <div class="uf-item__info" @click="emit('update-typography', { fontFamily: font.displayName })">
-        <!-- 重命名输入框 -->
-        <input
-          v-if="renamingId === font.id"
-          v-model="renameValue"
-          class="uf-rename-input"
-          autofocus
-          @keydown.enter.prevent="commitRename(font.id)"
-          @keydown.escape.prevent="cancelRename"
-          @blur="commitRename(font.id)"
-          @click.stop
-        />
-        <div v-else class="uf-item__name">{{ font.displayName }}</div>
-        <!-- 字体预览 -->
-        <div class="uf-item__preview" :style="{ fontFamily: font.displayName }">
-          永字八法 AaBbCc
+    <!-- 字体列表 -->
+    <div v-else-if="userFonts.length > 0" class="uf-list">
+      <div
+        v-for="font in userFonts"
+        :key="font.id"
+        class="uf-item"
+        :class="{ 'uf-item--active': settings.typography.fontFamily === font.displayName }"
+      >
+        <!-- 名称区（可内联重命名） -->
+        <div
+          class="uf-item__info"
+          @click="emit('update-typography', { fontFamily: font.displayName })"
+        >
+          <!-- 重命名输入框 -->
+          <input
+            v-if="renamingId === font.id"
+            v-model="renameValue"
+            class="uf-rename-input"
+            autofocus
+            @keydown.enter.prevent="commitRename(font.id)"
+            @keydown.escape.prevent="cancelRename"
+            @blur="commitRename(font.id)"
+            @click.stop
+          />
+          <div v-else class="uf-item__name">{{ font.displayName }}</div>
+          <!-- 字体预览 -->
+          <div class="uf-item__preview" :style="{ fontFamily: font.displayName }">
+            永字八法 AaBbCc
+          </div>
+        </div>
+
+        <!-- 操作按钮区 -->
+        <div class="uf-item__actions">
+          <!-- 当前选中标记 -->
+          <Check
+            v-if="settings.typography.fontFamily === font.displayName"
+            :size="14"
+            stroke="#63e2b7"
+            :stroke-width="2.5"
+          />
+          <!-- 重命名 -->
+          <button
+            class="uf-icon-btn"
+            title="重命名"
+            @click.stop="renamingId === font.id ? commitRename(font.id) : startRename(font)"
+          >
+            <Pencil :size="13" />
+          </button>
+          <!-- 删除 -->
+          <button
+            class="uf-icon-btn uf-icon-btn--danger"
+            title="删除"
+            @click.stop="emit('delete-font', font.id)"
+          >
+            <Trash2 :size="13" />
+          </button>
         </div>
       </div>
-
-      <!-- 操作按钮区 -->
-      <div class="uf-item__actions">
-        <!-- 当前选中标记 -->
-        <Check
-          v-if="settings.typography.fontFamily === font.displayName"
-          :size="14"
-          stroke="#63e2b7"
-          :stroke-width="2.5"
-        />
-        <!-- 重命名 -->
-        <button
-          class="uf-icon-btn"
-          title="重命名"
-          @click.stop="renamingId === font.id ? commitRename(font.id) : startRename(font)"
-        >
-          <Pencil :size="13" />
-        </button>
-        <!-- 删除 -->
-        <button
-          class="uf-icon-btn uf-icon-btn--danger"
-          title="删除"
-          @click.stop="emit('delete-font', font.id)"
-        >
-          <Trash2 :size="13" />
-        </button>
-      </div>
     </div>
-  </div>
   </div>
 </template>
 
@@ -225,8 +226,13 @@ function cancelRename() {
 }
 
 @keyframes uf-drop-pulse {
-  0%, 100% { border-color: rgba(99, 226, 183, 0.4); }
-  50% { border-color: rgba(99, 226, 183, 0.9); }
+  0%,
+  100% {
+    border-color: rgba(99, 226, 183, 0.4);
+  }
+  50% {
+    border-color: rgba(99, 226, 183, 0.9);
+  }
 }
 
 .uf-header {

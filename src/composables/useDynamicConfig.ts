@@ -20,7 +20,7 @@ type DynamicConfigMigrationContext = {
   readLegacy: (key: string) => string | null;
 };
 
-export interface DynamicConfigOptions<T extends Record<string, unknown>> {
+export interface DynamicConfigOptions<T extends object> {
   namespace: string;
   version: number;
   defaults: () => T;
@@ -28,7 +28,7 @@ export interface DynamicConfigOptions<T extends Record<string, unknown>> {
   legacyKeys?: string[];
 }
 
-export interface DynamicConfigStore<T extends Record<string, unknown>> {
+export interface DynamicConfigStore<T extends object> {
   state: UnwrapNestedRefs<T>;
   /** 后端存储加载完成后 resolve，可用于 onMounted 中等待真实持久化数据就绪再读取状态 */
   ready: Promise<void>;
@@ -37,7 +37,7 @@ export interface DynamicConfigStore<T extends Record<string, unknown>> {
   reload: () => void;
 }
 
-const storeRegistry = new Map<string, DynamicConfigStore<Record<string, unknown>>>();
+const storeRegistry = new Map<string, DynamicConfigStore<object>>();
 const STORAGE_NAMESPACE_PREFIX = 'dynamic-config.';
 const STATE_KEY = 'state';
 
@@ -53,7 +53,7 @@ function clonePlain<T>(value: T): T {
 function readFromCache<T>(namespace: string): DynamicConfigEnvelope<T> | null {
   try {
     const raw = getFrontendStorageItem(namespace, STATE_KEY);
-    if (raw != null && raw !== '') {
+    if (raw !== null && raw !== undefined && raw !== '') {
       return JSON.parse(raw) as DynamicConfigEnvelope<T>;
     }
     return null;
@@ -68,8 +68,8 @@ function writeToBackend(namespace: string, version: number, data: unknown): Prom
   return setFrontendStorageItemAsync(namespace, STATE_KEY, JSON.stringify(payload));
 }
 
-function syncReactiveState<T extends Record<string, unknown>>(target: Record<string, unknown>, next: T) {
-  const cloned = clonePlain(next);
+function syncReactiveState<T extends object>(target: object, next: T) {
+  const cloned = clonePlain(next) as Record<string, unknown>;
   for (const key of Object.keys(target)) {
     if (!(key in cloned)) {
       delete (target as Record<string, unknown>)[key];
@@ -82,7 +82,7 @@ function syncReactiveState<T extends Record<string, unknown>>(target: Record<str
  * 从已加载的后端缓存还原状态（版本匹配返回存储值，否则返回 defaults）。
  * 仅在 ready 之后调用。
  */
-function hydrateFromCache<T extends Record<string, unknown>>(
+function hydrateFromCache<T extends object>(
   storageNamespace: string,
   options: DynamicConfigOptions<T>,
 ): T {
@@ -93,12 +93,12 @@ function hydrateFromCache<T extends Record<string, unknown>>(
   return clonePlain(options.defaults());
 }
 
-export function useDynamicConfig<T extends Record<string, unknown>>(
+export function useDynamicConfig<T extends object>(
   options: DynamicConfigOptions<T>,
 ): DynamicConfigStore<T> {
   const existing = storeRegistry.get(options.namespace);
   if (existing) {
-    return existing as DynamicConfigStore<T>;
+    return existing as unknown as DynamicConfigStore<T>;
   }
 
   const storageNamespace = `${STORAGE_NAMESPACE_PREFIX}${options.namespace}`;
@@ -146,7 +146,9 @@ export function useDynamicConfig<T extends Record<string, unknown>>(
   ).then(() => {
     // 后端加载完毕，从缓存读取真实数据并更新响应式状态
     const hydrated = hydrateFromCache(storageNamespace, options);
-    dbgLog(`[DynConfig] ${options.namespace}: ready，从后端还原的配置 → ` + JSON.stringify(hydrated));
+    dbgLog(
+      `[DynConfig] ${options.namespace}: ready，从后端还原的配置 → ` + JSON.stringify(hydrated),
+    );
     syncReactiveState(state, hydrated);
   });
 
@@ -173,6 +175,6 @@ export function useDynamicConfig<T extends Record<string, unknown>>(
     syncReactiveState(state, hydrateFromCache(storageNamespace, options));
   });
 
-  storeRegistry.set(options.namespace, store as DynamicConfigStore<Record<string, unknown>>);
+  storeRegistry.set(options.namespace, store as unknown as DynamicConfigStore<object>);
   return store;
 }

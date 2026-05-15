@@ -39,7 +39,7 @@ const MODULE_LABELS: Record<string, string> = {
 };
 
 function normalizeLevel(level?: string, message?: string): ShellLogLevel {
-  const fromLevel = (level || '').toUpperCase();
+  const fromLevel = (level ?? '').toUpperCase();
   if (
     fromLevel === 'DEBUG' ||
     fromLevel === 'INFO' ||
@@ -49,7 +49,7 @@ function normalizeLevel(level?: string, message?: string): ShellLogLevel {
     return fromLevel;
   }
 
-  const text = (message || '').toLowerCase();
+  const text = (message ?? '').toLowerCase();
   if (text.includes('error') || text.includes('失败') || text.includes('异常')) {
     return 'ERROR';
   }

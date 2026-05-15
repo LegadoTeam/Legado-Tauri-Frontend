@@ -2,15 +2,15 @@
 import { ChevronLeft } from 'lucide-vue-next';
 import { toRef } from 'vue';
 import { isMobile } from '@/composables/useEnv';
-import { useReaderSettingsPanelModel } from '@/features/reader/settings/useReaderSettingsPanelModel';
 import ReaderSettingsCustomFontPage from '@/features/reader/settings/components/ReaderSettingsCustomFontPage.vue';
-import ReaderSettingsUploadedFontsPage from '@/features/reader/settings/components/ReaderSettingsUploadedFontsPage.vue';
 import ReaderSettingsFontPage from '@/features/reader/settings/components/ReaderSettingsFontPage.vue';
 import ReaderSettingsMorePage from '@/features/reader/settings/components/ReaderSettingsMorePage.vue';
 import ReaderSettingsPagePaddingPage from '@/features/reader/settings/components/ReaderSettingsPagePaddingPage.vue';
 import ReaderSettingsShortcutsPage from '@/features/reader/settings/components/ReaderSettingsShortcutsPage.vue';
 import ReaderSettingsSpacingPage from '@/features/reader/settings/components/ReaderSettingsSpacingPage.vue';
 import ReaderSettingsTypographyPage from '@/features/reader/settings/components/ReaderSettingsTypographyPage.vue';
+import ReaderSettingsUploadedFontsPage from '@/features/reader/settings/components/ReaderSettingsUploadedFontsPage.vue';
+import { useReaderSettingsPanelModel } from '@/features/reader/settings/useReaderSettingsPanelModel';
 
 const props = defineProps<{
   sourceType?: string;
@@ -60,7 +60,6 @@ const {
   copyFontList,
   FONT_PRESETS,
   currentFontLabel,
-  FONT_WEIGHT_PRESETS,
   TEXT_ALIGN_OPTIONS,
   TEXT_SHADOW_PRESETS,
   backgroundOptions,
@@ -69,7 +68,6 @@ const {
   skinOptions,
   selectedSkinId,
   selectSkin,
-  tapZoneBarRef,
   onDividerPointerDown,
   onTapZoneBarPointerMove,
   onTapZoneBarPointerUp,
@@ -155,7 +153,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
               v-for="t in themeOptions"
               :key="t.id"
               class="reader-settings__swatch"
-              :class="{ 'reader-settings__swatch--active': selectedThemeId === t.id }"
+              :class="{
+                'reader-settings__swatch--active': selectedThemeId === t.id,
+              }"
               :style="{
                 background: t.preview.backgroundColor,
                 borderColor: selectedThemeId === t.id ? t.preview.textColor : 'transparent',
@@ -193,7 +193,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
               >
                 <span
                   class="reader-settings__bg-name"
-                  :style="{ color: bg.preview.textColor || 'rgba(0, 0, 0, 0.78)' }"
+                  :style="{
+                    color: bg.preview.textColor || 'rgba(0, 0, 0, 0.78)',
+                  }"
                 >
                   {{ bg.name }}
                 </span>
@@ -209,7 +211,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
               v-for="skin in skinOptions"
               :key="skin.id"
               class="reader-settings__skin-card"
-              :class="{ 'reader-settings__skin-card--active': selectedSkinId === skin.id }"
+              :class="{
+                'reader-settings__skin-card--active': selectedSkinId === skin.id,
+              }"
               :title="skin.description || skin.name"
               @click="selectSkin(skin)"
             >
@@ -250,7 +254,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
                 v-for="opt in activeFlipOptions"
                 :key="opt.value"
                 class="reader-settings__pill"
-                :class="{ 'reader-settings__pill--active': settings.flipMode === opt.value }"
+                :class="{
+                  'reader-settings__pill--active': settings.flipMode === opt.value,
+                }"
                 @click="setFlipMode(opt.value)"
               >
                 {{ opt.label }}
@@ -298,7 +304,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
             v-for="opt in TAP_ACTION_OPTIONS"
             :key="`left-${opt.value}`"
             class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.tapLeftAction === opt.value }"
+            :class="{
+              'reader-settings__pill--active': settings.tapLeftAction === opt.value,
+            }"
             @click="setTapAction('left', opt.value)"
           >
             {{ opt.label }}
@@ -313,7 +321,9 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
             v-for="opt in TAP_ACTION_OPTIONS"
             :key="`right-${opt.value}`"
             class="reader-settings__pill"
-            :class="{ 'reader-settings__pill--active': settings.tapRightAction === opt.value }"
+            :class="{
+              'reader-settings__pill--active': settings.tapRightAction === opt.value,
+            }"
             @click="setTapAction('right', opt.value)"
           >
             {{ opt.label }}
@@ -960,5 +970,4 @@ defineExpose({ isNight, toggleDayNight, hideTapZoneDebugPreview });
   background: rgba(99, 226, 183, 0.2);
   color: #63e2b7;
 }
-
 </style>

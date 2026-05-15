@@ -109,31 +109,29 @@
       (() => {
         const BOOT_TIMEOUT_MS = 15000;
         const state = {
-          stage: "html-ready",
+          stage: 'html-ready',
           errorShown: false,
         };
 
         function escapeHtml(value) {
           return String(value).replace(/[&<>\"']/g, (ch) => {
-            if (ch === "&") return "&amp;";
-            if (ch === "<") return "&lt;";
-            if (ch === ">") return "&gt;";
-            if (ch === '"') return "&quot;";
-            return "&#39;";
+            if (ch === '&') return '&amp;';
+            if (ch === '<') return '&lt;';
+            if (ch === '>') return '&gt;';
+            if (ch === '"') return '&quot;';
+            return '&#39;';
           });
         }
 
         function loadVConsoleForDebug() {
           if (window.__vcDebugLoading) return;
           window.__vcDebugLoading = true;
-          var s = document.createElement("script");
-          s.src = "https://unpkg.com/vconsole@latest/dist/vconsole.min.js";
+          var s = document.createElement('script');
+          s.src = 'https://unpkg.com/vconsole@latest/dist/vconsole.min.js';
           s.onload = function () {
-            var isDark = window.matchMedia(
-              "(prefers-color-scheme: dark)",
-            ).matches;
+            var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             var vc = new window.VConsole({
-              theme: isDark ? "dark" : "light",
+              theme: isDark ? 'dark' : 'light',
             });
             vc.show();
           };
@@ -144,24 +142,23 @@
           if (state.errorShown) return;
           state.errorShown = true;
           loadVConsoleForDebug();
-          const skeleton = document.getElementById("app-skeleton");
+          const skeleton = document.getElementById('app-skeleton');
           if (!skeleton) return;
-          skeleton.classList.remove("hidden");
-          skeleton.classList.add("boot-error");
+          skeleton.classList.remove('hidden');
+          skeleton.classList.add('boot-error');
           skeleton.innerHTML =
             '<div class="skeleton-error">' +
             '<div class="skeleton-error__title">应用启动失败</div>' +
             `<div class="skeleton-error__message">${escapeHtml(message)}</div>` +
             '<div class="skeleton-error__hint">请按 F12 打开 DevTools 查看报错；如果连页面脚本都没起起来，请检查正式版资源文件是否完整。</div>' +
-            "</div>";
+            '</div>';
         }
 
         function formatReason(reason) {
-          if (!reason) return "未知错误";
-          if (typeof reason === "string") return reason;
-          if (reason instanceof Error)
-            return reason.stack || reason.message || String(reason);
-          if (typeof reason === "object") {
+          if (!reason) return '未知错误';
+          if (typeof reason === 'string') return reason;
+          if (reason instanceof Error) return reason.stack || reason.message || String(reason);
+          if (typeof reason === 'object') {
             try {
               return JSON.stringify(reason, null, 2);
             } catch (_) {
@@ -178,22 +175,20 @@
           renderBootError(message);
         };
 
-        window.addEventListener("error", (event) => {
+        window.addEventListener('error', (event) => {
           const details =
             event.error?.stack ||
             event.message ||
-            `资源加载失败: ${event.filename || "unknown file"}`;
+            `资源加载失败: ${event.filename || 'unknown file'}`;
           renderBootError(details);
         });
 
-        window.addEventListener("unhandledrejection", (event) => {
-          renderBootError(
-            `未处理的 Promise 异常:\n${formatReason(event.reason)}`,
-          );
+        window.addEventListener('unhandledrejection', (event) => {
+          renderBootError(`未处理的 Promise 异常:\n${formatReason(event.reason)}`);
         });
 
         window.setTimeout(() => {
-          if (state.stage !== "app-mounted" && !state.errorShown) {
+          if (state.stage !== 'app-mounted' && !state.errorShown) {
             renderBootError(
               `前端入口在 ${BOOT_TIMEOUT_MS / 1000}s 内没有完成挂载，当前阶段: ${state.stage}`,
             );

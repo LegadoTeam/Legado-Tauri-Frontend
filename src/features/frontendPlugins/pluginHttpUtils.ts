@@ -1,6 +1,6 @@
-import type { FrontendPluginHttpRequest, FrontendPluginHttpResponse } from './pluginTypes';
 import type { PatchShelfBookPayload, ShelfBook } from '@/composables/useBookshelf';
 import { invokeWithTimeout } from '@/composables/useInvoke';
+import type { FrontendPluginHttpRequest, FrontendPluginHttpResponse } from './pluginTypes';
 
 export function normalizeHttpHeaders(headers?: Record<string, string>): Array<[string, string]> {
   if (!headers) {

@@ -55,7 +55,9 @@ function generateId(): string {
 function loadAllSessions(): AiSession[] {
   try {
     const raw = getFrontendStorageItem(STORAGE_NAMESPACE, SESSIONS_KEY);
-    if (raw) return JSON.parse(raw) as AiSession[];
+    if (raw) {
+      return JSON.parse(raw) as AiSession[];
+    }
   } catch {
     // ignore
   }
@@ -110,7 +112,9 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
     });
 
     onFrontendStorageChange(({ namespace }) => {
-      if (namespace !== STORAGE_NAMESPACE) return;
+      if (namespace !== STORAGE_NAMESPACE) {
+        return;
+      }
       sessions.value = loadAllSessions();
       currentSessionId.value = getFrontendStorageItem(STORAGE_NAMESPACE, CURRENT_SESSION_KEY) ?? '';
     });
@@ -154,7 +158,9 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
 
   function updateSession(id: string, patch: Partial<Omit<AiSession, 'id' | 'createdAt'>>): void {
     const idx = sessions.value.findIndex((s) => s.id === id);
-    if (idx === -1) return;
+    if (idx === -1) {
+      return;
+    }
     sessions.value[idx] = {
       ...sessions.value[idx],
       ...patch,
@@ -180,7 +186,9 @@ export const useAiSessionsStore = defineStore('aiSessions', () => {
     testResults: TestResult[],
   ): void {
     const idx = sessions.value.findIndex((s) => s.id === sessionId);
-    if (idx === -1) return;
+    if (idx === -1) {
+      return;
+    }
     const session = sessions.value[idx];
     const prevVersion = session.drafts[session.drafts.length - 1]?.version ?? 0;
     const snapshot: AiDraft = {

@@ -35,7 +35,9 @@ function getFocusableElements(container: ParentNode = document): HTMLElement[] {
 }
 
 function focusElement(el: HTMLElement | undefined) {
-  if (!el) return;
+  if (!el) {
+    return;
+  }
   el.focus({ preventScroll: false });
   el.dataset.focused = 'true';
 
@@ -57,7 +59,9 @@ function findNearestByDirection(
   let bestScore = Number.POSITIVE_INFINITY;
 
   for (const el of elements) {
-    if (el === current) continue;
+    if (el === current) {
+      continue;
+    }
 
     const rect = el.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -72,7 +76,9 @@ function findNearestByDirection(
       (direction === 'left' && dx < -4) ||
       (direction === 'right' && dx > 4);
 
-    if (!isCandidate) continue;
+    if (!isCandidate) {
+      continue;
+    }
 
     const primary = direction === 'up' || direction === 'down' ? Math.abs(dy) : Math.abs(dx);
     const secondary = direction === 'up' || direction === 'down' ? Math.abs(dx) : Math.abs(dy);
@@ -97,7 +103,9 @@ export function useRemoteControl(options?: {
 }) {
   function onKeyDown(event: KeyboardEvent) {
     const action = keyMap[event.key];
-    if (!action) return;
+    if (!action) {
+      return;
+    }
 
     const active = document.activeElement as HTMLElement | null;
     const focusables = getFocusableElements();
@@ -144,11 +152,7 @@ export function useRemoteControl(options?: {
       return;
     }
 
-    const next = findNearestByDirection(
-      active,
-      focusables,
-      action as 'up' | 'down' | 'left' | 'right',
-    );
+    const next = findNearestByDirection(active, focusables, action);
     if (next) {
       event.preventDefault();
       focusElement(next);

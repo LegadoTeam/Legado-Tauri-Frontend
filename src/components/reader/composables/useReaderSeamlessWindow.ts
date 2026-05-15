@@ -103,9 +103,7 @@ function assignSeamlessChapterSlot(
 }
 
 function clampRatio(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.min(1, Math.max(0, value))
-    : 0;
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
 
 function normalizePageIndex(value: unknown): number {
@@ -230,7 +228,8 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
         resetSeamlessChapterSlot(slot);
       }
     } finally {
-      const activeController = side === 'prev' ? prevChapterPrefetchAbort : nextChapterPrefetchAbort;
+      const activeController =
+        side === 'prev' ? prevChapterPrefetchAbort : nextChapterPrefetchAbort;
       if (activeController === controller && !slot.content.value) {
         slot.loading.value = false;
       }
@@ -271,7 +270,11 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     if (prevIndex >= 0 && slots.prev.loading.value && prevChapterPrefetchTask) {
       tasks.push(prevChapterPrefetchTask);
     }
-    if (nextIndex < options.getChapterCount() && slots.next.loading.value && nextChapterPrefetchTask) {
+    if (
+      nextIndex < options.getChapterCount() &&
+      slots.next.loading.value &&
+      nextChapterPrefetchTask
+    ) {
       tasks.push(nextChapterPrefetchTask);
     }
     if (tasks.length > 0) {
@@ -349,8 +352,7 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
       pageIndex:
         mode === 'scroll'
           ? normalizePageIndex(
-              modeRef?.getAdjacentLineAnchor?.(side) ??
-                modeRef?.getAdjacentParagraphIndex?.(side),
+              modeRef?.getAdjacentLineAnchor?.(side) ?? modeRef?.getAdjacentParagraphIndex?.(side),
             )
           : -1,
       scrollRatio: mode === 'scroll' ? clampRatio(modeRef?.getAdjacentScrollRatio?.(side)) : -1,
@@ -358,10 +360,7 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     };
   }
 
-  async function syncProgressForSeamlessChapter(
-    index: number,
-    position: ReaderPositionSnapshot,
-  ) {
+  async function syncProgressForSeamlessChapter(index: number, position: ReaderPositionSnapshot) {
     const chapter = options.getChapter(index);
     if (chapter && options.currentShelfId.value) {
       void options
@@ -375,7 +374,11 @@ export function useReaderSeamlessWindow(options: UseReaderSeamlessWindowOptions)
     }
   }
 
-  async function enterAdjacentChapter(mode: LinearSeamlessMode, side: SeamlessSide, sectionHeight?: number) {
+  async function enterAdjacentChapter(
+    mode: LinearSeamlessMode,
+    side: SeamlessSide,
+    sectionHeight?: number,
+  ) {
     const isForward = side === 'next';
     const canEnter = isForward ? options.hasNext.value : options.hasPrev.value;
     if (!canEnter || options.openingChapter.value || options.restoringPosition.value) {

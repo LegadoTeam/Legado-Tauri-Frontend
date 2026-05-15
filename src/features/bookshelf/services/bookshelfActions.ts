@@ -21,7 +21,7 @@ export function useBookshelfActions(message: MessageApi) {
   const shelfGroups = useShelfGroups();
 
   function syncOpenReaderBookInfo(bookId: string) {
-    readerStore.syncOpenReaderBookInfo(bookshelfStore.books.find((book) => book.id === bookId));
+    readerStore.syncOpenReaderBookInfo(bookshelfStore.books.find((book: ShelfBook) => book.id === bookId));
   }
 
   async function handlePluginCoverGenerate(book: ShelfBook, generatorId: string) {
@@ -36,7 +36,7 @@ export function useBookshelfActions(message: MessageApi) {
         coverUrl: result.coverUrl ?? result.patch?.coverUrl,
       });
       syncOpenReaderBookInfo(book.id);
-      message.success(result.message || '已写回插件生成的封面');
+      message.success(result.message ?? '已写回插件生成的封面');
     } catch (error: unknown) {
       message.error(`插件封面生成失败: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -114,7 +114,7 @@ export function useBookshelfActions(message: MessageApi) {
       uiStore.switchTargetBook = book;
       try {
         const cached = await bookshelfStore.getChapters(book.id);
-        uiStore.switchTargetChapters = cached.map((chapter) => ({
+        uiStore.switchTargetChapters = cached.map((chapter: ChapterItem) => ({
           name: chapter.name,
           url: chapter.url,
         }));
@@ -131,7 +131,7 @@ export function useBookshelfActions(message: MessageApi) {
         if (readerStore.showReader && readerStore.readerShelfId === restored.book.id) {
           readerStore.applySourceSwitchToReader({
             shelfBook: restored.book,
-            chapters: restored.chapters.map((chapter) => ({
+            chapters: restored.chapters.map((chapter: ChapterItem) => ({
               name: chapter.name,
               url: chapter.url,
             })),

@@ -1,7 +1,7 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue';
 import { defineStore } from 'pinia';
-import type { ChapterItem } from '@/stores/scriptBridge';
+import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue';
 import type { ReaderBookInfo, TemporaryChapterSourceOverride } from '@/components/reader/types';
+import type { ChapterItem } from '@/stores/scriptBridge';
 
 type PagedModeKind = 'slide' | 'cover' | 'simulation' | 'none';
 type ValueSource<T> = Ref<T> | ComputedRef<T>;
@@ -72,7 +72,9 @@ export const useReaderViewStore = defineStore('readerView', () => {
   const bindings = shallowRef<ReaderViewBindings | null>(null);
 
   const chapters = computed<ChapterItem[]>(() => readSource(bindings.value?.chapters, []));
-  const bookInfo = computed<ReaderBookInfo | undefined>(() => readSource(bindings.value?.bookInfo, undefined));
+  const bookInfo = computed<ReaderBookInfo | undefined>(() =>
+    readSource(bindings.value?.bookInfo, undefined),
+  );
   const sourceType = computed(() => readSource(bindings.value?.sourceType, 'novel'));
   const fileName = computed(() => readSource(bindings.value?.fileName, ''));
   const refreshingToc = computed(() => readSource(bindings.value?.refreshingToc, false));
@@ -87,7 +89,9 @@ export const useReaderViewStore = defineStore('readerView', () => {
   const legacyPagedMode = computed<PagedModeKind | null>(() =>
     readSource(bindings.value?.legacyPagedMode, null),
   );
-  const activePagedPages = computed<string[]>(() => readSource(bindings.value?.activePagedPages, []));
+  const activePagedPages = computed<string[]>(() =>
+    readSource(bindings.value?.activePagedPages, []),
+  );
   const prevBoundaryPage = computed(() => readSource(bindings.value?.prevBoundaryPage, ''));
   const nextBoundaryPage = computed(() => readSource(bindings.value?.nextBoundaryPage, ''));
   const blockingLoading = computed(() => readSource(bindings.value?.blockingLoading, false));
@@ -99,32 +103,42 @@ export const useReaderViewStore = defineStore('readerView', () => {
     readSource(bindings.value?.currentChapterOverride, null),
   );
   const ttsProgressText = computed(() => readSource(bindings.value?.ttsProgressText, ''));
-  const ttsScrollHighlightIdx = computed(() => readSource(bindings.value?.ttsScrollHighlightIdx, -1));
+  const ttsScrollHighlightIdx = computed(() =>
+    readSource(bindings.value?.ttsScrollHighlightIdx, -1),
+  );
   const currentScrollChapterLoading = computed(() =>
     readSource(bindings.value?.currentScrollChapterLoading, false),
   );
   const prevScrollChapterContent = computed(() =>
     readSource(bindings.value?.prevScrollChapterContent, ''),
   );
-  const prevScrollChapterTitle = computed(() => readSource(bindings.value?.prevScrollChapterTitle, ''));
+  const prevScrollChapterTitle = computed(() =>
+    readSource(bindings.value?.prevScrollChapterTitle, ''),
+  );
   const prevScrollChapterLoading = computed(() =>
     readSource(bindings.value?.prevScrollChapterLoading, false),
   );
   const nextScrollChapterContent = computed(() =>
     readSource(bindings.value?.nextScrollChapterContent, ''),
   );
-  const nextScrollChapterTitle = computed(() => readSource(bindings.value?.nextScrollChapterTitle, ''));
+  const nextScrollChapterTitle = computed(() =>
+    readSource(bindings.value?.nextScrollChapterTitle, ''),
+  );
   const nextScrollChapterLoading = computed(() =>
     readSource(bindings.value?.nextScrollChapterLoading, false),
   );
   const prevComicChapterContent = computed(() =>
     readSource(bindings.value?.prevComicChapterContent, ''),
   );
-  const prevComicChapterTitle = computed(() => readSource(bindings.value?.prevComicChapterTitle, ''));
+  const prevComicChapterTitle = computed(() =>
+    readSource(bindings.value?.prevComicChapterTitle, ''),
+  );
   const nextComicChapterContent = computed(() =>
     readSource(bindings.value?.nextComicChapterContent, ''),
   );
-  const nextComicChapterTitle = computed(() => readSource(bindings.value?.nextComicChapterTitle, ''));
+  const nextComicChapterTitle = computed(() =>
+    readSource(bindings.value?.nextComicChapterTitle, ''),
+  );
   const contentRefs = computed(() => bindings.value?.contentRefs ?? emptyContentRefs);
   const bookName = computed(() => bookInfo.value?.name ?? '');
   const bookUrl = computed(() => bookInfo.value?.bookUrl ?? '');

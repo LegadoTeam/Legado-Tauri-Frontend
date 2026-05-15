@@ -45,12 +45,20 @@ const emit = defineEmits<{
       <div class="src-card__title">
         <div class="src-card__name-line">
           <span class="src-card__name">{{ src.name }}</span>
-          <n-tag v-if="!src.enabled" size="tiny" :bordered="false" class="src-card__badge src-card__badge--off"
+          <n-tag
+            v-if="!src.enabled"
+            size="tiny"
+            :bordered="false"
+            class="src-card__badge src-card__badge--off"
             >已禁用</n-tag
           >
-          <n-tag v-if="src.tags[0]" size="tiny" :bordered="false" class="src-card__badge src-card__badge--group">{{
-            src.tags[0]
-          }}</n-tag>
+          <n-tag
+            v-if="src.tags[0]"
+            size="tiny"
+            :bordered="false"
+            class="src-card__badge src-card__badge--group"
+            >{{ src.tags[0] }}</n-tag
+          >
           <n-tag
             v-if="src.sourceDir !== sourceDir"
             size="tiny"
@@ -72,7 +80,9 @@ const emit = defineEmits<{
           <span v-if="src.author" class="src-card__author">{{ src.author }}</span>
         </div>
         <div class="src-card__url-line">
-          <a class="src-card__url" href="#" @click.prevent.stop="emit('open-url', src.url)">{{ src.url }}</a>
+          <a class="src-card__url" href="#" @click.prevent.stop="emit('open-url', src.url)">{{
+            src.url
+          }}</a>
           <n-tag
             v-if="src.urls && src.urls.length > 1"
             size="tiny"
@@ -85,7 +95,12 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <n-switch :value="src.enabled" size="small" class="src-card__switch" @update:value="emit('toggle')" />
+      <n-switch
+        :value="src.enabled"
+        size="small"
+        class="src-card__switch"
+        @update:value="emit('toggle')"
+      />
     </div>
 
     <!-- 能力 + 标签 -->
@@ -134,9 +149,14 @@ const emit = defineEmits<{
       <span v-else class="src-card__cap-loading">检测中…</span>
       <template v-if="src.tags.length > 1">
         <span class="src-card__chip-sep" />
-        <n-tag v-for="t in src.tags.slice(1)" :key="t" size="tiny" :bordered="false" class="src-card__tag">{{
-          t
-        }}</n-tag>
+        <n-tag
+          v-for="t in src.tags.slice(1)"
+          :key="t"
+          size="tiny"
+          :bordered="false"
+          class="src-card__tag"
+          >{{ t }}</n-tag
+        >
       </template>
     </div>
 
@@ -158,15 +178,29 @@ const emit = defineEmits<{
         @click="emit('apply-update')"
         >升级</n-button
       >
-      <n-button size="tiny" quaternary class="src-action src-action--edit" @click="emit('edit')">编辑</n-button>
+      <n-button size="tiny" quaternary class="src-action src-action--edit" @click="emit('edit')"
+        >编辑</n-button
+      >
       <n-button size="tiny" quaternary class="src-action" @click="emit('reload')">重载</n-button>
-      <n-button size="tiny" quaternary class="src-action src-action--debug" @click="emit('navigate-debug')"
+      <n-button
+        size="tiny"
+        quaternary
+        class="src-action src-action--debug"
+        @click="emit('navigate-debug')"
         >调试</n-button
       >
       <!-- 每书源延迟覆盖 -->
-      <n-popover trigger="click" placement="top" @update:show="(show: boolean) => show && emit('load-delay')">
+      <n-popover
+        trigger="click"
+        placement="top"
+        @update:show="(show: boolean) => show && emit('load-delay')"
+      >
         <template #trigger>
-          <n-button size="tiny" quaternary class="src-action" :title="'最小请求延迟覆盖：' + delayOverride + ' ms'"
+          <n-button
+            size="tiny"
+            quaternary
+            class="src-action"
+            :title="'最小请求延迟覆盖：' + delayOverride + ' ms'"
             >延迟</n-button
           >
         </template>
@@ -181,10 +215,14 @@ const emit = defineEmits<{
             style="width: 100%"
             @update:value="(v: number | null) => emit('save-delay', v)"
           />
-          <span style="font-size: 0.75rem; opacity: 0.6"> 0 表示跟随全局设置；与 @minDelay 取最大值 </span>
+          <span style="font-size: 0.75rem; opacity: 0.6">
+            0 表示跟随全局设置；与 @minDelay 取最大值
+          </span>
         </div>
       </n-popover>
-      <n-button size="tiny" quaternary class="src-action src-action--delete" @click="emit('delete')">删除</n-button>
+      <n-button size="tiny" quaternary class="src-action src-action--delete" @click="emit('delete')"
+        >删除</n-button
+      >
     </div>
   </div>
 </template>

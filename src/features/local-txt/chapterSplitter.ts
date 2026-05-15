@@ -91,7 +91,9 @@ export const BUILTIN_RULES: ChapterRule[] = [
     name: '宽松中文章节',
     description: '在标准规则基础上，额外匹配行首章节关键字开头的短行（≤60字）',
     test: (line) => {
-      if (CN_CHAPTER_RE.test(line) || FULLWIDTH_CHAPTER_RE.test(line)) return true;
+      if (CN_CHAPTER_RE.test(line) || FULLWIDTH_CHAPTER_RE.test(line)) {
+        return true;
+      }
       // 额外：以"章"/"节"/"卷"/"回"/"话"字结尾的短行（标题感强）
       return line.length <= 60 && /^[第上下][零一二三四五六七八九十百千万亿0-9]+/.test(line);
     },
@@ -119,9 +121,7 @@ export const BUILTIN_RULES: ChapterRule[] = [
     name: '中文章节 + 分隔线（推荐）',
     description: '同时识别中文章节标题和装饰分隔线，适合大多数网文',
     test: (line) =>
-      CN_CHAPTER_RE.test(line) ||
-      FULLWIDTH_CHAPTER_RE.test(line) ||
-      DIVIDER_RE.test(line),
+      CN_CHAPTER_RE.test(line) || FULLWIDTH_CHAPTER_RE.test(line) || DIVIDER_RE.test(line),
   },
 ];
 
@@ -148,7 +148,9 @@ export function registerChapterRule(rule: ChapterRule): void {
  */
 export function unregisterChapterRule(id: string): void {
   const idx = pluginRules.findIndex((r) => r.id === id);
-  if (idx !== -1) pluginRules.splice(idx, 1);
+  if (idx !== -1) {
+    pluginRules.splice(idx, 1);
+  }
 }
 
 /**

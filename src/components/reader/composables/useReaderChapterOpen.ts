@@ -400,7 +400,8 @@ export function useReaderChapterOpen(options: UseReaderChapterOpenOptions) {
         options.activeChapterIndex.value = index;
         options.content.value = '';
         options.currentPageIndex.value = -1;
-        options.currentScrollRatio.value = restore.scrollRatio >= 0 ? clampReaderRatio(restore.scrollRatio) : 0;
+        options.currentScrollRatio.value =
+          restore.scrollRatio >= 0 ? clampReaderRatio(restore.scrollRatio) : 0;
       }
 
       const text = await options.fetchProcessedChapterText(

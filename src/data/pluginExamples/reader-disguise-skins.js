@@ -23,7 +23,7 @@ function makeWindowVars(vars) {
     '--reader-body-border': vars.bodyBorder,
     '--reader-body-shadow': vars.bodyShadow,
     '--reader-body-radius': vars.bodyRadius,
-    '--reader-body-backdrop-filter': vars.bodyBackdropFilter || 'none',
+    '--reader-body-backdrop-filter': vars.bodyBackdropFilter ?? 'none',
     '--reader-top-top': vars.topTop,
     '--reader-top-left': vars.topInset,
     '--reader-top-right': vars.topInset,
@@ -210,7 +210,9 @@ legado.registerPlugin({
     var appliedTheme = null;
 
     async function restoreAppTheme() {
-      if (!appliedTheme) return;
+      if (!appliedTheme) {
+        return;
+      }
       var t = appliedTheme;
       appliedTheme = null;
       await api.ui.setAppTheme(t);
@@ -221,7 +223,7 @@ legado.registerPlugin({
         await restoreAppTheme();
         return;
       }
-      var skinId = session && session.appearance ? session.appearance.skinPresetId : '';
+      var skinId = session?.appearance ? session.appearance.skinPresetId : '';
       var isNotepadDark = skinId === 'reader-disguise-skins:notepad';
       var isNotepadLight = skinId === 'reader-disguise-skins:notepad-light';
       var isWordWps =
@@ -231,9 +233,7 @@ legado.registerPlugin({
         await restoreAppTheme();
         return;
       }
-      if (!appliedTheme) {
-        appliedTheme = api.ui.getAppTheme();
-      }
+      appliedTheme ??= api.ui.getAppTheme();
       // 记事本深色 → dark；记事本浅色 / Word / WPS → light
       await api.ui.setAppTheme(isNotepadDark ? 'dark' : 'light');
     }

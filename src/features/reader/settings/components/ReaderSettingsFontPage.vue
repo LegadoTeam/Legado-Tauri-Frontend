@@ -50,7 +50,10 @@ const emit = defineEmits<{
     <!-- 用户上传字体入口 -->
     <button
       class="reader-settings__font-item reader-settings__font-item--nav"
-      @click="emit('navigate', 'uploadedFont'); emit('load-user-fonts');"
+      @click="
+        emit('navigate', 'uploadedFont');
+        emit('load-user-fonts');
+      "
     >
       <span>上传字体</span>
       <ChevronRight :size="14" />
@@ -64,7 +67,10 @@ const emit = defineEmits<{
           !fontPresets.some((p) => p.value === settings.typography.fontFamily) &&
           settings.typography.fontFamily !== '',
       }"
-      @click="emit('navigate', 'customFont'); emit('load-system-fonts');"
+      @click="
+        emit('navigate', 'customFont');
+        emit('load-system-fonts');
+      "
     >
       <span>自定义系统字体</span>
       <div style="display: flex; align-items: center; gap: 6px">

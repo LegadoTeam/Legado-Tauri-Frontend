@@ -1,4 +1,5 @@
 ﻿import type { MessageApi } from 'naive-ui';
+import { useTocAutoUpdate } from '@/composables/useTocAutoUpdate';
 import {
   useBookshelfStore,
   useMusicPlayerStore,
@@ -7,7 +8,6 @@ import {
   type ShelfBook,
 } from '@/stores';
 import { LOCAL_TXT_FILE_NAME } from '@/stores/bookshelf';
-import { useTocAutoUpdate } from '@/composables/useTocAutoUpdate';
 import { useBookshelfReaderStore } from '../stores/bookshelfReader';
 import { useBookshelfUiStore } from '../stores/bookshelfUi';
 import { chapterItemsToCachedChapters } from '../utils/readerBookInfo';
@@ -50,14 +50,20 @@ export function useBookshelfReaderLauncher(message: MessageApi) {
         const info = await scriptBridgeStore.runBookInfo(book.fileName, book.bookUrl);
         const tocUrl = (info as { tocUrl?: string }).tocUrl ?? book.bookUrl;
         const raw = await scriptBridgeStore.runChapterList(book.fileName, tocUrl);
-        const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map((chapter, index) => ({
-          index,
-          name: chapter.name,
-          url: chapter.url,
-          group: chapter.group,
-        }));
+        const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map(
+          (chapter, index) => ({
+            index,
+            name: chapter.name,
+            url: chapter.url,
+            group: chapter.group,
+          }),
+        );
         readerStore.setChapters(
-          fetched.map((chapter) => ({ name: chapter.name, url: chapter.url, group: chapter.group })),
+          fetched.map((chapter) => ({
+            name: chapter.name,
+            url: chapter.url,
+            group: chapter.group,
+          })),
         );
         await bookshelfStore.saveChapters(book.id, fetched);
       } catch (error: unknown) {
@@ -122,15 +128,19 @@ export function useBookshelfReaderLauncher(message: MessageApi) {
       const info = await scriptBridgeStore.runBookInfo(fileName, bookUrl);
       const tocUrl = (info as { tocUrl?: string }).tocUrl ?? bookUrl;
       const raw = await scriptBridgeStore.runChapterList(fileName, tocUrl);
-      const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map((chapter, index) => ({
-        index,
-        name: chapter.name,
-        url: chapter.url,
-        group: chapter.group,
-      }));
+      const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map(
+        (chapter, index) => ({
+          index,
+          name: chapter.name,
+          url: chapter.url,
+          group: chapter.group,
+        }),
+      );
       const oldUrls = new Set(readerStore.readerChapters.map((chapter) => chapter.url));
       const newCount = fetched.filter((chapter) => !oldUrls.has(chapter.url)).length;
-      readerStore.setChapters(fetched.map((chapter) => ({ name: chapter.name, url: chapter.url, group: chapter.group })));
+      readerStore.setChapters(
+        fetched.map((chapter) => ({ name: chapter.name, url: chapter.url, group: chapter.group })),
+      );
       await bookshelfStore.saveChapters(readerStore.readerShelfId, fetched);
       if (newCount > 0) {
         message.success(`目录已更新，新增 ${newCount} 章`);

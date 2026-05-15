@@ -136,13 +136,12 @@ export function normalizeRuntimeMetadata(
 ) {
   return {
     pluginId:
-      registration.id?.trim() ||
-      meta.namespace?.trim() ||
+      (registration.id?.trim() ?? meta.namespace?.trim()) ||
       meta.fileName.replace(/\.js$/i, '') ||
       meta.name.trim(),
-    name: registration.name?.trim() || meta.name.trim() || meta.fileName,
-    version: registration.version?.trim() || meta.version.trim() || '0.0.0',
-    description: registration.description?.trim() || meta.description.trim(),
+    name: (registration.name?.trim() ?? meta.name.trim()) || meta.fileName,
+    version: (registration.version?.trim() ?? meta.version.trim()) || '0.0.0',
+    description: registration.description?.trim() ?? meta.description.trim(),
   };
 }
 
@@ -162,7 +161,7 @@ export function normalizeThemeDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
+        category: (definition.category?.trim() ?? record.category) || '其他',
         previewResolver: definition.preview,
         resolveResolver: definition.resolve,
       } satisfies RuntimeReaderThemeDefinition;
@@ -186,7 +185,7 @@ export function normalizeBackgroundDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
+        category: (definition.category?.trim() ?? record.category) || '其他',
         previewResolver: definition.preview,
         resolveResolver: definition.resolve,
       } satisfies RuntimeReaderBackgroundDefinition;
@@ -210,8 +209,8 @@ export function normalizeSkinDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
-        lockedFlipMode: definition.lockedFlipMode?.trim() || undefined,
+        category: (definition.category?.trim() ?? record.category) || '其他',
+        lockedFlipMode: definition.lockedFlipMode?.trim() ?? undefined,
         previewResolver: definition.preview,
         resolveResolver: definition.resolve,
       } satisfies RuntimeReaderSkinDefinition;
@@ -235,7 +234,7 @@ export function normalizeBookshelfActionDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
+        category: (definition.category?.trim() ?? record.category) || '其他',
         visible: definition.when,
         run: definition.run,
       } satisfies RuntimeBookshelfActionDefinition;
@@ -259,7 +258,7 @@ export function normalizeReaderContextActionDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
+        category: (definition.category?.trim() ?? record.category) || '其他',
         visible: definition.when,
         run: definition.run,
       } satisfies RuntimeReaderContextActionDefinition;
@@ -283,7 +282,7 @@ export function normalizeCoverGeneratorDefinitions(
         localId,
         name,
         description: definition.description?.trim() ?? '',
-        category: definition.category?.trim() || record.category || '其他',
+        category: (definition.category?.trim() ?? record.category) || '其他',
         visible: definition.when,
         generate: definition.generate,
       } satisfies RuntimeCoverGeneratorDefinition;

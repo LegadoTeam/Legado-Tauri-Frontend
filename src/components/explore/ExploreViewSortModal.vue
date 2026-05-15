@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { GripVertical } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import type { BookSourceMeta } from '@/types';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const props = defineProps<{
   show: boolean;
@@ -32,7 +32,10 @@ watch(
 );
 
 function handleConfirm() {
-  emit('confirm', sortList.value.map((s) => s.fileName));
+  emit(
+    'confirm',
+    sortList.value.map((s) => s.fileName),
+  );
   emit('update:show', false);
 }
 
@@ -87,7 +90,7 @@ function startSortDrag(e: PointerEvent, idx: number) {
     class="ev-sort-modal"
     :style="{ width: '340px', maxWidth: '95vw' }"
     :mask-closable="true"
-    @update:show="(v) => emit('update:show', v)"
+    @update:show="(v: boolean) => emit('update:show', v)"
   >
     <div ref="sortListEl" class="ev-sort-list">
       <div

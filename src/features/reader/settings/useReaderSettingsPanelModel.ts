@@ -1,11 +1,11 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import type { ReaderAppearancePatch } from '@/composables/useFrontendPlugins';
+import { PRESET_THEMES, type ReaderTapAction } from '@/components/reader/types';
+import { isTauri } from '@/composables/useEnv';
 import { useFrontendPlugins } from '@/composables/useFrontendPlugins';
 import { invokeWithTimeout } from '@/composables/useInvoke';
-import { isTauri } from '@/composables/useEnv';
 import { useUserFonts } from '@/composables/useUserFonts';
 import { useReaderSettingsStore } from '@/stores';
-import { PRESET_THEMES, type ReaderTapAction } from '@/components/reader/types';
 import {
   BG_PRESETS,
   COMIC_FLIP_OPTIONS,
@@ -154,8 +154,8 @@ export function useReaderSettingsPanelModel(options: {
       description: theme.description,
       source: 'plugin',
       preview: {
-        backgroundColor: theme.preview.backgroundColor || '#ffffff',
-        textColor: theme.preview.textColor || '#1a1a1a',
+        backgroundColor: theme.preview.backgroundColor ?? '#ffffff',
+        textColor: theme.preview.textColor ?? '#1a1a1a',
         selectionColor: theme.preview.selectionColor,
       },
     })),
@@ -284,7 +284,9 @@ export function useReaderSettingsPanelModel(options: {
   }
 
   const currentFontLabel = computed(() => {
-    return FONT_PRESETS.find((font) => font.value === settings.typography.fontFamily)?.label ?? '自定义';
+    return (
+      FONT_PRESETS.find((font) => font.value === settings.typography.fontFamily)?.label ?? '自定义'
+    );
   });
 
   const builtinBackgroundOptions = computed<BackgroundOption[]>(() =>
@@ -311,13 +313,13 @@ export function useReaderSettingsPanelModel(options: {
       description: background.description,
       source: 'plugin',
       preview: {
-        backgroundColor: background.preview.backgroundColor || '#f8f8f8',
-        backgroundImage: background.preview.backgroundImage || 'none',
-        backgroundSize: background.preview.backgroundSize || 'cover',
-        backgroundPosition: background.preview.backgroundPosition || 'center',
-        backgroundRepeat: background.preview.backgroundRepeat || 'no-repeat',
-        backgroundBlendMode: background.preview.backgroundBlendMode || 'normal',
-        textColor: background.preview.textColor || '#1a1a1a',
+        backgroundColor: background.preview.backgroundColor ?? '#f8f8f8',
+        backgroundImage: background.preview.backgroundImage ?? 'none',
+        backgroundSize: background.preview.backgroundSize ?? 'cover',
+        backgroundPosition: background.preview.backgroundPosition ?? 'center',
+        backgroundRepeat: background.preview.backgroundRepeat ?? 'no-repeat',
+        backgroundBlendMode: background.preview.backgroundBlendMode ?? 'normal',
+        textColor: background.preview.textColor ?? '#1a1a1a',
       },
     })),
   );

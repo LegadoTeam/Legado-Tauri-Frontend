@@ -599,12 +599,18 @@ export async function runAiAgent(
       tools: buildTools(sessionId),
       stopWhen: stepCountIs(Math.max(1, config.maxSteps ?? 30)),
       abortSignal: _abortController.signal,
-      ...(config.temperature != null ? { temperature: config.temperature } : {}),
-      ...(config.maxTokens != null && config.maxTokens > 0 ? { maxTokens: config.maxTokens } : {}),
+      ...(config.temperature !== null && config.temperature !== undefined
+        ? { temperature: config.temperature }
+        : {}),
+      ...(config.maxTokens !== null && config.maxTokens !== undefined && config.maxTokens > 0
+        ? { maxTokens: config.maxTokens }
+        : {}),
     });
 
     for await (const part of result.fullStream) {
-      if (_abortController.signal.aborted) break;
+      if (_abortController.signal.aborted) {
+        break;
+      }
 
       if (part.type === 'start-step') {
         // 新推理步骤开始，创建思考条目
@@ -625,7 +631,9 @@ export async function runAiAgent(
           const existing = state.activities.find((a) => a.id === state.activeThinkingId);
           if (!existing?.content?.trim()) {
             const idx = state.activities.findIndex((a) => a.id === state.activeThinkingId);
-            if (idx !== -1) state.activities.splice(idx, 1);
+            if (idx !== -1) {
+              state.activities.splice(idx, 1);
+            }
           }
           state.activeThinkingId = -1;
         }
@@ -650,15 +658,19 @@ export async function runAiAgent(
         // save_source → 更新代码预览
         if (part.toolName === 'save_source') {
           const inp = part.input as { fileName?: string; content?: string };
-          if (inp.fileName) state.currentFileName = inp.fileName;
-          if (inp.content) state.currentSourceCode = inp.content;
+          if (inp.fileName) {
+            state.currentFileName = inp.fileName;
+          }
+          if (inp.content) {
+            state.currentSourceCode = inp.content;
+          }
         }
 
         // 测试工具 → 记录测试结果
         const testName = TEST_TOOL_NAMES[part.toolName ?? ''];
         if (testName) {
           const out = part.output;
-          const isError = out !== null && typeof out === 'object' && 'error' in (out as object);
+          const isError = out !== null && typeof out === 'object' && 'error' in out;
           upsertTestResult(testName, isError ? 'error' : 'ok', resultStr.slice(0, 3000));
         }
       } else if (part.type === 'error') {

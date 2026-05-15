@@ -4,10 +4,10 @@
  * 管理分组列表、当前选中的分组、分组的增删改查
  */
 
-import { computed, ref } from 'vue';
-import { useDynamicConfig } from './useDynamicConfig';
-import { useBookshelfStore } from '@/stores/bookshelf';
+import { computed } from 'vue';
 import type { ShelfGroup } from '@/types/shelfGroup';
+import { useBookshelfStore } from '@/stores/bookshelf';
+import { useDynamicConfig } from './useDynamicConfig';
 
 export interface ShelfGroupsState {
   /** 分组列表 */
@@ -59,12 +59,14 @@ export function useShelfGroups() {
 
   /** 用于显示的启用的分组列表（排除禁用的） */
   const visibleGroups = computed(() => {
-    return groupsWithAll.value.filter(g => g.enabled);
+    return groupsWithAll.value.filter((g) => g.enabled);
   });
 
   /** 当前选中的分组 */
   const activeGroup = computed(() => {
-    return groupsWithAll.value.find((g) => g.id === store.state.activeGroupId) ?? groupsWithAll.value[0];
+    return (
+      groupsWithAll.value.find((g) => g.id === store.state.activeGroupId) ?? groupsWithAll.value[0]
+    );
   });
 
   /** 启用的分组列表（用于显示） */
@@ -84,24 +86,28 @@ export function useShelfGroups() {
 
     // 按分组过滤：分组内也按最近阅读排序
     // 使用 bookGroupMap 获取书籍的分组
-    return sortByLastRead(
-      books.filter((b) => store.state.bookGroupMap[b.id] === activeId),
-    );
+    return sortByLastRead(books.filter((b) => store.state.bookGroupMap[b.id] === activeId));
   });
 
   /** 最近阅读的书籍（总是置顶） */
   const lastReadBook = computed(() => {
-    if (!store.state.lastReadBookId) return null;
+    if (!store.state.lastReadBookId) {
+      return null;
+    }
     return bookshelfStore.books.find((b) => b.id === store.state.lastReadBookId) ?? null;
   });
 
-  function sortByLastRead(books: typeof bookshelfStore.books.value) {
-    return [...books].sort((a, b) => {
+  function sortByLastRead(books: typeof bookshelfStore.books) {
+    return [...books].toSorted((a, b) => {
       // 有 lastReadAt 的排前面
       const aHasRead = a.lastReadAt > 0;
       const bHasRead = b.lastReadAt > 0;
-      if (aHasRead && !bHasRead) return -1;
-      if (!aHasRead && bHasRead) return 1;
+      if (aHasRead && !bHasRead) {
+        return -1;
+      }
+      if (!aHasRead && bHasRead) {
+        return 1;
+      }
       if (aHasRead && bHasRead) {
         return b.lastReadAt - a.lastReadAt;
       }
@@ -132,7 +138,9 @@ export function useShelfGroups() {
 
   /** 删除分组 */
   async function removeGroup(groupId: string) {
-    if (groupId === 'all') return;
+    if (groupId === 'all') {
+      return;
+    }
     store.state.groups = store.state.groups.filter((g) => g.id !== groupId);
     if (store.state.activeGroupId === groupId) {
       store.state.activeGroupId = 'all';

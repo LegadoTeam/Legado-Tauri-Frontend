@@ -1,26 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { BookItem } from '@/stores';
-import AppEmpty from '../base/AppEmpty.vue';
-import StackedBookCard from './StackedBookCard.vue';
-
-/** 单条搜索结果 + 来源信息 */
-export interface TaggedBookItem {
-  book: BookItem;
-  fileName: string;
-  sourceName: string;
-  sourceLogo?: string;
-}
-
-/** 聚合后的书籍组 */
-export interface AggregatedBook {
-  /** 用于展示的主书籍（取第一条或封面最全的） */
-  primary: TaggedBookItem;
-  /** 同名书来自不同书源 */
-  sources: TaggedBookItem[];
-  /** 与关键词的相似度（0~1） */
-  similarity: number;
-}
+import { computed } from "vue";
+import type { BookItem } from "@/stores";
+import type { TaggedBookItem, AggregatedBook } from "./types";
+export type { TaggedBookItem, AggregatedBook };
+import AppEmpty from "../base/AppEmpty.vue";
+import StackedBookCard from "./StackedBookCard.vue";
 
 const props = defineProps<{
   keyword: string;
@@ -31,12 +15,12 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', book: BookItem, fileName: string): void;
+  (e: "select", book: BookItem, fileName: string): void;
 }>();
 
 // ── 文字相似度（Dice 系数，基于 bigram） ─────────────────────────────────
 function bigrams(str: string): Set<string> {
-  const s = str.toLowerCase().replace(/\s+/g, '');
+  const s = str.toLowerCase().replace(/\s+/g, "");
   const set = new Set<string>();
   for (let i = 0; i < s.length - 1; i++) {
     set.add(s.substring(i, i + 2));
@@ -48,8 +32,8 @@ function diceSimilarity(a: string, b: string): number {
   if (!a || !b) {
     return 0;
   }
-  const na = a.toLowerCase().replace(/\s+/g, '');
-  const nb = b.toLowerCase().replace(/\s+/g, '');
+  const na = a.toLowerCase().replace(/\s+/g, "");
+  const nb = b.toLowerCase().replace(/\s+/g, "");
   if (na === nb) {
     return 1;
   }
@@ -70,8 +54,8 @@ function diceSimilarity(a: string, b: string): number {
 
 /** 判断两本书是否为同一本（名称相似度高） */
 function isSameBook(a: BookItem, b: BookItem): boolean {
-  const nameA = a.name.toLowerCase().replace(/\s+/g, '');
-  const nameB = b.name.toLowerCase().replace(/\s+/g, '');
+  const nameA = a.name.toLowerCase().replace(/\s+/g, "");
+  const nameB = b.name.toLowerCase().replace(/\s+/g, "");
   if (nameA === nameB) {
     return true;
   }
@@ -80,7 +64,12 @@ function isSameBook(a: BookItem, b: BookItem): boolean {
   if (sim >= 0.85) {
     return true;
   }
-  if (sim >= 0.7 && a.author && b.author && a.author.trim() === b.author.trim()) {
+  if (
+    sim >= 0.7 &&
+    a.author &&
+    b.author &&
+    a.author.trim() === b.author.trim()
+  ) {
     return true;
   }
   return false;
@@ -155,7 +144,10 @@ const aggregatedBooks = computed<AggregatedBook[]>(() => {
     </div>
 
     <!-- 空状态 -->
-    <AppEmpty v-else-if="!loading" :title="emptyDescription ?? '暂无搜索结果'" />
+    <AppEmpty
+      v-else-if="!loading"
+      :title="emptyDescription ?? '暂无搜索结果'"
+    />
   </div>
 </template>
 
@@ -176,7 +168,10 @@ const aggregatedBooks = computed<AggregatedBook[]>(() => {
 }
 .agg-results__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--book-card-col-min, 220px), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(var(--book-card-col-min, 220px), 1fr)
+  );
   gap: 10px;
 }
 </style>

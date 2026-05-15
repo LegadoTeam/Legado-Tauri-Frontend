@@ -1,6 +1,6 @@
 import type { ShelfBook } from '@/stores';
-import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 import type { BuiltinCoverGeneratorDefinition } from './types';
+import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 
 function generateYouthCampusCover(book: ShelfBook): string {
   const title = textSpans(wrapText(book.name, 7, 4), { x: 72, lineHeight: 104 });

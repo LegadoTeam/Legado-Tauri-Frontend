@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia';
 import { reactive, readonly } from 'vue';
+import type { CoverImageInput } from '@/utils/coverImage';
 import { isTauri } from '@/composables/useEnv';
 import { eventListen } from '@/composables/useEventBus';
 import { invokeWithTimeout } from '@/composables/useInvoke';
 import { isTransportAvailable } from '@/composables/useTransport';
-import type { CoverImageInput } from '@/utils/coverImage';
 import { safeRandomUUID } from '@/utils/uuid';
 import { usePreferencesStore } from './preferences';
 
@@ -73,11 +73,13 @@ export interface ChapterGroup {
 
 export function groupChapters(chapters: ChapterItem[]): ChapterGroup[] {
   const hasGroup = chapters.some((ch) => ch.group);
-  if (!hasGroup) return [];
+  if (!hasGroup) {
+    return [];
+  }
   const map = new Map<string, ChapterItem[]>();
   const order: string[] = [];
   for (const ch of chapters) {
-    const key = ch.group || '';
+    const key = ch.group ?? '';
     if (!map.has(key)) {
       map.set(key, []);
       order.push(key);
@@ -105,7 +107,9 @@ export const useScriptBridgeStore = defineStore('scriptBridge', () => {
   }
 
   async function initialize() {
-    if (state.initialized) return;
+    if (state.initialized) {
+      return;
+    }
 
     const available = await isTransportAvailable();
     if (!available) {
@@ -223,7 +227,8 @@ export const useScriptBridgeStore = defineStore('scriptBridge', () => {
         fileName,
         chapterUrl,
         sourceDir: sourceDir ?? null,
-        categoryParams: categoryParams && Object.keys(categoryParams).length > 0 ? categoryParams : null,
+        categoryParams:
+          categoryParams && Object.keys(categoryParams).length > 0 ? categoryParams : null,
       },
       timeoutMs,
     );

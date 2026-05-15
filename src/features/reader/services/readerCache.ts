@@ -1,9 +1,14 @@
-import type { ComputedRef, Ref } from 'vue';
 import type { MessageApi } from 'naive-ui';
-import { usePrefetchStore, useAppConfigStore, type ChapterItem, type PrefetchPayload } from '@/stores';
+import type { ComputedRef, Ref } from 'vue';
 import type { ReadingAnchor } from '@/components/reader/composables/usePagination';
 import type { OpenChapterOptions } from '@/components/reader/composables/useReaderChapterOpen';
 import { comicCacheClear, comicCacheClearChapter } from '@/composables/useBookSource';
+import {
+  usePrefetchStore,
+  useAppConfigStore,
+  type ChapterItem,
+  type PrefetchPayload,
+} from '@/stores';
 
 export interface ReaderPrefetchControllerOptions {
   currentShelfId: ComputedRef<string | undefined>;
@@ -40,8 +45,7 @@ export function createReaderPrefetchController(options: ReaderPrefetchController
       return;
     }
     try {
-      const concurrency =
-        useAppConfigStore().config.cache_prefetch_concurrency || 2;
+      const concurrency = useAppConfigStore().config.cache_prefetch_concurrency || 2;
       await usePrefetchStore().startSilentPrefetch(
         { ...buildPrefetchPayload(fromIndex, count), concurrency },
         options.markCached,

@@ -37,7 +37,6 @@ async function waitForHost(hostRef: Ref<HTMLElement | null>): Promise<HTMLElemen
     if (host && host.clientWidth > 0 && host.clientHeight > 0) {
       return host;
     }
-    // eslint-disable-next-line no-await-in-loop
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
   throw new Error('分页容器未就绪');
@@ -100,7 +99,6 @@ export function usePagedChapterCache(options: UsePagedChapterCacheOptions) {
       if (paginator.pages.value.length > 0 || !paginator.isPaginating.value) {
         break;
       }
-      // eslint-disable-next-line no-await-in-loop
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
 
@@ -203,7 +201,6 @@ export function usePagedChapterCache(options: UsePagedChapterCacheOptions) {
       }
       seen.add(index);
       try {
-        // eslint-disable-next-line no-await-in-loop
         await ensurePages(index, { background: true });
       } catch {
         // 后台预排版失败不影响当前阅读

@@ -52,7 +52,9 @@ export const useBackStackStore = defineStore('backStack', () => {
    */
   function detach(handler: BackHandler): void {
     const i = _stack.lastIndexOf(handler);
-    if (i >= 0) _stack.splice(i, 1);
+    if (i >= 0) {
+      _stack.splice(i, 1);
+    }
   }
 
   /**
@@ -77,7 +79,9 @@ export const useBackStackStore = defineStore('backStack', () => {
    * 返回 true 表示已由堆栈处理。
    */
   function onKeyBack(): boolean {
-    if (_stack.length === 0) return false;
+    if (_stack.length === 0) {
+      return false;
+    }
     const handler = _stack.pop()!;
     // 通知 popstate 监听器：即将到来的事件是本次清理触发的，跳过
     _skip++;

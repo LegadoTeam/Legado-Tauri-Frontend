@@ -55,9 +55,7 @@ export function createReaderSourceSwitchController(options: ReaderSourceSwitchCo
     options.message.success('已恢复当前章节的原始正文');
   }
 
-  async function handleTemporaryChapterSourceSwitched(
-    payload: TemporaryChapterSourceOverride,
-  ) {
+  async function handleTemporaryChapterSourceSwitched(payload: TemporaryChapterSourceOverride) {
     options.temporaryChapterOverrides.value = {
       ...options.temporaryChapterOverrides.value,
       [payload.chapterIndex]: payload,

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ChapterItem } from '@/stores';
 import type {
   ReaderBookInfo,
   TemporaryChapterSourceOverride,
   WholeBookSwitchedPayload,
 } from '@/components/reader/types';
+import type { ChapterItem } from '@/stores';
 import BookSourceSwitchDialog from '@/components/explore/BookSourceSwitchDialog.vue';
 
 defineProps<{

@@ -83,10 +83,7 @@ function metaLine(book: BookItem): string[] {
         >
           {{ group.primary.book.author || '佚名' }}
         </span>
-        <div
-          v-if="getBookMetaBadges(group.primary.book).length"
-          class="stacked-card__tags"
-        >
+        <div v-if="getBookMetaBadges(group.primary.book).length" class="stacked-card__tags">
           <n-tag
             v-for="badge in getBookMetaBadges(group.primary.book)"
             :key="badge.key"

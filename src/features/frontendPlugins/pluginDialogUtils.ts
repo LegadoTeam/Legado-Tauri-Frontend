@@ -1,7 +1,7 @@
 import type { PluginDialogOptions, PluginDialogState, PluginSettingValue } from './pluginTypes';
 
 export function buildPluginDialogState(options: PluginDialogOptions): PluginDialogState {
-  const values: Record<string, PluginSettingValue> = { ...(options.initialValues ?? {}) };
+  const values: Record<string, PluginSettingValue> = { ...options.initialValues };
   for (const field of options.fields) {
     if (!field.key || values[field.key] !== undefined) {
       continue;
@@ -19,8 +19,8 @@ export function buildPluginDialogState(options: PluginDialogOptions): PluginDial
   return {
     title: options.title.trim(),
     message: options.message?.trim() ?? '',
-    submitText: options.submitText?.trim() || '确定',
-    cancelText: options.cancelText?.trim() || '取消',
+    submitText: options.submitText?.trim() ?? '确定',
+    cancelText: options.cancelText?.trim() ?? '取消',
     width: options.width ?? 560,
     fields: options.fields,
     values,
@@ -28,6 +28,7 @@ export function buildPluginDialogState(options: PluginDialogOptions): PluginDial
 }
 
 export function isEntryVisible(
+  // eslint-disable-next-line typescript/no-explicit-any
   entry: { visible?: boolean | ((context: any) => boolean) },
   context: unknown,
 ): boolean {

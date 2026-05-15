@@ -11,14 +11,6 @@
  *   4. 关闭阅读器时调用 deactivateBookSettings()
  */
 import { reactive, ref, watch, toRefs, type WatchStopHandle } from 'vue';
-import { useDynamicConfig } from '@/composables/useDynamicConfig';
-import {
-  ensureFrontendNamespaceLoaded,
-  getFrontendStorageItem,
-  legacyLocalStorageGet,
-  legacyLocalStorageRemove,
-  setFrontendStorageItem,
-} from '@/composables/useFrontendStorage';
 import {
   type ReaderSettings,
   type ReaderPagePadding,
@@ -28,6 +20,14 @@ import {
   type PaginationEngine,
   DEFAULT_SETTINGS,
 } from '@/components/reader/types';
+import { useDynamicConfig } from '@/composables/useDynamicConfig';
+import {
+  ensureFrontendNamespaceLoaded,
+  getFrontendStorageItem,
+  legacyLocalStorageGet,
+  legacyLocalStorageRemove,
+  setFrontendStorageItem,
+} from '@/composables/useFrontendStorage';
 
 const LEGACY_STORAGE_KEY = 'legado-reader-settings';
 const BOOK_STORAGE_PREFIX = 'legado-reader-settings-book-';
@@ -108,12 +108,12 @@ function mergeSettings(base: ReaderSettings, partial: StoredReaderSettings): Rea
   } as ReaderSettings & { debugMode?: boolean };
 
   delete merged.debugMode;
-  // 迁移旧 paginationEngine 值：'auto'/'simple' → 'dom'
+  // 迁移旧 paginationEngine 值：'auto'/'simple' → 'pretext'
   if (
     merged.paginationEngine === ('auto' as string) ||
     merged.paginationEngine === ('simple' as string)
   ) {
-    merged.paginationEngine = 'dom';
+    merged.paginationEngine = 'pretext';
   }
   return merged;
 }

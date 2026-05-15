@@ -1,5 +1,4 @@
-import type { ShelfBook } from '@/stores';
-import type { BookDetail, BookItem, ChapterItem } from '@/stores';
+import type { BookDetail, BookItem, ChapterItem, ShelfBook } from '@/stores';
 import type { ReaderBookInfo } from '../components/reader/types';
 import { getNormalizedLastChapter } from './bookMeta';
 import { getCoverImageUrl, type CoverImageInput } from './coverImage';
@@ -204,16 +203,16 @@ export function buildCandidateBookMeta(
   detail?: BookDetail | null,
 ): SwitchableBookMeta {
   return {
-    name: detail?.name?.trim() || book.name,
-    author: detail?.author?.trim() || book.author,
-    coverUrl: detail?.coverUrl || book.coverUrl,
-    intro: detail?.intro || book.intro,
-    kind: detail?.kind || book.kind,
-    status: detail?.status || book.status,
-    wordCount: detail?.wordCount || book.wordCount,
+    name: detail?.name?.trim() ?? book.name,
+    author: detail?.author?.trim() ?? book.author,
+    coverUrl: detail?.coverUrl ?? book.coverUrl,
+    intro: detail?.intro ?? book.intro,
+    kind: detail?.kind ?? book.kind,
+    status: detail?.status ?? book.status,
+    wordCount: detail?.wordCount ?? book.wordCount,
     chapterCount: detail?.chapterCount ?? book.chapterCount,
-    updateTime: detail?.updateTime || book.updateTime,
-    lastChapter: getNormalizedLastChapter(detail) || getNormalizedLastChapter(book),
+    updateTime: detail?.updateTime ?? book.updateTime,
+    lastChapter: getNormalizedLastChapter(detail) ?? getNormalizedLastChapter(book),
     bookUrl: book.bookUrl,
   };
 }
@@ -311,10 +310,10 @@ export function applyMetadataSelection(
     if (typeof candidateValue === 'string') {
       const trimmed = candidateValue.trim();
       if (trimmed) {
-        next[key] = trimmed;
+        (next as unknown as Record<string, unknown>)[key] = trimmed;
       }
     } else if (candidateValue) {
-      next[key] = candidateValue;
+      (next as unknown as Record<string, unknown>)[key] = candidateValue;
     }
   }
   return next;
@@ -457,6 +456,6 @@ export function rankChapterMatches(
       };
     })
     .filter((candidate) => candidate.score >= 18)
-    .sort((left, right) => right.score - left.score)
+    .toSorted((left, right) => right.score - left.score)
     .slice(0, 6);
 }

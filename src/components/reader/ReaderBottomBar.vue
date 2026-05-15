@@ -2,7 +2,6 @@
 import { Menu, Sun, Moon, Volume2, Settings } from 'lucide-vue-next';
 import { ref, computed, watch } from 'vue';
 import { useReaderSettingsStore, type ChapterItem } from '@/stores';
-// eslint-disable-next-line typescript/consistent-type-imports -- component used in template as <ReaderSettingsPanel> and in ref<InstanceType<typeof ReaderSettingsPanel>>
 import ReaderSettingsPanel from './ReaderSettingsPanel.vue';
 import { PRESET_THEMES } from './types';
 

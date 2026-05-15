@@ -62,7 +62,9 @@ export function eventListenSync<T = unknown>(event: string, handler: EventHandle
 
   return () => {
     cancelled = true;
-    if (unlisten) unlisten();
+    if (unlisten) {
+      unlisten();
+    }
   };
 }
 

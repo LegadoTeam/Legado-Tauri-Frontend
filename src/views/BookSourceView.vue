@@ -1,8 +1,8 @@
 ﻿<script setup lang="ts">
 import { Folder } from 'lucide-vue-next';
 import { useMessage } from 'naive-ui';
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import type {
   DebugSourceTabInstance,
   InstalledSourcesTabInstance,
@@ -19,10 +19,7 @@ import OnlineSourcesTab from '../components/booksource/OnlineSourcesTab.vue';
 import TestSourcesTab from '../components/booksource/TestSourcesTab.vue';
 import AppPageHeader from '../components/layout/AppPageHeader.vue';
 import MobileToolbarMenu from '../components/layout/MobileToolbarMenu.vue';
-import {
-  type BookSourceMeta,
-  getBookSourceDir,
-} from '../composables/useBookSource';
+import { type BookSourceMeta, getBookSourceDir } from '../composables/useBookSource';
 import { isMobile } from '../composables/useEnv';
 
 const message = useMessage();
@@ -32,13 +29,7 @@ const bookSourceStore = useBookSourceStore();
 const { sources, loading, sourceDirs: storeDirs, streamingLoaded } = storeToRefs(bookSourceStore);
 
 type BookSourceTab = 'installed' | 'online' | 'debug' | 'test' | 'ai';
-const BOOK_SOURCE_TABS: BookSourceTab[] = [
-  'installed',
-  'online',
-  'debug',
-  'test',
-  'ai',
-];
+const BOOK_SOURCE_TABS: BookSourceTab[] = ['installed', 'online', 'debug', 'test', 'ai'];
 
 const activeTab = ref<BookSourceTab>('installed');
 
@@ -79,10 +70,7 @@ async function loadSources() {
   _loadSourcesInFlight = true;
   try {
     // bookSourceStore.loadSources() 内部流式追加 sources，目录信息单独取
-    const [, dir] = await Promise.all([
-      bookSourceStore.loadSources(),
-      getBookSourceDir(),
-    ]);
+    const [, dir] = await Promise.all([bookSourceStore.loadSources(), getBookSourceDir()]);
     sourceDir.value = dir;
     // sourceDirs 通过 storeToRefs 已响应式绑定，无需手动同步
   } catch (e: unknown) {
@@ -253,21 +241,24 @@ onMounted(async () => {
     return;
   }
 
-  const unlisten = await eventListen<{ fileName?: string; reason?: string }>('booksource:changed', async (event) => {
-    const { fileName, reason } = event.payload ?? {};
-    if (fileName) {
-      // toggle 操作仅修改 enabled 字段，前端已就地更新，无需全量重载（避免列表滚动到顶部）
-      if (reason === 'toggle') {
-        return;
+  const unlisten = await eventListen<{ fileName?: string; reason?: string }>(
+    'booksource:changed',
+    async (event) => {
+      const { fileName, reason } = event.payload ?? {};
+      if (fileName) {
+        // toggle 操作仅修改 enabled 字段，前端已就地更新，无需全量重载（避免列表滚动到顶部）
+        if (reason === 'toggle') {
+          return;
+        }
+        bookSourceStore.invalidateCapability(fileName);
+        installedRef.value?.handleFileChange(fileName);
+      } else {
+        // 批量变更（如同步后），使所有能力缓存失效
+        bookSourceStore.invalidateAllCapabilities();
       }
-      bookSourceStore.invalidateCapability(fileName);
-      installedRef.value?.handleFileChange(fileName);
-    } else {
-      // 批量变更（如同步后），使所有能力缓存失效
-      bookSourceStore.invalidateAllCapabilities();
-    }
-    await loadSources();
-  });
+      await loadSources();
+    },
+  );
 
   // listen 返回前组件可能已卸载（快速切换视图），直接清理
   if (!_bsvMounted) {
@@ -317,9 +308,7 @@ onUnmounted(() => {
           <span class="bv-header__dir-path">{{ shortSourceDir }}</span>
         </div>
       </template>
-      <template #subtitle>
-        管理已安装书源、浏览在线仓库
-      </template>
+      <template #subtitle> 管理已安装书源、浏览在线仓库 </template>
       <template #actions>
         <template v-if="activeTab === 'installed'">
           <MobileToolbarMenu :options="mobileMenuOptions" @select="handleMobileMenuSelect">
@@ -333,7 +322,9 @@ onUnmounted(() => {
             <n-button size="small" quaternary @click="installedRef?.importFromFile()"
               >导入本地</n-button
             >
-            <n-button size="small" quaternary @click="installedRef?.importFromUrl()">导入在线</n-button>
+            <n-button size="small" quaternary @click="installedRef?.importFromUrl()"
+              >导入在线</n-button
+            >
             <n-dropdown
               trigger="click"
               :options="newSourceOptions"

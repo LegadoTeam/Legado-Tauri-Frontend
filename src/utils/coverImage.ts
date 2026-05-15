@@ -27,17 +27,15 @@ export function getCoverImageReferer(
   fallback?: string,
 ): string | undefined {
   if (!isCoverImageRef(value)) {
-    return fallback || undefined;
+    return fallback ?? undefined;
   }
-  return value.referer || value.referrer || fallback || undefined;
+  return value.referer ?? value.referrer ?? fallback ?? undefined;
 }
 
 export function getCoverImageSourceUrl(value: CoverImageInput): string | undefined {
-  return isCoverImageRef(value) ? value.sourceUrl || undefined : undefined;
+  return isCoverImageRef(value) ? (value.sourceUrl ?? undefined) : undefined;
 }
 
-export function getCoverImageHeaders(
-  value: CoverImageInput,
-): Record<string, string> | undefined {
+export function getCoverImageHeaders(value: CoverImageInput): Record<string, string> | undefined {
   return isCoverImageRef(value) ? value.headers : undefined;
 }

@@ -63,12 +63,12 @@ function clampPercent(value, fallback) {
 }
 
 function buildBackground(settings) {
-  var baseColor = settings.baseColor || '#f5efe2';
-  var accentColor = settings.accentColor || '#7aa2f7';
-  var secondaryColor = settings.secondaryColor || '#d5b88f';
+  var baseColor = settings.baseColor ?? '#f5efe2';
+  var accentColor = settings.accentColor ?? '#7aa2f7';
+  var secondaryColor = settings.secondaryColor ?? '#d5b88f';
   var opacity = clampPercent(settings.opacity, 70) / 100;
   var scale = clampPercent(settings.scale, 100);
-  var style = settings.style || 'mesh';
+  var style = settings.style ?? 'mesh';
 
   if (style === 'frame') {
     return {

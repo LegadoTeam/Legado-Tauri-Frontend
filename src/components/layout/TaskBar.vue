@@ -42,7 +42,9 @@ const emit = defineEmits<{
       <span class="task-bar__version">前端 v{{ vueVersion }}</span>
       <!-- Tauri 壳版本：仅 Tauri 环境显示；鸿蒙版本暂未对接，预留注释 -->
       <!-- TODO: 鸿蒙环境在此处显示鸿蒙版本号，待后续对接 HarmonyOS 版本 API -->
-      <span v-if="tauriVersion" class="task-bar__version task-bar__version--tauri">壳 v{{ tauriVersion }}</span>
+      <span v-if="tauriVersion" class="task-bar__version task-bar__version--tauri"
+        >壳 v{{ tauriVersion }}</span
+      >
       <span class="task-bar__platform">{{ platformLabel }}</span>
     </button>
 
@@ -61,7 +63,6 @@ const emit = defineEmits<{
       >
       <span class="task-bar__log-msg">{{ latestLogMessage || '暂无日志' }}</span>
     </button>
-
   </footer>
 </template>
 

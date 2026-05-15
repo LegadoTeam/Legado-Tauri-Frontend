@@ -18,15 +18,19 @@ legado.registerPlugin({
     var unlisten = null;
 
     function countChars(text) {
-      if (!text) return 0;
+      if (!text) {
+        return 0;
+      }
       var m = text.match(/\S/g);
       return m ? m.length : 0;
     }
 
     function render(session) {
-      if (!el) return;
+      if (!el) {
+        return;
+      }
       var parts = [];
-      if (session && session.visible) {
+      if (session?.visible) {
         var chars = countChars(session.content);
         var wpm = Number(api.settings.get('wpm', 400)) || 400;
         if (api.settings.get('show_chars', true)) {
@@ -82,7 +86,7 @@ legado.registerPlugin({
               unlisten();
               unlisten = null;
             }
-            if (el && el.parentNode) {
+            if (el?.parentNode) {
               el.parentNode.removeChild(el);
             }
             el = null;

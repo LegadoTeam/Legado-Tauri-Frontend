@@ -18,7 +18,7 @@ export function ensurePluginOrderLoaded(): Promise<void> {
     }
     legacyLocalStorageRemove(LEGACY_PLUGIN_ORDER_KEY);
     return { [PLUGIN_STORAGE_KEYS.orderKey]: legacy };
-  });
+  }).then(() => {});
 }
 
 export function readPluginOrder(): string[] {
@@ -54,7 +54,7 @@ export function writePluginOrder(fileNames: string[]): void {
 export function sortExtensionsByPluginOrder(list: ExtensionMeta[]): ExtensionMeta[] {
   const order = readPluginOrder();
   const orderMap = new Map(order.map((fileName, index) => [fileName, index]));
-  return [...list].sort((left, right) => {
+  return [...list].toSorted((left, right) => {
     const leftOrder = orderMap.get(left.fileName);
     const rightOrder = orderMap.get(right.fileName);
     if (leftOrder !== undefined || rightOrder !== undefined) {

@@ -5,7 +5,6 @@ import type { BookItem, BookDetail, ChapterItem, ChapterGroup } from '@/stores';
 import { useScriptBridgeStore } from '@/stores';
 import type { BookSourceMeta } from '../../composables/useBookSource';
 import type { ReaderBookInfo } from '../reader/types';
-import { getBookMetaLine, getLatestChapterText } from '../../utils/bookMeta';
 import {
   browserProbeClose,
   browserProbeCreate,
@@ -15,10 +14,11 @@ import {
   browserProbeShow,
   type BrowserCookie,
 } from '../../composables/useBrowserProbe';
+import { getBookMetaLine, getLatestChapterText } from '../../utils/bookMeta';
+import BookCoverImg from '../BookCoverImg.vue';
 import BookCard from '../explore/BookCard.vue';
 import BookDetailDrawer from '../explore/BookDetailDrawer.vue';
 import ChapterReaderModal from '../explore/ChapterReaderModal.vue';
-import BookCoverImg from '../BookCoverImg.vue';
 
 const props = defineProps<{
   sources: BookSourceMeta[];

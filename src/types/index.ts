@@ -29,13 +29,10 @@ export type {
 export type { ShelfGroup, ShelfGroupWithCount } from '@/types/shelfGroup';
 
 // ── 布局 ───────────────────────────────────────────────────────────────
-export type { NavItem } from '@/components/layout/SideBar.vue';
+export type { NavItem } from '@/components/layout/types';
 
 // ── 搜索聚合 ───────────────────────────────────────────────────────────
-export type {
-  TaggedBookItem,
-  AggregatedBook,
-} from '@/components/explore/AggregatedSearchResults.vue';
+export type { TaggedBookItem, AggregatedBook } from '@/components/explore/types';
 
 // ── AI ─────────────────────────────────────────────────────────────────
 export type { AgentActivity, TestResult } from '@/composables/useAiAgent';

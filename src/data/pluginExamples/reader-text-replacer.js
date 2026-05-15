@@ -12,18 +12,24 @@
 // ==/UserScript==
 
 function applyRules(content, rules) {
-  var result = String(content || '');
+  var result = String(content ?? '');
   for (var i = 0; i < rules.length; i += 1) {
-    var line = String(rules[i] || '').trim();
-    if (!line) continue;
+    var line = String(rules[i] ?? '').trim();
+    if (!line) {
+      continue;
+    }
     var parts = line.split('=>');
     if (parts.length < 2) {
       parts = line.split('->');
     }
-    if (parts.length < 2) continue;
+    if (parts.length < 2) {
+      continue;
+    }
     var from = parts.shift().trim();
     var to = parts.join('=>').trim();
-    if (!from) continue;
+    if (!from) {
+      continue;
+    }
     result = result.split(from).join(to);
   }
   return result;
@@ -38,12 +44,13 @@ legado.registerPlugin({
           rules: ['最新网址=>', '请收藏本站=>'],
         },
         schema: function (context) {
-          var count = (context.values.rules || []).filter(Boolean).length;
+          var count = (context.values.rules ?? []).filter(Boolean).length;
           return [
             {
               type: 'info',
               label: '使用 old=>new 语法',
-              description: '例如：張三=>张三。插件挂在 reader.content.beforePaginate，修改后会重新处理当前章节，翻页和上下滚动模式均生效。',
+              description:
+                '例如：張三=>张三。插件挂在 reader.content.beforePaginate，修改后会重新处理当前章节，翻页和上下滚动模式均生效。',
             },
             {
               type: 'string-list',
@@ -80,13 +87,15 @@ legado.registerPlugin({
               submitText: '保存',
               cancelText: '取消',
             });
-            if (!values) return;
-            var from = String(values.from || '').trim();
+            if (!values) {
+              return;
+            }
+            var from = String(values.from ?? '').trim();
             if (!from) {
               await api.ui.toast('被替换文字不能为空', 'warning');
               return;
             }
-            var to = String(values.to || '').trim();
+            var to = String(values.to ?? '').trim();
             var rules = api.settings.get('rules', []);
             await api.settings.set('rules', rules.concat([from + '=>' + to]));
             await api.ui.toast('替换规则已添加', 'success');

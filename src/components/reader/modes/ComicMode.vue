@@ -144,7 +144,8 @@ function setupSentinel() {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const rootEl = containerRef.value;
-          const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+          const nextTop =
+            nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
           if (rootEl && typeof nextTop === 'number' && rootEl.scrollTop < nextTop - 1) {
             return;
           }
@@ -429,12 +430,11 @@ function onScroll() {
   const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
 
   // 进度按当前章节区域计算（不含上/下章预渲染部分）
-  const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
+  const currentSectionH =
+    currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
   const adjustedScrollTop = Math.max(0, scrollTop - prevH);
   const ratio =
-    currentSectionH <= clientHeight
-      ? 1
-      : adjustedScrollTop / (currentSectionH - clientHeight);
+    currentSectionH <= clientHeight ? 1 : adjustedScrollTop / (currentSectionH - clientHeight);
   emit('progress', Math.min(1, Math.max(0, ratio)));
 
   const prevAtTop = atTop.value;
@@ -686,7 +686,9 @@ function getReadingScrollRatio(): number {
 }
 
 function getAdjacentScrollRatio(side: 'prev' | 'next'): number {
-  return side === 'prev' ? getSectionRatio(prevSectionRef.value) : getSectionRatio(nextSectionRef.value);
+  return side === 'prev'
+    ? getSectionRatio(prevSectionRef.value)
+    : getSectionRatio(nextSectionRef.value);
 }
 
 function getPageIndexWithin(section: HTMLElement | null): number {
@@ -723,7 +725,9 @@ function getReadingPageIndex(): number {
 }
 
 function getAdjacentPageIndex(side: 'prev' | 'next'): number {
-  return side === 'prev' ? getPageIndexWithin(prevSectionRef.value) : getPageIndexWithin(nextSectionRef.value);
+  return side === 'prev'
+    ? getPageIndexWithin(prevSectionRef.value)
+    : getPageIndexWithin(nextSectionRef.value);
 }
 
 /** 是否正在恢复阅读位置（显示 loading 遮罩期间为 true） */
@@ -777,7 +781,6 @@ async function restoreToScrollRatio(ratio: number) {
     let stableFrames = 0;
     let lastScrollHeight = -1;
     for (let i = 0; i < 12; i++) {
-      // eslint-disable-next-line no-await-in-loop
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const el = containerRef.value;
       if (!el) {
@@ -872,12 +875,7 @@ defineExpose({
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    class="comic-mode"
-    @click="onTapContainer"
-    @scroll.passive="onScroll"
-  >
+  <div ref="containerRef" class="comic-mode" @click="onTapContainer" @scroll.passive="onScroll">
     <div v-if="loading && totalPages === 0" class="comic-mode__loading">
       <n-spin size="large" />
       <span>加载图片中...</span>
@@ -1164,7 +1162,12 @@ defineExpose({
   height: 2px;
   margin: 0 auto 14px;
   border-radius: 999px;
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.04));
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.04),
+    rgba(0, 0, 0, 0.18),
+    rgba(0, 0, 0, 0.04)
+  );
 }
 
 .comic-mode__chapter-sep-title {

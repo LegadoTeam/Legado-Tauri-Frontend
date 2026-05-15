@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 function splitLongParagraphs(content, minLength) {
-  return String(content || '')
+  return String(content ?? '')
     .split('\n')
     .map(function (line) {
       var trimmed = line.trim();

@@ -64,7 +64,8 @@ const emit = defineEmits<{
       @update:value="(v: number) => emit('update-typography', { fontWeight: v })"
     />
     <div class="reader-settings__fw-warn">
-      ⚠️ 大部分字体只内置 400（正常）和 700（粗）两个字重。可变字体（Variable Font）才能利用全部字重范围。
+      ⚠️ 大部分字体只内置 400（正常）和 700（粗）两个字重。可变字体（Variable
+      Font）才能利用全部字重范围。
     </div>
   </div>
 

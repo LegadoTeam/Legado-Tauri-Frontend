@@ -88,16 +88,22 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (!_dragging) return;
+  if (!_dragging) {
+    return;
+  }
   const dx = e.clientX - _sx;
   const dy = e.clientY - _sy;
-  if (Math.abs(dx) + Math.abs(dy) > 5) _moved = true;
+  if (Math.abs(dx) + Math.abs(dy) > 5) {
+    _moved = true;
+  }
   fabLeft.value = clamp(_sl + dx, 0, window.innerWidth - FAB_SIZE);
   fabTop.value = clamp(_st + dy, 0, window.innerHeight - FAB_SIZE);
 }
 
 function onPointerUp() {
-  if (!_dragging) return;
+  if (!_dragging) {
+    return;
+  }
   _dragging = false;
   if (_moved) {
     savePos();

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Eye, EyeOff, Trash2, Edit3, Plus, Folder } from 'lucide-vue-next';
+import { Trash2, Edit3, Plus, Folder } from 'lucide-vue-next';
 import { NButton, NInput, NPopconfirm, NSwitch } from 'naive-ui';
-import { computed, nextTick, ref, watch } from 'vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { computed, nextTick, ref } from 'vue';
 import type { ShelfGroup } from '@/types/shelfGroup';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const props = defineProps<{
   show: boolean;
@@ -35,10 +35,14 @@ useOverlayBackstack(
 );
 
 const sortedGroups = computed(() => {
-  return [...props.groups].sort((a, b) => {
+  return [...props.groups].toSorted((a, b) => {
     // 全部书籍在最前面
-    if (a.id === 'all') return -1;
-    if (b.id === 'all') return 1;
+    if (a.id === 'all') {
+      return -1;
+    }
+    if (b.id === 'all') {
+      return 1;
+    }
     return a.order - b.order;
   });
 });
@@ -135,11 +139,7 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
     <div class="group-menu">
       <div class="group-menu__header">
         <h3 class="group-menu__title">分组管理</h3>
-        <n-button
-          size="small"
-          type="primary"
-          @click="startAddNew"
-        >
+        <n-button size="small" type="primary" @click="startAddNew">
           <template #icon>
             <Plus :size="14" />
           </template>
@@ -182,10 +182,7 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
               />
             </template>
             <template v-else>
-              <button
-                class="group-menu__item-name"
-                @click="selectGroup(group.id)"
-              >
+              <button class="group-menu__item-name" @click="selectGroup(group.id)">
                 <Folder v-if="group.id !== 'all'" :size="14" />
                 {{ group.name }}
               </button>
@@ -208,18 +205,15 @@ function handleKeydown(e: KeyboardEvent, action: 'add' | 'rename', groupId?: str
                 size="small"
                 @update:value="(v: boolean) => handleToggle(group, v)"
               />
-              <button
-                class="group-menu__action-btn"
-                title="编辑名称"
-                @click="startRename(group)"
-              >
+              <button class="group-menu__action-btn" title="编辑名称" @click="startRename(group)">
                 <Edit3 :size="14" />
               </button>
-              <n-popconfirm
-                @positive-click="handleRemove(group.id)"
-              >
+              <n-popconfirm @positive-click="handleRemove(group.id)">
                 <template #trigger>
-                  <button class="group-menu__action-btn group-menu__action-btn--danger" title="删除分组">
+                  <button
+                    class="group-menu__action-btn group-menu__action-btn--danger"
+                    title="删除分组"
+                  >
                     <Trash2 :size="14" />
                   </button>
                 </template>

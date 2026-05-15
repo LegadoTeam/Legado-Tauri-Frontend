@@ -1,7 +1,7 @@
 import type { ComputedRef, Ref } from 'vue';
 import type { OpenChapterOptions } from '@/components/reader/composables/useReaderChapterOpen';
 
-interface ShelfReaderSettingsSnapshot {
+export interface ShelfReaderSettingsSnapshot {
   readerSettings?: string;
   readChapterIndex?: number;
   readPageIndex?: number;

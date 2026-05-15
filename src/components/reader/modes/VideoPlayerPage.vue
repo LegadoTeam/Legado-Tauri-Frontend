@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ChapterItem, ChapterGroup } from '@/types';
 import { useAppConfigStore, groupChapters, useScriptBridgeStore } from '@/stores';
 import type { ReaderBookInfo } from '../types';
+import type { VideoCategoryGroup } from '../video/types';
 import {
   ensureFrontendNamespaceLoaded,
   getFrontendStorageItem,
@@ -14,7 +15,6 @@ import {
   setFrontendStorageItem,
 } from '../../../composables/useFrontendStorage';
 import { parseVideoSource } from '../video/types';
-import type { VideoCategoryGroup } from '../video/types';
 import VideoMode from './VideoMode.vue';
 
 const props = defineProps<{
@@ -78,11 +78,15 @@ const logCopied = ref(false);
 
 async function copyLogs() {
   const text = loadingLogs.value.join('\n');
-  if (!text) return;
+  if (!text) {
+    return;
+  }
   try {
     await navigator.clipboard.writeText(text);
     logCopied.value = true;
-    setTimeout(() => { logCopied.value = false; }, 2000);
+    setTimeout(() => {
+      logCopied.value = false;
+    }, 2000);
   } catch {
     // ignore
   }
@@ -180,8 +184,12 @@ function isEpWatched(ch: ChapterItem): boolean {
 /** 某集播放进度比例（0-1），已看完返回 0 */
 function epProgressRatio(ch: ChapterItem): number {
   const p = getEpProgress(ch);
-  if (!p || p.duration <= 0 || p.time <= 0) return 0;
-  if (isEpWatched(ch)) return 0;
+  if (!p || p.duration <= 0 || p.time <= 0) {
+    return 0;
+  }
+  if (isEpWatched(ch)) {
+    return 0;
+  }
   return p.time / p.duration;
 }
 
@@ -248,7 +256,8 @@ const selectedCategories = ref<Record<string, string>>({});
 /** 实际展示/播放内容（分类覆盖 > 原始内容） */
 const activeContent = computed(() => categoryContent.value || props.content);
 const showPlayerLoading = computed(
-  () => props.loading || (!props.error && !activeContent.value.trim() && !contentLoadFinished.value),
+  () =>
+    props.loading || (!props.error && !activeContent.value.trim() && !contentLoadFinished.value),
 );
 
 const loadingLogs = computed(() =>
@@ -350,17 +359,16 @@ function restoreCategories() {
 
 async function fetchWithCategories() {
   const chapter = props.chapters[props.activeChapterIndex];
-  if (!chapter) return;
+  if (!chapter) {
+    return;
+  }
   const params = selectedCategories.value;
-  if (Object.keys(params).length === 0) return;
+  if (Object.keys(params).length === 0) {
+    return;
+  }
   categoryFetching.value = true;
   try {
-    const raw = await _bridge.runChapterContent(
-      props.fileName,
-      chapter.url,
-      undefined,
-      params,
-    );
+    const raw = await _bridge.runChapterContent(props.fileName, chapter.url, undefined, params);
     categoryContent.value = typeof raw === 'string' ? raw : String(raw ?? '');
   } catch {
     // 静默失败，保留旧内容
@@ -370,7 +378,9 @@ async function fetchWithCategories() {
 }
 
 async function onSelectCategoryOption(groupId: string, optionId: string) {
-  if (selectedCategories.value[groupId] === optionId) return;
+  if (selectedCategories.value[groupId] === optionId) {
+    return;
+  }
   selectedCategories.value = { ...selectedCategories.value, [groupId]: optionId };
   saveCategories();
   await fetchWithCategories();
@@ -390,7 +400,9 @@ watch(
 watch(
   () => props.content,
   (newContent) => {
-    if (!newContent) return;
+    if (!newContent) {
+      return;
+    }
     // 若当前已有分类选择且没有已覆盖的内容，触发一次覆盖请求
     if (Object.keys(selectedCategories.value).length > 0 && !categoryContent.value) {
       void fetchWithCategories();
@@ -821,18 +833,18 @@ defineExpose({ getCurrentTime, getDuration });
         <div v-if="hasEpisodeList || availableCategories.length > 0" class="vp__strip">
           <!-- 通用分类面板（移动端） -->
           <div v-if="availableCategories.length > 0" class="vp__strip-categories">
-            <div
-              v-for="group in availableCategories"
-              :key="group.id"
-              class="vp__cat-group"
-            >
+            <div v-for="group in availableCategories" :key="group.id" class="vp__cat-group">
               <div class="vp__cat-group-label">{{ group.label }}</div>
               <div class="vp__cat-options app-scrollbar--hidden">
                 <button
                   v-for="opt in group.options"
                   :key="opt.id"
                   class="vp__cat-btn"
-                  :class="{ 'vp__cat-btn--active': selectedCategories[group.id] === opt.id || (!selectedCategories[group.id] && group.defaultSelected === opt.id) }"
+                  :class="{
+                    'vp__cat-btn--active':
+                      selectedCategories[group.id] === opt.id ||
+                      (!selectedCategories[group.id] && group.defaultSelected === opt.id),
+                  }"
                   @click="onSelectCategoryOption(group.id, opt.id)"
                 >
                   {{ opt.label }}
@@ -842,10 +854,89 @@ defineExpose({ getCurrentTime, getDuration });
             </div>
           </div>
           <div v-if="hasEpisodeList">
-          <div class="vp__strip-header">
-            <div class="vp__strip-label">
+            <div class="vp__strip-header">
+              <div class="vp__strip-label">
+                选集
+                <span class="vp__strip-count">{{ displayEpisodes.length }} 集</span>
+              </div>
+              <n-button text size="tiny" class="vp__sort-btn" @click="toggleVpSort">
+                {{ sortOrder === 'asc' ? '正序' : '倒序' }}
+                <ArrowUp
+                  :size="12"
+                  :style="{
+                    transform: sortOrder === 'desc' ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s',
+                  }"
+                />
+              </n-button>
+            </div>
+            <!-- 分组标签 -->
+            <div
+              v-if="hasGroups && !props.inlineGroupTabs"
+              class="vp__strip-tabs app-scrollbar--hidden"
+            >
+              <button
+                v-for="(g, gi) in groups"
+                :key="g.name"
+                class="vp__tab-btn"
+                :class="{ 'vp__tab-btn--active': gi === activeGroupIndex }"
+                @click="onGroupTabClick(gi)"
+              >
+                {{ g.name }}
+                <span class="vp__tab-count">{{ g.chapters.length }}</span>
+              </button>
+            </div>
+            <div class="vp__strip-scroll app-scrollbar--hidden">
+              <button
+                v-for="ch in displayEpisodes"
+                :key="`${ch.group || ''}-${ch.url}`"
+                class="vp__strip-btn"
+                :class="{ 'vp__strip-btn--active': ch.url === activeChapter?.url }"
+                @click="emitGotoChapter(ch)"
+              >
+                {{ ch.name }}
+                <span v-if="isEpWatched(ch)" class="vp__ep-watched">已看</span>
+                <div v-else-if="epProgressRatio(ch) > 0" class="vp__ep-bar">
+                  <div
+                    class="vp__ep-bar-fill"
+                    :style="{ width: epProgressRatio(ch) * 100 + '%' }"
+                  ></div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 桌面端右侧选集侧边栏（单集且无分类时整体隐藏） -->
+      <div v-if="hasEpisodeList || availableCategories.length > 0" class="vp__sidebar">
+        <!-- 通用分类面板（桌面端侧边栏） -->
+        <div v-if="availableCategories.length > 0" class="vp__sidebar-categories">
+          <div v-for="group in availableCategories" :key="group.id" class="vp__cat-group">
+            <div class="vp__cat-group-label">{{ group.label }}</div>
+            <div class="vp__cat-options">
+              <button
+                v-for="opt in group.options"
+                :key="opt.id"
+                class="vp__cat-btn"
+                :class="{
+                  'vp__cat-btn--active':
+                    selectedCategories[group.id] === opt.id ||
+                    (!selectedCategories[group.id] && group.defaultSelected === opt.id),
+                }"
+                @click="onSelectCategoryOption(group.id, opt.id)"
+              >
+                {{ opt.label }}
+                <span v-if="opt.badge" class="vp__cat-badge">{{ opt.badge }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <template v-if="hasEpisodeList">
+          <div class="vp__sidebar-header">
+            <div class="vp__sidebar-heading">
               选集
-              <span class="vp__strip-count">{{ displayEpisodes.length }} 集</span>
+              <span class="vp__sidebar-count">{{ displayEpisodes.length }} 集</span>
             </div>
             <n-button text size="tiny" class="vp__sort-btn" @click="toggleVpSort">
               {{ sortOrder === 'asc' ? '正序' : '倒序' }}
@@ -858,8 +949,7 @@ defineExpose({ getCurrentTime, getDuration });
               />
             </n-button>
           </div>
-          <!-- 分组标签 -->
-          <div v-if="hasGroups && !props.inlineGroupTabs" class="vp__strip-tabs app-scrollbar--hidden">
+          <div v-if="hasGroups && !props.inlineGroupTabs" class="vp__sidebar-tabs">
             <button
               v-for="(g, gi) in groups"
               :key="g.name"
@@ -871,99 +961,32 @@ defineExpose({ getCurrentTime, getDuration });
               <span class="vp__tab-count">{{ g.chapters.length }}</span>
             </button>
           </div>
-          <div class="vp__strip-scroll app-scrollbar--hidden">
+          <div class="vp__sidebar-list app-scrollbar app-scrollbar--thin">
             <button
-              v-for="ch in displayEpisodes"
+              v-for="(ch, i) in displayEpisodes"
               :key="`${ch.group || ''}-${ch.url}`"
-              class="vp__strip-btn"
-              :class="{ 'vp__strip-btn--active': ch.url === activeChapter?.url }"
+              class="vp__sidebar-item"
+              :class="{ 'vp__sidebar-item--active': ch.url === activeChapter?.url }"
               @click="emitGotoChapter(ch)"
             >
-              {{ ch.name }}
-              <span v-if="isEpWatched(ch)" class="vp__ep-watched">已看</span>
-              <div v-else-if="epProgressRatio(ch) > 0" class="vp__ep-bar">
-                <div class="vp__ep-bar-fill" :style="{ width: (epProgressRatio(ch) * 100) + '%' }"></div>
+              <span class="vp__sidebar-idx">{{
+                sortOrder === 'asc' ? i + 1 : displayEpisodes.length - i
+              }}</span>
+              <div class="vp__sidebar-meta">
+                <span class="vp__sidebar-name">{{ ch.name }}</span>
+                <span v-if="ch.url === activeChapter?.url" class="vp__sidebar-playing"
+                  >正在播放</span
+                >
+                <span v-else-if="isEpWatched(ch)" class="vp__sidebar-watched">已看</span>
+              </div>
+              <div v-if="!isEpWatched(ch) && epProgressRatio(ch) > 0" class="vp__sidebar-progress">
+                <div
+                  class="vp__sidebar-progress-fill"
+                  :style="{ width: epProgressRatio(ch) * 100 + '%' }"
+                ></div>
               </div>
             </button>
           </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 桌面端右侧选集侧边栏（单集且无分类时整体隐藏） -->
-      <div v-if="hasEpisodeList || availableCategories.length > 0" class="vp__sidebar">
-        <!-- 通用分类面板（桌面端侧边栏） -->
-        <div v-if="availableCategories.length > 0" class="vp__sidebar-categories">
-          <div
-            v-for="group in availableCategories"
-            :key="group.id"
-            class="vp__cat-group"
-          >
-            <div class="vp__cat-group-label">{{ group.label }}</div>
-            <div class="vp__cat-options">
-              <button
-                v-for="opt in group.options"
-                :key="opt.id"
-                class="vp__cat-btn"
-                :class="{ 'vp__cat-btn--active': selectedCategories[group.id] === opt.id || (!selectedCategories[group.id] && group.defaultSelected === opt.id) }"
-                @click="onSelectCategoryOption(group.id, opt.id)"
-              >
-                {{ opt.label }}
-                <span v-if="opt.badge" class="vp__cat-badge">{{ opt.badge }}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-        <template v-if="hasEpisodeList">
-        <div class="vp__sidebar-header">
-          <div class="vp__sidebar-heading">
-            选集
-            <span class="vp__sidebar-count">{{ displayEpisodes.length }} 集</span>
-          </div>
-          <n-button text size="tiny" class="vp__sort-btn" @click="toggleVpSort">
-            {{ sortOrder === 'asc' ? '正序' : '倒序' }}
-            <ArrowUp
-              :size="12"
-              :style="{
-                transform: sortOrder === 'desc' ? 'rotate(180deg)' : 'none',
-                transition: 'transform 0.2s',
-              }"
-            />
-          </n-button>
-        </div>
-        <div v-if="hasGroups && !props.inlineGroupTabs" class="vp__sidebar-tabs">
-          <button
-            v-for="(g, gi) in groups"
-            :key="g.name"
-            class="vp__tab-btn"
-            :class="{ 'vp__tab-btn--active': gi === activeGroupIndex }"
-            @click="onGroupTabClick(gi)"
-          >
-            {{ g.name }}
-            <span class="vp__tab-count">{{ g.chapters.length }}</span>
-          </button>
-        </div>
-        <div class="vp__sidebar-list app-scrollbar app-scrollbar--thin">
-          <button
-            v-for="(ch, i) in displayEpisodes"
-            :key="`${ch.group || ''}-${ch.url}`"
-            class="vp__sidebar-item"
-            :class="{ 'vp__sidebar-item--active': ch.url === activeChapter?.url }"
-            @click="emitGotoChapter(ch)"
-          >
-            <span class="vp__sidebar-idx">{{
-              sortOrder === 'asc' ? i + 1 : displayEpisodes.length - i
-            }}</span>
-            <div class="vp__sidebar-meta">
-              <span class="vp__sidebar-name">{{ ch.name }}</span>
-              <span v-if="ch.url === activeChapter?.url" class="vp__sidebar-playing">正在播放</span>
-              <span v-else-if="isEpWatched(ch)" class="vp__sidebar-watched">已看</span>
-            </div>
-            <div v-if="!isEpWatched(ch) && epProgressRatio(ch) > 0" class="vp__sidebar-progress">
-              <div class="vp__sidebar-progress-fill" :style="{ width: (epProgressRatio(ch) * 100) + '%' }"></div>
-            </div>
-          </button>
-        </div>
         </template>
       </div>
     </div>

@@ -50,6 +50,8 @@ export interface AppConfig {
   ui_layout_mode: string;
   /** UI 主题模式："auto" | "light" | "dark" */
   ui_theme: string;
+  /** 是否启用 Aplus 数据追踪 */
+  ui_enable_aplus_tracking: boolean;
   /** Windows 主窗口上次退出时的逻辑宽度，0 表示未记录 */
   windows_main_window_width: number;
   /** Windows 主窗口上次退出时的逻辑高度，0 表示未记录 */
@@ -207,7 +209,6 @@ const config = ref<AppConfig>({
   sync_mobile_pause_on_low_battery: true,
   sync_mobile_startup_delay_ms: 5000,
   sync_mobile_resume_delay_ms: 1500,
-  sync_baidu_app_key: '',
   sync_baidu_app_name: 'legado-tauri',
 });
 

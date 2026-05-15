@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { ChevronDown } from 'lucide-vue-next';
 import { NTag, NSwitch, NButton } from 'naive-ui';
 import { ref } from 'vue';
-import { ChevronDown } from 'lucide-vue-next';
 import type { ExtensionMeta } from '@/composables/useExtension';
 import type { FrontendPluginRecord } from '@/composables/useFrontendPlugins';
-import { catDot, catType, runAtLabel, runtimeStatusType, runtimeStatusLabel } from '@/utils/extensionDisplayUtils';
+import {
+  catDot,
+  catType,
+  runAtLabel,
+  runtimeStatusType,
+  runtimeStatusLabel,
+} from '@/utils/extensionDisplayUtils';
 
 const props = defineProps<{
   ext: ExtensionMeta;
@@ -60,26 +66,18 @@ const showDetails = ref(false);
         <span>{{ props.ext.author || '未知作者' }}</span>
         <template v-if="props.runtimeInfo">
           <span class="ext-card__dot" />
-          <span>
-            hooks {{ props.runtimeInfo?.runtimeHooks.length ?? 0 }}
-          </span>
+          <span> hooks {{ props.runtimeInfo?.runtimeHooks.length ?? 0 }} </span>
           <span class="ext-card__dot" />
-          <span>
-            slots {{ props.runtimeInfo?.runtimeSlots.length ?? 0 }}
-          </span>
+          <span> slots {{ props.runtimeInfo?.runtimeSlots.length ?? 0 }} </span>
           <span class="ext-card__dot" />
           <span>
             actions
-            {{
-              props.runtimeInfo?.runtimeBookshelfActions.length ?? 0
-            }}
+            {{ props.runtimeInfo?.runtimeBookshelfActions.length ?? 0 }}
           </span>
           <span class="ext-card__dot" />
           <span>
             covers
-            {{
-              props.runtimeInfo?.runtimeCoverGenerators.length ?? 0
-            }}
+            {{ props.runtimeInfo?.runtimeCoverGenerators.length ?? 0 }}
           </span>
         </template>
         <template v-if="props.ext.grants.length">
@@ -108,23 +106,13 @@ const showDetails = ref(false);
           @click="emit('settings')"
           >设置</n-button
         >
-        <n-button size="tiny" quaternary @click="emit('move', -1)"
-          >上移</n-button
-        >
-        <n-button size="tiny" quaternary @click="emit('move', 1)"
-          >下移</n-button
-        >
-        <n-button size="tiny" quaternary @click="emit('reload')"
-          >重载</n-button
-        >
-        <n-button size="tiny" quaternary @click="emit('view-code')"
-          >查看代码</n-button
-        >
+        <n-button size="tiny" quaternary @click="emit('move', -1)">上移</n-button>
+        <n-button size="tiny" quaternary @click="emit('move', 1)">下移</n-button>
+        <n-button size="tiny" quaternary @click="emit('reload')">重载</n-button>
+        <n-button size="tiny" quaternary @click="emit('view-code')">查看代码</n-button>
         <n-button size="tiny" quaternary @click="emit('edit')">编辑</n-button>
         <n-button size="tiny" quaternary @click="emit('export')">导出</n-button>
-        <n-button size="tiny" quaternary type="error" @click="emit('delete')"
-          >删除</n-button
-        >
+        <n-button size="tiny" quaternary type="error" @click="emit('delete')">删除</n-button>
         <n-button
           v-if="props.runtimeInfo"
           size="tiny"
@@ -143,22 +131,39 @@ const showDetails = ref(false);
         <div v-if="props.runtimeInfo.runtimeHooks.length" class="ext-card__detail-row">
           <span class="ext-card__detail-label">Hooks</span>
           <div class="ext-card__detail-tags">
-            <n-tag v-for="h in props.runtimeInfo.runtimeHooks" :key="h" size="tiny" :bordered="false">{{ h }}</n-tag>
+            <n-tag
+              v-for="h in props.runtimeInfo.runtimeHooks"
+              :key="h"
+              size="tiny"
+              :bordered="false"
+              >{{ h }}</n-tag
+            >
           </div>
         </div>
         <div v-if="props.runtimeInfo.runtimeSlots.length" class="ext-card__detail-row">
           <span class="ext-card__detail-label">Slots</span>
           <div class="ext-card__detail-tags">
-            <n-tag v-for="s in props.runtimeInfo.runtimeSlots" :key="s" size="tiny" :bordered="false" type="info">{{ s }}</n-tag>
+            <n-tag
+              v-for="s in props.runtimeInfo.runtimeSlots"
+              :key="s"
+              size="tiny"
+              :bordered="false"
+              type="info"
+              >{{ s }}</n-tag
+            >
           </div>
         </div>
         <div v-if="props.runtimeInfo.runtimeBookshelfActions?.length" class="ext-card__detail-row">
           <span class="ext-card__detail-label">书架动作</span>
-          <span class="ext-card__detail-value">{{ props.runtimeInfo.runtimeBookshelfActions.join(', ') }}</span>
+          <span class="ext-card__detail-value">{{
+            props.runtimeInfo.runtimeBookshelfActions.join(', ')
+          }}</span>
         </div>
         <div class="ext-card__detail-row">
           <span class="ext-card__detail-label">插件 ID</span>
-          <span class="ext-card__detail-value" style="font-family: monospace; font-size: 11px">{{ props.runtimeInfo.pluginId }}</span>
+          <span class="ext-card__detail-value" style="font-family: monospace; font-size: 11px">{{
+            props.runtimeInfo.pluginId
+          }}</span>
         </div>
       </div>
     </transition>

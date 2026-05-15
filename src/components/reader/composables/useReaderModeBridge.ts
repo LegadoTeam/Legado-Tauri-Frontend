@@ -90,7 +90,12 @@ interface UseReaderModeBridgeOptions {
   gotoPrevChapter: () => Promise<void>;
   warnLastPage: () => void;
   warnFirstPage: () => void;
-  saveEpisodeProgress?: (shelfId: string, chapterUrl: string, time: number, duration: number) => void;
+  saveEpisodeProgress?: (
+    shelfId: string,
+    chapterUrl: string,
+    time: number,
+    duration: number,
+  ) => void;
 }
 
 function onVideoEnded() {

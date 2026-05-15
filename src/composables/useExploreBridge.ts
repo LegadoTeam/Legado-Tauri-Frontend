@@ -404,10 +404,14 @@ export function isUrlExploreResult(value: unknown): boolean {
  * 若无法提取则返回空字符串。
  */
 export function getUrlFromExploreResult(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'string') {
+    return value.trim();
+  }
   if (value && typeof value === 'object') {
     const obj = value as Record<string, unknown>;
-    if (typeof obj.url === 'string') return obj.url;
+    if (typeof obj.url === 'string') {
+      return obj.url;
+    }
   }
   return '';
 }

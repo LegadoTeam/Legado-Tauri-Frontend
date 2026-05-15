@@ -130,7 +130,8 @@ function setupSentinel() {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const rootEl = scrollRef.value;
-          const nextTop = nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
+          const nextTop =
+            nextSectionRef.value?.offsetTop ?? nextChapterSentinelRef.value?.offsetTop;
           if (rootEl && typeof nextTop === 'number' && rootEl.scrollTop < nextTop - 1) {
             return;
           }
@@ -335,14 +336,16 @@ function escapeHtml(text: string): string {
 function highlightParagraph(text: string): string {
   const texts = props.bookmarkTexts;
   const escaped = escapeHtml(text);
-  if (!texts || texts.length === 0) return escaped;
+  if (!texts || texts.length === 0) {
+    return escaped;
+  }
   let result = escaped;
   for (const bmText of texts) {
-    if (!bmText.trim()) continue;
+    if (!bmText.trim()) {
+      continue;
+    }
     const escapedBm = escapeHtml(bmText);
-    result = result.split(escapedBm).join(
-      `<mark class="reader-bookmark">${escapedBm}</mark>`,
-    );
+    result = result.split(escapedBm).join(`<mark class="reader-bookmark">${escapedBm}</mark>`);
   }
   return result;
 }
@@ -382,7 +385,8 @@ function onScroll() {
   const nextTop = nextSectionRef.value?.offsetTop ?? Number.POSITIVE_INFINITY;
 
   // 进度按当前章节区域计算（不含上/下章预渲染部分）
-  const currentSectionH = currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
+  const currentSectionH =
+    currentSectionRef.value?.offsetHeight ?? Math.max(0, scrollHeight - prevH);
   const adjustedScrollTop = Math.max(0, scrollTop - prevH);
   const ratio =
     currentSectionH <= clientHeight
@@ -522,7 +526,7 @@ function getParagraphLineBoxes(para: HTMLElement): LineBox[] {
   const host = getParagraphTextHost(para);
   const rects = Array.from(host.getClientRects())
     .filter((rect) => rect.width > 0 && rect.height > 0)
-    .sort((a, b) => a.top - b.top || a.left - b.left);
+    .toSorted((a, b) => a.top - b.top || a.left - b.left);
 
   if (rects.length === 0) {
     const rect = para.getBoundingClientRect();
@@ -657,7 +661,9 @@ function getReadingScrollRatio(): number {
 }
 
 function getAdjacentScrollRatio(side: 'prev' | 'next'): number {
-  return side === 'prev' ? getSectionRatio(prevSectionRef.value) : getSectionRatio(nextSectionRef.value);
+  return side === 'prev'
+    ? getSectionRatio(prevSectionRef.value)
+    : getSectionRatio(nextSectionRef.value);
 }
 
 function getSectionFirstVisibleParaIndex(section: HTMLElement | null): number {
@@ -756,10 +762,18 @@ const showAnyDebug = computed(() => !!props.layoutDebug || !!props.tapZoneDebug)
 // ── 章节边界条件 ─────────────────────────────────────────────────────
 const hasPrevChapterContent = computed(() => !!props.prevChapterContent);
 const hasNextChapterContent = computed(() => !!props.nextChapterContent);
-const showPrevChapterSurface = computed(() => hasPrevChapterContent.value || !!props.prevChapterLoading);
-const showNextChapterSurface = computed(() => hasNextChapterContent.value || !!props.nextChapterLoading);
-const showCurrentChapterTitle = computed(() => !!props.chapterTitle && !showPrevChapterSurface.value);
-const showCurrentChapterLoading = computed(() => !!props.currentChapterLoading && paragraphs.value.length === 0);
+const showPrevChapterSurface = computed(
+  () => hasPrevChapterContent.value || !!props.prevChapterLoading,
+);
+const showNextChapterSurface = computed(
+  () => hasNextChapterContent.value || !!props.nextChapterLoading,
+);
+const showCurrentChapterTitle = computed(
+  () => !!props.chapterTitle && !showPrevChapterSurface.value,
+);
+const showCurrentChapterLoading = computed(
+  () => !!props.currentChapterLoading && paragraphs.value.length === 0,
+);
 /** 无下一章且无预加载内容时显示结束画面 */
 const showEndScreen = computed(() => !props.hasNext && !showNextChapterSurface.value);
 
@@ -836,7 +850,10 @@ defineExpose({
     >
       <p v-if="showCurrentChapterTitle" class="reader-chapter-title">{{ chapterTitle }}</p>
 
-      <div v-if="showCurrentChapterLoading" class="scroll-mode__chapter-loading scroll-mode__chapter-loading--current">
+      <div
+        v-if="showCurrentChapterLoading"
+        class="scroll-mode__chapter-loading scroll-mode__chapter-loading--current"
+      >
         <n-spin size="small" />
         <span>{{ chapterTitle || '当前章节' }}加载中...</span>
       </div>

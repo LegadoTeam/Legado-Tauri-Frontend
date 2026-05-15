@@ -126,8 +126,12 @@ async function loadCategories(restoreCategory?: string, skipBooks = false) {
     void (async () => {
       try {
         const raw = await runExplore(props.source.fileName, 'GETALL');
-        if (requestToken !== categoryRequestToken) return;
-        if (!Array.isArray(raw)) return;
+        if (requestToken !== categoryRequestToken) {
+          return;
+        }
+        if (!Array.isArray(raw)) {
+          return;
+        }
         const fresh = raw.filter((v): v is string => typeof v === 'string');
         // 仅有变化才更新缓存 + 重渲染，内容与缓存一致时无需任何操作
         if (!stringArraysEqual(categories.value, fresh)) {
@@ -220,7 +224,9 @@ async function loadBooks(category: string, page = 1) {
       void (async () => {
         try {
           const raw = await runExplore(props.source.fileName, category, 1);
-          if (requestToken !== booksRequestToken) return;
+          if (requestToken !== booksRequestToken) {
+            return;
+          }
           if (isUrlExploreResult(raw)) {
             urlContent.value = getUrlFromExploreResult(raw);
             htmlContent.value = null;
@@ -394,7 +400,11 @@ watch(
     <div v-else-if="catError" class="ses__error">加载失败: {{ catError }}</div>
 
     <!-- 分类标签行（单页源 categories=[] 时隐藏） -->
-    <template v-else-if="categories.length > 0 || urlContent !== null || htmlContent !== null || booksEverLoaded">
+    <template
+      v-else-if="
+        categories.length > 0 || urlContent !== null || htmlContent !== null || booksEverLoaded
+      "
+    >
       <div v-if="categories.length > 0" class="ses__cats">
         <button
           v-for="cat in categories"
@@ -408,7 +418,10 @@ watch(
       </div>
 
       <!-- 书籍区域：overlay loading，不改变高度 -->
-      <div class="ses__books-wrap" :class="{ 'ses__books-wrap--fullheight': urlContent !== null || htmlContent !== null }">
+      <div
+        class="ses__books-wrap"
+        :class="{ 'ses__books-wrap--fullheight': urlContent !== null || htmlContent !== null }"
+      >
         <!-- loading 遮罩层 -->
         <Transition name="ses-fade">
           <div v-if="booksLoading" class="ses__loading-overlay">
@@ -419,10 +432,7 @@ watch(
         <div v-if="booksError" class="ses__error">{{ booksError }}</div>
 
         <!-- URL 网页模式（网页发现源） -->
-        <ExploreUrlRenderer
-          v-else-if="urlContent"
-          :url="urlContent"
-        />
+        <ExploreUrlRenderer v-else-if="urlContent" :url="urlContent" />
 
         <!-- HTML 交互页模式 -->
         <ExploreHtmlRenderer
@@ -457,7 +467,10 @@ watch(
       </div>
 
       <!-- 翻页栏（标准书单模式，非 URL/HTML 渲染时显示） -->
-      <div v-if="!htmlContent && !urlContent && (books.length > 0 || currentPage > 1)" class="ses__pagination">
+      <div
+        v-if="!htmlContent && !urlContent && (books.length > 0 || currentPage > 1)"
+        class="ses__pagination"
+      >
         <button
           class="ses__page-btn"
           :disabled="currentPage === 1 || booksLoading"

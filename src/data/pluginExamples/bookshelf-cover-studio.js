@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 function escapeXml(input) {
-  return String(input || '')
+  return String(input ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -21,7 +21,7 @@ function escapeXml(input) {
 }
 
 function wrapTitle(input) {
-  const chars = Array.from(String(input || '').trim() || '未命名作品');
+  const chars = Array.from(String(input ?? '').trim() || '未命名作品');
   const lines = [];
   for (let index = 0; index < chars.length && lines.length < 4; index += 6) {
     lines.push(chars.slice(index, index + 6).join(''));
@@ -43,7 +43,7 @@ function buildCover(book, values) {
   const subtitle =
     typeof values.subtitle === 'string' && values.subtitle.trim()
       ? values.subtitle.trim()
-      : book.author || 'Legado';
+      : (book.author ?? 'Legado');
   const badge =
     typeof values.badge === 'string' && values.badge.trim() ? values.badge.trim() : 'PLUGIN';
   const color =
@@ -87,8 +87,8 @@ legado.registerPlugin({
               message: '这个封面项来自插件注册的 coverGenerators。',
               submitText: '生成并写回',
               initialValues: {
-                subtitle: context.book.author || '',
-                badge: context.book.kind || 'PLUGIN',
+                subtitle: context.book.author ?? '',
+                badge: context.book.kind ?? 'PLUGIN',
                 primaryColor: '#1755ff',
               },
               fields: [

@@ -6,12 +6,11 @@
  * 最近检测时间以 bookId 为 key 持久化在前端存储中。
  */
 
-import { useDynamicConfig } from './useDynamicConfig';
-import { useBookshelfStore } from '@/stores/bookshelf';
-import { LOCAL_TXT_FILE_NAME } from '@/stores/bookshelf';
-import { useScriptBridgeStore } from '@/stores/scriptBridge';
-import { usePreferencesStore } from '@/stores/preferences';
 import type { ShelfBook } from '@/composables/useBookshelf';
+import { LOCAL_TXT_FILE_NAME, useBookshelfStore } from '@/stores/bookshelf';
+import { usePreferencesStore } from '@/stores/preferences';
+import { useScriptBridgeStore } from '@/stores/scriptBridge';
+import { useDynamicConfig } from './useDynamicConfig';
 
 // ── 最近检测时间持久化（bookId → timestamp ms） ───────────────────────────
 
@@ -44,12 +43,14 @@ async function refreshBookToc(
     const info = await scriptBridgeStore.runBookInfo(book.fileName, book.bookUrl);
     const tocUrl = (info as { tocUrl?: string }).tocUrl ?? book.bookUrl;
     const raw = await scriptBridgeStore.runChapterList(book.fileName, tocUrl);
-    const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map((chapter, index) => ({
-      index,
-      name: chapter.name,
-      url: chapter.url,
-      group: chapter.group,
-    }));
+    const fetched = (raw as Array<{ name: string; url: string; group?: string }>).map(
+      (chapter, index) => ({
+        index,
+        name: chapter.name,
+        url: chapter.url,
+        group: chapter.group,
+      }),
+    );
 
     const cached = await bookshelfStore.getChapters(book.id);
     const oldUrls = new Set(cached.map((c) => c.url));
@@ -90,9 +91,15 @@ export function useTocAutoUpdate() {
    */
   async function refreshOnBookOpen(book: ShelfBook): Promise<number> {
     const cfg = preferencesStore.tocAutoUpdate;
-    if (!cfg.enabled || !cfg.onBookOpen) return -1;
-    if (book.fileName === LOCAL_TXT_FILE_NAME) return -1; // 本地 TXT 书籍无需自动更新
-    if (!isRefreshDue(book.id)) return -1;
+    if (!cfg.enabled || !cfg.onBookOpen) {
+      return -1;
+    }
+    if (book.fileName === LOCAL_TXT_FILE_NAME) {
+      return -1;
+    } // 本地 TXT 书籍无需自动更新
+    if (!isRefreshDue(book.id)) {
+      return -1;
+    }
     return refreshBookToc(book, bookshelfStore, scriptBridgeStore);
   }
 
@@ -102,12 +109,20 @@ export function useTocAutoUpdate() {
    */
   async function refreshAllOnAppStart(): Promise<void> {
     const cfg = preferencesStore.tocAutoUpdate;
-    if (!cfg.enabled || !cfg.onAppStart) return;
+    if (!cfg.enabled || !cfg.onAppStart) {
+      return;
+    }
 
     for (const book of bookshelfStore.books) {
-      if (!book.fileName || !book.bookUrl) continue;
-      if (book.fileName === LOCAL_TXT_FILE_NAME) continue;
-      if (!isRefreshDue(book.id)) continue;
+      if (!book.fileName || !book.bookUrl) {
+        continue;
+      }
+      if (book.fileName === LOCAL_TXT_FILE_NAME) {
+        continue;
+      }
+      if (!isRefreshDue(book.id)) {
+        continue;
+      }
       await refreshBookToc(book, bookshelfStore, scriptBridgeStore);
     }
   }
@@ -117,16 +132,26 @@ export function useTocAutoUpdate() {
    * 仅在设置 enabled + onShelfView 开启，且单本书距离上次超过最小间隔时才执行。
    * @returns 刷新结果摘要 { success: 成功数, failed: 失败数, updated: 新增章节总数 }
    */
-  async function refreshAllOnShelfView(): Promise<{ success: number; failed: number; updated: number }> {
+  async function refreshAllOnShelfView(): Promise<{
+    success: number;
+    failed: number;
+    updated: number;
+  }> {
     const cfg = preferencesStore.tocAutoUpdate;
     const result = { success: 0, failed: 0, updated: 0 };
 
     // 如果设置未开启，仍允许手动刷新（忽略间隔限制）
     const booksToRefresh = bookshelfStore.books.filter((b) => {
-      if (!b.fileName || !b.bookUrl) return false;
-      if (b.fileName === LOCAL_TXT_FILE_NAME) return false; // 本地 TXT 书籍无需自动更新
+      if (!b.fileName || !b.bookUrl) {
+        return false;
+      }
+      if (b.fileName === LOCAL_TXT_FILE_NAME) {
+        return false;
+      } // 本地 TXT 书籍无需自动更新
       // 如果自动刷新未开启，则刷新所有书
-      if (!cfg.enabled || !cfg.onShelfView) return true;
+      if (!cfg.enabled || !cfg.onShelfView) {
+        return true;
+      }
       // 否则检查间隔
       return isRefreshDue(b.id);
     });

@@ -1,18 +1,35 @@
+import type { DialogApi, MessageApi } from 'naive-ui';
 /**
  * 绑定阅读弹层宿主交互、生命周期、缓存控制和窗口重排恢复。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, watch, type ComputedRef, type Ref } from 'vue';
-import type { DialogApiInjection, MessageApiInjection } from 'naive-ui';
-import type { CachedChapter } from '@/types';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from 'vue';
 import type { ChapterItem } from '@/stores';
-import type { ReaderBookInfo, TemporaryChapterSourceOverride, WholeBookSwitchedPayload } from '../types';
+import type { CachedChapter } from '@/types';
 import { eventListenSync } from '@/composables/useEventBus';
 import { FRONTEND_PLUGIN_TOAST_EVENT } from '@/composables/useFrontendPlugins';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
-import { getCoverImageUrl } from '@/utils/coverImage';
 import { createReaderCacheController } from '@/features/reader/services/readerCache';
-import { createReaderLifecycleController } from '@/features/reader/services/readerLifecycle';
+import {
+  createReaderLifecycleController,
+  type ShelfReaderSettingsSnapshot,
+} from '@/features/reader/services/readerLifecycle';
 import { createReaderSourceSwitchController } from '@/features/reader/services/readerSourceSwitch';
+import { getCoverImageUrl } from '@/utils/coverImage';
+import type {
+  ReaderBookInfo,
+  TemporaryChapterSourceOverride,
+  WholeBookSwitchedPayload,
+} from '../types';
+import type { ReadingAnchor } from './usePagination';
+import type { OpenChapterOptions } from './useReaderChapterOpen';
 
 interface ReaderProgressPayloadLike {
   pageIndex?: number;
@@ -38,16 +55,18 @@ interface ReaderModeRefLike {
 }
 
 interface ReaderPagedCacheLike {
-  buildAnchorForChapterPage: (chapterIndex: number, pageIndex: number) => unknown;
+  buildAnchorForChapterPage: (chapterIndex: number, pageIndex: number) => ReadingAnchor;
   invalidatePages: () => void;
 }
 
 interface ReaderViewStoreLike {
+  // eslint-disable-next-line typescript/no-explicit-any
   bind: (...args: any[]) => void;
   clear: () => void;
 }
 
 interface ReaderActionsStoreLike {
+  // eslint-disable-next-line typescript/no-explicit-any
   bind: (...args: any[]) => void;
   clear: () => void;
 }
@@ -58,13 +77,15 @@ interface ReaderUiStoreLike {
 }
 
 interface ReaderSessionStoreLike {
+  // eslint-disable-next-line typescript/no-explicit-any
   resetForOpen: (...args: any[]) => void;
+  // eslint-disable-next-line typescript/no-explicit-any
   resetForClose: (...args: any[]) => void;
 }
 
 interface UseReaderModalHostOptions {
-  message: MessageApiInjection;
-  dialog: DialogApiInjection;
+  message: MessageApi;
+  dialog: DialogApi;
   settings: ReaderSettingsLike;
   readerViewStore: ReaderViewStoreLike;
   readerActionsStore: ReaderActionsStoreLike;
@@ -107,7 +128,7 @@ interface UseReaderModalHostOptions {
   showToc: Ref<boolean>;
   settingsVisible: Ref<boolean>;
   showSourceSwitchDialog: Ref<boolean>;
-  sourceSwitchMode: Ref<string>;
+  sourceSwitchMode: Ref<'whole-book' | 'chapter-temp'>;
   showTtsBar: Ref<boolean>;
   hasPrev: ComputedRef<boolean>;
   hasNext: ComputedRef<boolean>;
@@ -168,15 +189,15 @@ interface UseReaderModalHostOptions {
   ) => Promise<{ id: string }>;
   saveChapters: (shelfId: string, chapters: CachedChapter[]) => Promise<unknown>;
   deleteContent: (shelfId: string, chapterIndex: number) => Promise<unknown>;
-  getShelfBook: (shelfId: string) => Promise<unknown>;
+  getShelfBook: (shelfId: string) => Promise<ShelfReaderSettingsSnapshot>;
   activateBookSettings: (bookId: string, savedJson?: string) => void;
   deactivateBookSettings: () => void;
-  ensureFrontendPlugins: () => Promise<unknown>;
-  openSession: () => Promise<unknown>;
-  closeSession: () => Promise<unknown>;
+  ensureFrontendPlugins: () => Promise<void>;
+  openSession: () => Promise<void>;
+  closeSession: () => Promise<void>;
   syncSessionSnapshot: () => Promise<unknown>;
   loadShelfStatus: () => Promise<void>;
-  openChapter: (index: number, options?: Record<string, unknown>) => Promise<unknown>;
+  openChapter: (index: number, options?: OpenChapterOptions) => Promise<void>;
   openLinearChapter: (index: number) => Promise<unknown>;
   openPagedChapter: (
     index: number,
@@ -189,13 +210,17 @@ interface UseReaderModalHostOptions {
   gotoNextBoundary: () => Promise<void>;
   gotoChapter: (index: number) => Promise<void>;
   onPagedPageChange: (page: number) => void;
+  // eslint-disable-next-line typescript/no-explicit-any
   onPagedProgress: (...args: any[]) => void;
+  // eslint-disable-next-line typescript/no-explicit-any
   onScrollProgress: (...args: any[]) => void;
+  // eslint-disable-next-line typescript/no-explicit-any
   onComicProgress: (...args: any[]) => void;
   onScrollNextChapterEntered: (sectionHeight: number) => Promise<void>;
   onScrollPrevChapterEntered: () => Promise<void>;
   onComicNextChapterEntered: (sectionHeight: number) => Promise<void>;
   onComicPrevChapterEntered: () => Promise<void>;
+  // eslint-disable-next-line typescript/no-explicit-any
   onVideoProgress: (...args: any[]) => void;
   onVideoEnded: () => void;
   onTtsToggle: () => void;
@@ -207,7 +232,7 @@ interface UseReaderModalHostOptions {
   prefetchChapters: (count: number) => Promise<unknown>;
   saveDetailedProgress: () => Promise<void> | void;
   reportReaderSession: (active: boolean) => void;
-  triggerReaderProgressSync: () => Promise<unknown>;
+  triggerReaderProgressSync: () => Promise<void>;
   setupReadingConflictListener: () => void;
   cleanupReadingConflictListener: () => void;
   startAutoSave: () => void;
@@ -305,7 +330,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
         {
           name: info.name,
           author: info.author,
-          coverUrl: getCoverImageUrl(info.coverUrl),
+          coverUrl: getCoverImageUrl(info.coverUrl) ?? '',
           intro: info.intro,
           kind: info.kind,
           bookUrl: info.bookUrl ?? '',
@@ -333,9 +358,14 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
       const chapter = options.getChapter(readingChapterIndex);
       if (chapter) {
         await options
-          .updateProgress(result.id, readingChapterIndex, options.getReadingChapterUrl() || chapter.url, {
-            ...options.buildProgressPayload(),
-          })
+          .updateProgress(
+            result.id,
+            readingChapterIndex,
+            options.getReadingChapterUrl() || chapter.url,
+            {
+              ...options.buildProgressPayload(),
+            },
+          )
           .catch(() => {});
       }
 
@@ -343,7 +373,9 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
       options.emitAddedToShelf(result.id);
       return true;
     } catch (error: unknown) {
-      options.message.error(`加入书架失败: ${error instanceof Error ? error.message : String(error)}`);
+      options.message.error(
+        `加入书架失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return false;
     } finally {
       options.addingToShelf.value = false;
@@ -522,13 +554,21 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
 
     switch (event.key) {
       case 'AudioVolumeDown':
-        if (options.settings.volumeKeyPageTurnEnabled && !options.isVideoMode.value && !options.showTtsBar.value) {
+        if (
+          options.settings.volumeKeyPageTurnEnabled &&
+          !options.isVideoMode.value &&
+          !options.showTtsBar.value
+        ) {
           event.preventDefault();
           options.volumePageNext();
         }
         break;
       case 'AudioVolumeUp':
-        if (options.settings.volumeKeyPageTurnEnabled && !options.isVideoMode.value && !options.showTtsBar.value) {
+        if (
+          options.settings.volumeKeyPageTurnEnabled &&
+          !options.isVideoMode.value &&
+          !options.showTtsBar.value
+        ) {
           event.preventDefault();
           options.volumePagePrev();
         }
@@ -632,7 +672,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
       source_type: options.getSourceType() ?? 'novel',
       chapter_name: options.getChapterName(),
       chapter_index: options.getCurrentIndex(),
-      shelf_book_id: options.getShelfBookId() || options.localAddedShelfId.value,
+      shelf_book_id: options.getShelfBookId() ?? options.localAddedShelfId.value,
     }),
     readerBodyRef: options.readerBodyRef,
     activeChapterIndex: options.activeChapterIndex,
@@ -674,8 +714,7 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
     saveDetailedProgress: options.saveDetailedProgress,
     clearAllRuntimeCache: options.clearAllRuntimeCache,
     invalidatePages: options.invalidatePages,
-    trackSessionOpen: (_payload) => {
-    },
+    trackSessionOpen: (_payload) => {},
   });
 
   function schedulePagedRepaginate() {
@@ -783,14 +822,20 @@ export function useReaderModalHost(options: UseReaderModalHostOptions) {
       if (prevMode === 'scroll') {
         void options.openPagedChapter(options.activeChapterIndex.value, {
           position: options.currentScrollRatio.value >= 0 ? 'resume' : 'first',
-          pageRatio: options.currentScrollRatio.value >= 0 ? options.currentScrollRatio.value : undefined,
+          pageRatio:
+            options.currentScrollRatio.value >= 0 ? options.currentScrollRatio.value : undefined,
         });
       }
     },
   );
 
   watch(
-    () => [options.settings.typography, options.settings.pagePadding, options.settings.paginationEngine] as const,
+    () =>
+      [
+        options.settings.typography,
+        options.settings.pagePadding,
+        options.settings.paginationEngine,
+      ] as const,
     () => {
       schedulePagedRepaginate();
     },

@@ -66,7 +66,9 @@ export interface TtsStartOptions extends TtsOptions {
  * 将连续文本拆分为适合 TTS 朗读的段落数组。
  */
 export function splitIntoSegments(text: string): string[] {
-  if (!text.trim()) return [];
+  if (!text.trim()) {
+    return [];
+  }
   const lines = text.split(/\n+/).filter((l) => l.trim());
   const rawSegments: string[] = [];
 
@@ -74,7 +76,9 @@ export function splitIntoSegments(text: string): string[] {
     const parts = line.split(/(?<=[。！？…；!?])/u);
     for (const part of parts) {
       const trimmed = part.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
       if (trimmed.length <= MAX_SEGMENT_CHARS) {
         rawSegments.push(trimmed);
       } else {
@@ -82,7 +86,7 @@ export function splitIntoSegments(text: string): string[] {
         while (remaining.length > MAX_SEGMENT_CHARS) {
           let cutAt = MAX_SEGMENT_CHARS;
           for (let i = MAX_SEGMENT_CHARS - 1; i > MAX_SEGMENT_CHARS / 2; i--) {
-            if (/[。！？…；!?,，、]/.test(remaining[i]!)) {
+            if (/[。！？…；!?,，、]/.test(remaining[i])) {
               cutAt = i + 1;
               break;
             }
@@ -90,7 +94,9 @@ export function splitIntoSegments(text: string): string[] {
           rawSegments.push(remaining.slice(0, cutAt).trim());
           remaining = remaining.slice(cutAt).trim();
         }
-        if (remaining) rawSegments.push(remaining);
+        if (remaining) {
+          rawSegments.push(remaining);
+        }
       }
     }
   }
@@ -102,7 +108,9 @@ export function splitIntoSegments(text: string): string[] {
 function base64ToBlobUrl(b64: string): string {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
   return URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
 }
 
@@ -143,16 +151,24 @@ let loadMoreResolve: (() => void) | null = null;
 // ── speechSynthesis 降级 ─────────────────────────────────────────────────
 
 function cancelSpeechSynthesis(): void {
-  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
 }
 
 // ── 合成 ─────────────────────────────────────────────────────────────────
 
 async function synthesizeItem(item: QueueItem): Promise<string | null> {
   const { globalIdx, text } = item;
-  if (blobUrlCache.has(globalIdx)) return blobUrlCache.get(globalIdx)!;
-  if (synthInFlight.has(globalIdx)) return synthInFlight.get(globalIdx)!;
-  if (speechSynthesisFallback) return null;
+  if (blobUrlCache.has(globalIdx)) {
+    return blobUrlCache.get(globalIdx)!;
+  }
+  if (synthInFlight.has(globalIdx)) {
+    return synthInFlight.get(globalIdx)!;
+  }
+  if (speechSynthesisFallback) {
+    return null;
+  }
 
   const opts = activeOptions;
   const p = (async (): Promise<string | null> => {
@@ -186,7 +202,7 @@ async function synthesizeItem(item: QueueItem): Promise<string | null> {
 /** 预合成队列前 PRELOAD_AHEAD 个段落 */
 function triggerPreload(): void {
   for (let i = 0; i < Math.min(PRELOAD_AHEAD, queue.length); i++) {
-    const item = queue[i]!;
+    const item = queue[i];
     if (!blobUrlCache.has(item.globalIdx) && !synthInFlight.has(item.globalIdx)) {
       void synthesizeItem(item);
     }
@@ -196,8 +212,12 @@ function triggerPreload(): void {
 // ── 加载更多 ─────────────────────────────────────────────────────────────
 
 async function maybeLoadMore(): Promise<void> {
-  if (loadingMore || !activeOptions?.onNeedMore) return;
-  if (queue.length > PRELOAD_AHEAD) return;
+  if (loadingMore || !activeOptions?.onNeedMore) {
+    return;
+  }
+  if (queue.length > PRELOAD_AHEAD) {
+    return;
+  }
 
   loadingMore = true;
   try {
@@ -219,7 +239,9 @@ async function maybeLoadMore(): Promise<void> {
 // ── 播放核心 ─────────────────────────────────────────────────────────────
 
 async function playNext(): Promise<void> {
-  if (stopped || !isPlaying.value) return;
+  if (stopped || !isPlaying.value) {
+    return;
+  }
 
   // 触发后台加载（不等待）
   void maybeLoadMore();
@@ -233,7 +255,9 @@ async function playNext(): Promise<void> {
       });
       isLoading.value = false;
     }
-    if (stopped || !isPlaying.value) return;
+    if (stopped || !isPlaying.value) {
+      return;
+    }
     if (queue.length === 0) {
       // 确实没有更多内容
       isPlaying.value = false;
@@ -249,18 +273,24 @@ async function playNext(): Promise<void> {
 
   // 推入历史
   playedHistory.push(item);
-  if (playedHistory.length > MAX_HISTORY) playedHistory.shift();
+  if (playedHistory.length > MAX_HISTORY) {
+    playedHistory.shift();
+  }
 
   if (speechSynthesisFallback) {
     const utter = new SpeechSynthesisUtterance(item.text);
     utter.rate = playbackRate.value;
     utter.onend = () => {
       currentItem = null;
-      if (!stopped && isPlaying.value) void playNext();
+      if (!stopped && isPlaying.value) {
+        void playNext();
+      }
     };
     utter.onerror = () => {
       currentItem = null;
-      if (!stopped && isPlaying.value) void playNext();
+      if (!stopped && isPlaying.value) {
+        void playNext();
+      }
     };
     window.speechSynthesis?.speak(utter);
     return;
@@ -270,7 +300,9 @@ async function playNext(): Promise<void> {
   error.value = null;
   const url = await synthesizeItem(item);
   isLoading.value = false;
-  if (stopped || !isPlaying.value) return;
+  if (stopped || !isPlaying.value) {
+    return;
+  }
 
   if (!url) {
     // 合成失败降级
@@ -278,7 +310,9 @@ async function playNext(): Promise<void> {
     utter.rate = playbackRate.value;
     utter.onend = () => {
       currentItem = null;
-      if (!stopped && isPlaying.value) void playNext();
+      if (!stopped && isPlaying.value) {
+        void playNext();
+      }
     };
     window.speechSynthesis?.speak(utter);
     return;
@@ -290,19 +324,25 @@ async function playNext(): Promise<void> {
   audio.onended = () => {
     currentItem = null;
     audioEl = null;
-    if (!stopped && isPlaying.value) void playNext();
+    if (!stopped && isPlaying.value) {
+      void playNext();
+    }
   };
   audio.onerror = () => {
     currentItem = null;
     audioEl = null;
     error.value = '音频播放出错';
-    if (!stopped && isPlaying.value) void playNext();
+    if (!stopped && isPlaying.value) {
+      void playNext();
+    }
   };
   try {
     await audio.play();
   } catch (e) {
     error.value = `播放失败: ${e}`;
-    if (!stopped && isPlaying.value) void playNext();
+    if (!stopped && isPlaying.value) {
+      void playNext();
+    }
   }
 }
 
@@ -319,7 +359,9 @@ function clearAudio(): void {
 }
 
 function revokeBlobUrls(): void {
-  for (const url of blobUrlCache.values()) URL.revokeObjectURL(url);
+  for (const url of blobUrlCache.values()) {
+    URL.revokeObjectURL(url);
+  }
   blobUrlCache.clear();
   synthInFlight.clear();
 }
@@ -349,8 +391,12 @@ function startReading(options: TtsStartOptions): void {
 }
 
 function play(): void {
-  if (isPlaying.value) return;
-  if (!activeOptions && queue.length === 0) return;
+  if (isPlaying.value) {
+    return;
+  }
+  if (!activeOptions && queue.length === 0) {
+    return;
+  }
   isPlaying.value = true;
   if (currentItem) {
     // 恢复暂停的音频
@@ -366,9 +412,13 @@ function play(): void {
 }
 
 function pause(): void {
-  if (!isPlaying.value) return;
+  if (!isPlaying.value) {
+    return;
+  }
   isPlaying.value = false;
-  if (audioEl) audioEl.pause();
+  if (audioEl) {
+    audioEl.pause();
+  }
   cancelSpeechSynthesis();
 }
 
@@ -392,26 +442,36 @@ function stop(): void {
 function nextSegment(): void {
   clearAudio();
   currentItem = null;
-  if (isPlaying.value) void playNext();
+  if (isPlaying.value) {
+    void playNext();
+  }
 }
 
 function prevSegment(): void {
-  if (playedHistory.length < 2) return;
+  if (playedHistory.length < 2) {
+    return;
+  }
   // 当前已在 history 末尾，取倒数第二个
   const current = playedHistory.pop()!;
-  const prev = playedHistory[playedHistory.length - 1]!;
+  const prev = playedHistory[playedHistory.length - 1];
   // 放回队列头
-  if (currentItem) queue.unshift(currentItem);
+  if (currentItem) {
+    queue.unshift(currentItem);
+  }
   queue.unshift(current);
   queue.unshift(prev);
   currentItem = null;
   clearAudio();
-  if (isPlaying.value) void playNext();
+  if (isPlaying.value) {
+    void playNext();
+  }
 }
 
 function setPlaybackRate(rate: number): void {
   playbackRate.value = rate;
-  if (audioEl) audioEl.playbackRate = rate;
+  if (audioEl) {
+    audioEl.playbackRate = rate;
+  }
 }
 
 // ── 导出 ─────────────────────────────────────────────────────────────────

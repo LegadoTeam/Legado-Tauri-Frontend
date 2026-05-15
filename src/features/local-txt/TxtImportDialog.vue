@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { Upload, BookOpen, X, Check, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-vue-next';
-import { NModal, NCard, NButton, NInput, NRadio, NRadioGroup, NSpin, NAlert, NProgress } from 'naive-ui';
+import {
+  NModal,
+  NCard,
+  NButton,
+  NInput,
+  NRadio,
+  NRadioGroup,
+  NSpin,
+  NAlert,
+  NProgress,
+} from 'naive-ui';
 import { ref, computed, watch } from 'vue';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import {
@@ -57,7 +67,9 @@ interface RulePreview {
 const rulePreviews = ref<RulePreview[]>([]);
 
 function buildPreviews() {
-  if (!rawText.value) return;
+  if (!rawText.value) {
+    return;
+  }
   rulePreviews.value = previewAllRules(rawText.value, allRules.value);
 }
 
@@ -66,7 +78,9 @@ const selectedPreview = computed(
 );
 
 const chapterCountLabel = computed(() => {
-  if (!selectedPreview.value) return '';
+  if (!selectedPreview.value) {
+    return '';
+  }
   const count = selectedPreview.value.count;
   const truncated = count >= MAX_CHAPTERS;
   return truncated ? `${count}+ 章（已截断）` : `${count} 章`;
@@ -128,7 +142,9 @@ async function onDrop(e: DragEvent) {
   e.preventDefault();
   isDragOver.value = false;
   const file = e.dataTransfer?.files[0];
-  if (file) await handleFile(file);
+  if (file) {
+    await handleFile(file);
+  }
 }
 function onClickUpload() {
   fileInputRef.value?.click();
@@ -136,17 +152,23 @@ function onClickUpload() {
 async function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
-  if (file) await handleFile(file);
+  if (file) {
+    await handleFile(file);
+  }
   input.value = '';
 }
 
 // ── 导入 ─────────────────────────────────────────────────────────────────
 
 async function doImport() {
-  if (!rawText.value || !bookTitle.value.trim()) return;
+  if (!rawText.value || !bookTitle.value.trim()) {
+    return;
+  }
 
   const rule = allRules.value.find((r) => r.id === selectedRuleId.value);
-  if (!rule) return;
+  if (!rule) {
+    return;
+  }
 
   phase.value = 'importing';
   importProgress.value = 0;
@@ -173,7 +195,9 @@ async function doImport() {
 // ── 关闭 & 重置 ───────────────────────────────────────────────────────────
 
 function close() {
-  if (phase.value === 'importing') return;
+  if (phase.value === 'importing') {
+    return;
+  }
   emit('update:show', false);
 }
 
@@ -191,14 +215,13 @@ function reset() {
 watch(
   () => props.show,
   (v) => {
-    if (v) reset();
+    if (v) {
+      reset();
+    }
   },
 );
 
-useOverlayBackstack(
-  () => props.show && phase.value !== 'importing',
-  close,
-);
+useOverlayBackstack(() => props.show && phase.value !== 'importing', close);
 
 // ── 规则展开预览 ──────────────────────────────────────────────────────────
 
@@ -213,7 +236,11 @@ const canClose = computed(() => phase.value !== 'importing');
   <NModal
     :show="props.show"
     :mask-closable="canClose"
-    @update:show="(v) => { if (!v && canClose) close(); }"
+    @update:show="
+      (v) => {
+        if (!v && canClose) close();
+      }
+    "
   >
     <NCard
       class="txt-import-dialog"
@@ -314,7 +341,8 @@ const canClose = computed(() => phase.value !== 'importing');
                 v-for="(ch, idx) in preview.firstChapters"
                 :key="idx"
                 class="txt-rule-item__preview-ch"
-              >{{ ch }}</span>
+                >{{ ch }}</span
+              >
               <span v-if="preview.count > 5" class="txt-rule-item__preview-more">
                 …共 {{ preview.count }} 章
               </span>
@@ -328,7 +356,7 @@ const canClose = computed(() => phase.value !== 'importing');
           :bordered="false"
           class="txt-import-dialog__warn"
         >
-          <AlertTriangle :size="14" style="vertical-align: middle; margin-right: 4px;" />
+          <AlertTriangle :size="14" style="vertical-align: middle; margin-right: 4px" />
           当前规则未检测到章节，全书将作为单章节导入。请尝试其他规则。
         </NAlert>
 
@@ -338,18 +366,14 @@ const canClose = computed(() => phase.value !== 'importing');
           :bordered="false"
           class="txt-import-dialog__warn"
         >
-          <AlertTriangle :size="14" style="vertical-align: middle; margin-right: 4px;" />
+          <AlertTriangle :size="14" style="vertical-align: middle; margin-right: 4px" />
           章节数超过上限 {{ MAX_CHAPTERS }}，已自动截断。请确认规则是否正确。
         </NAlert>
 
         <div class="txt-import-dialog__footer">
           <NButton @click="reset">重新选择</NButton>
-          <NButton
-            type="primary"
-            :disabled="!bookTitle.trim()"
-            @click="doImport"
-          >
-            <BookOpen :size="14" style="margin-right: 4px;" />
+          <NButton type="primary" :disabled="!bookTitle.trim()" @click="doImport">
+            <BookOpen :size="14" style="margin-right: 4px" />
             导入（{{ chapterCountLabel }}）
           </NButton>
         </div>
@@ -402,7 +426,7 @@ const canClose = computed(() => phase.value !== 'importing');
 }
 .txt-import-dialog__close:hover {
   color: var(--color-text, #333);
-  background: var(--color-hover, rgba(0,0,0,.06));
+  background: var(--color-hover, rgba(0, 0, 0, 0.06));
 }
 
 .txt-import-dialog__body {
@@ -425,18 +449,20 @@ const canClose = computed(() => phase.value !== 'importing');
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
   user-select: none;
   outline: none;
 }
 .txt-upload-zone:hover,
 .txt-upload-zone:focus {
   border-color: var(--primary-color, #18a058);
-  background: var(--primary-color-suppl, rgba(24,160,88,.04));
+  background: var(--primary-color-suppl, rgba(24, 160, 88, 0.04));
 }
 .txt-upload-zone--over {
   border-color: var(--primary-color, #18a058);
-  background: var(--primary-color-suppl, rgba(24,160,88,.08));
+  background: var(--primary-color-suppl, rgba(24, 160, 88, 0.08));
 }
 .txt-upload-zone__icon {
   color: var(--color-text-muted, #aaa);
@@ -497,7 +523,7 @@ const canClose = computed(() => phase.value !== 'importing');
 }
 .txt-rule-item--selected {
   border-color: var(--primary-color, #18a058);
-  background: var(--primary-color-suppl, rgba(24,160,88,.04));
+  background: var(--primary-color-suppl, rgba(24, 160, 88, 0.04));
 }
 .txt-rule-item__header {
   display: flex;
@@ -558,7 +584,7 @@ const canClose = computed(() => phase.value !== 'importing');
 .txt-rule-item__preview-ch {
   font-size: var(--fs-12, 12px);
   color: var(--color-text, #444);
-  background: var(--color-hover, rgba(0,0,0,.04));
+  background: var(--color-hover, rgba(0, 0, 0, 0.04));
   border-radius: 4px;
   padding: 2px 8px;
 }

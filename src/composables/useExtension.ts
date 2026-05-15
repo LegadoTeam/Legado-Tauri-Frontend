@@ -105,11 +105,11 @@ export function parseUserScriptMeta(source: string): Partial<ExtensionMeta> {
         break;
       case 'match':
       case 'include':
-        meta.matchPatterns!.push(val);
+        (meta.matchPatterns ??= []).push(val);
         break;
       case 'grant':
         if (val && val !== 'none') {
-          meta.grants!.push(val);
+          (meta.grants ??= []).push(val);
         }
         break;
       case 'run-at':

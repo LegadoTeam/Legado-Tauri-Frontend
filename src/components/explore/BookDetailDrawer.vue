@@ -5,16 +5,8 @@ import { useMessage } from 'naive-ui';
 import { ref, computed, watch, onMounted, type CSSProperties } from 'vue';
 import type { CachedChapter, BookDetail, ChapterItem, ChapterGroup } from '@/types';
 import { useBookshelfStore, useScriptBridgeStore, groupChapters } from '@/stores';
-import { useOverlayBackstack } from '../../composables/useOverlayBackstack';
 import type { ReaderBookInfo } from '../reader/types';
 import { isMobile } from '../../composables/useEnv';
-import {
-  getBookMetaBadges,
-  getBookMetaLine,
-  getLatestChapterText,
-  getNormalizedLastChapter,
-} from '../../utils/bookMeta';
-import { getCoverImageUrl } from '../../utils/coverImage';
 import {
   ensureFrontendNamespaceLoaded,
   getFrontendStorageItem,
@@ -22,6 +14,13 @@ import {
   legacyLocalStorageRemove,
   setFrontendStorageItem,
 } from '../../composables/useFrontendStorage';
+import { useOverlayBackstack } from '../../composables/useOverlayBackstack';
+import {
+  getBookMetaBadges,
+  getLatestChapterText,
+  getNormalizedLastChapter,
+} from '../../utils/bookMeta';
+import { getCoverImageUrl } from '../../utils/coverImage';
 import AppButton from '../base/AppButton.vue';
 import BookCoverImg from '../BookCoverImg.vue';
 
@@ -153,8 +152,19 @@ const drawerTitle = computed(() => (isMobile.value ? '' : (detail.value?.name ??
 const drawerHeaderStyle = computed(() => (isMobile.value ? { display: 'none' } : undefined));
 const drawerBodyContentStyle = computed((): CSSProperties | undefined =>
   isMobile.value
-    ? { display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '0', height: '100%' }
-    : { display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '14px' },
+    ? {
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        padding: '0',
+        height: '100%',
+      }
+    : {
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        padding: '14px',
+      },
 );
 const mobileHeaderTitle = computed(() => detail.value?.name?.trim() || '书籍详情');
 const mobileHeaderSubtitle = computed(() => `来自 ${props.sourceName}`);
@@ -162,7 +172,9 @@ const detailBadges = computed(() => getBookMetaBadges(detail.value, props.source
 const detailLatestChapter = computed(() => getLatestChapterText(detail.value));
 const detailMetaRows = computed(() => {
   const d = detail.value;
-  if (!d) return [];
+  if (!d) {
+    return [];
+  }
   const rows: { label: string; value: string }[] = [];
   if (detailLatestChapter.value) {
     rows.push({ label: '最新章节', value: detailLatestChapter.value });
@@ -351,7 +363,9 @@ async function handleAddToShelf() {
           </n-button>
           <div class="bd-mobile-header__meta">
             <div class="bd-mobile-header__title">{{ mobileHeaderTitle }}</div>
-            <div class="bd-mobile-header__subtitle">{{ mobileHeaderSubtitle }}</div>
+            <div class="bd-mobile-header__subtitle">
+              {{ mobileHeaderSubtitle }}
+            </div>
           </div>
         </div>
 
@@ -425,7 +439,9 @@ async function handleAddToShelf() {
                     <span class="bd-header__meta-value" :title="row.value">{{ row.value }}</span>
                   </div>
                 </div>
-                <p v-if="detail.intro" class="bd-header__intro app-scrollbar">{{ detail.intro }}</p>
+                <p v-if="detail.intro" class="bd-header__intro app-scrollbar">
+                  {{ detail.intro }}
+                </p>
                 <a class="bd-header__url" :title="bookUrl" @click.prevent="openUrl(bookUrl)">{{
                   bookUrl
                 }}</a>
@@ -479,12 +495,19 @@ async function handleAddToShelf() {
               </div>
 
               <!-- 视频多线路标签页 -->
-              <div v-if="hasGroups" class="bd-chapters__tabs" :class="{ 'bd-chapters__tabs--many': manyGroups }">
+              <div
+                v-if="hasGroups"
+                class="bd-chapters__tabs"
+                :class="{ 'bd-chapters__tabs--many': manyGroups }"
+              >
                 <button
                   v-for="(g, gi) in chapterGroups"
                   :key="g.name"
                   class="bd-tab-btn"
-                  :class="{ 'bd-tab-btn--active': gi === activeGroupIndex, 'bd-tab-btn--sm': manyGroups }"
+                  :class="{
+                    'bd-tab-btn--active': gi === activeGroupIndex,
+                    'bd-tab-btn--sm': manyGroups,
+                  }"
                   @click="onGroupChange(gi)"
                 >
                   {{ g.name }}

@@ -34,7 +34,10 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 function downloadInBrowser(options: ExportFileOptions): string {
-  const blob = new Blob([options.bytes ?? options.text ?? ''], { type: options.mime });
+  const blob = new Blob(
+    options.bytes ? [options.bytes as unknown as BlobPart] : [options.text ?? ''],
+    { type: options.mime },
+  );
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -59,7 +62,7 @@ export async function saveExportFile(options: ExportFileOptions): Promise<string
       },
       60000,
     );
-    return saved || null;
+    return saved ?? null;
   }
 
   if (isTauri) {
@@ -104,7 +107,7 @@ export async function pickExportPath(options: PickExportPathOptions): Promise<st
       },
       60000,
     );
-    return target || null;
+    return target ?? null;
   }
 
   if (isTauri) {

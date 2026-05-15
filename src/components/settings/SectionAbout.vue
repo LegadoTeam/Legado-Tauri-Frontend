@@ -1,6 +1,4 @@
-/**
- * SectionAbout — 设置页“关于”面板，展示应用版本、运行环境、桥接能力与 WebView 诊断信息。
- */
+/** * SectionAbout — 设置页“关于”面板，展示应用版本、运行环境、桥接能力与 WebView 诊断信息。 */
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';

@@ -4,6 +4,7 @@
  * xgplayer 自带 HLS/DASH 插件支持，无需额外依赖。
  */
 
+import type XgPlayer from 'xgplayer';
 import type { IVideoPlayer, VideoPlayerEvent, VideoSource } from '../types';
 import { useAppConfig } from '../../../../composables/useAppConfig';
 
@@ -22,7 +23,7 @@ const EVENT_MAP: Record<VideoPlayerEvent, string> = {
 };
 
 export class XgplayerAdapter implements IVideoPlayer {
-  private player: InstanceType<typeof import('xgplayer').default> | null = null;
+  private player: InstanceType<typeof XgPlayer> | null = null;
   private container: HTMLElement | null = null;
 
   async mount(container: HTMLElement, source: VideoSource): Promise<void> {
@@ -34,7 +35,9 @@ export class XgplayerAdapter implements IVideoPlayer {
     const { default: Player } = await import('xgplayer');
     await import('xgplayer/dist/index.min.css');
 
-    if (!this.container) return;
+    if (!this.container) {
+      return;
+    }
 
     const { videoXgDownload } = useAppConfig();
 
@@ -71,14 +74,16 @@ export class XgplayerAdapter implements IVideoPlayer {
       // xgplayer 通过配置设置字幕，运行时设置需依赖其 API
       // 回退：通过 video 元素添加 track
       const videoEl = this.player.video;
-      if (videoEl) {
+      if (videoEl instanceof HTMLElement) {
         for (const sub of source.subtitles) {
           const track = document.createElement('track');
           track.kind = 'subtitles';
           track.label = sub.label;
           track.srclang = sub.srclang ?? 'zh';
           track.src = sub.url;
-          if (sub.default) track.default = true;
+          if (sub.default) {
+            track.default = true;
+          }
           videoEl.appendChild(track);
         }
       }
@@ -92,7 +97,9 @@ export class XgplayerAdapter implements IVideoPlayer {
     this.player?.pause();
   }
   seek(seconds: number): void {
-    if (this.player) this.player.currentTime = seconds;
+    if (this.player) {
+      this.player.currentTime = seconds;
+    }
   }
   getCurrentTime(): number {
     return this.player?.currentTime ?? 0;
@@ -101,13 +108,17 @@ export class XgplayerAdapter implements IVideoPlayer {
     return this.player?.duration ?? 0;
   }
   setVolume(v: number): void {
-    if (this.player) this.player.volume = v;
+    if (this.player) {
+      this.player.volume = v;
+    }
   }
   getVolume(): number {
     return this.player?.volume ?? 1;
   }
   setPlaybackRate(rate: number): void {
-    if (this.player) this.player.playbackRate = rate;
+    if (this.player) {
+      this.player.playbackRate = rate;
+    }
   }
   getPlaybackRate(): number {
     return this.player?.playbackRate ?? 1;
@@ -139,7 +150,11 @@ export class XgplayerAdapter implements IVideoPlayer {
       if (videoEl) {
         videoEl.pause();
         videoEl.removeAttribute('src');
-        try { videoEl.load(); } catch { /* ignore */ }
+        try {
+          videoEl.load();
+        } catch {
+          /* ignore */
+        }
       }
       this.player.destroy();
       this.player = null;

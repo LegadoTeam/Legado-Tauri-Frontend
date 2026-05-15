@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useMessage } from "naive-ui";
-import { storeToRefs } from "pinia";
-import { useLogZonePref } from "@/composables/useLogZonePref";
-import { isMobile, isTauri } from "@/composables/useEnv";
-import { useAppConfigStore, useShellStatusStore } from "@/stores";
-import { usePreferencesStore } from "@/stores/preferences";
-import SettingItem from "./SettingItem.vue";
-import SettingSection from "./SettingSection.vue";
+import { useMessage } from 'naive-ui';
+import { storeToRefs } from 'pinia';
+import { computed } from 'vue';
+import { isMobile, isTauri } from '@/composables/useEnv';
+import { useLogZonePref } from '@/composables/useLogZonePref';
+import { useAppConfigStore, useShellStatusStore } from '@/stores';
+import { usePreferencesStore } from '@/stores/preferences';
+import SettingItem from './SettingItem.vue';
+import SettingSection from './SettingSection.vue';
 
 const message = useMessage();
 const _appCfg = useAppConfigStore();
@@ -20,14 +20,12 @@ const { devTools } = storeToRefs(prefStore);
 
 // 追踪 vConsole 开关是否在本次会话中被修改过
 const _initVConsole = devTools.value.vConsoleEnabled;
-const vConsoleChanged = computed(
-  () => devTools.value.vConsoleEnabled !== _initVConsole,
-);
+const vConsoleChanged = computed(() => devTools.value.vConsoleEnabled !== _initVConsole);
 
 async function handleSet(key: string, value: string) {
   try {
     await setConfig(key, value);
-    message.success("已保存");
+    message.success('已保存');
   } catch (e: unknown) {
     message.error(`保存失败: ${e}`);
   }
@@ -42,14 +40,8 @@ async function handleSet(key: string, value: string) {
       desc="开关控制 PC 底部任务栏是否显示实时日志区域；点击「打开」直接查看脚本运行日志、HTTP 请求等"
     >
       <div style="display: flex; align-items: center; gap: 8px">
-        <n-switch
-          v-if="!isMobile"
-          v-model:value="logZoneEnabled"
-          size="small"
-        />
-        <n-button size="small" @click="shellStore.openLogWindow()"
-          >打开</n-button
-        >
+        <n-switch v-if="!isMobile" v-model:value="logZoneEnabled" size="small" />
+        <n-button size="small" @click="shellStore.openLogWindow()">打开</n-button>
       </div>
     </SettingItem>
 
@@ -63,9 +55,7 @@ async function handleSet(key: string, value: string) {
         :value="config.booksource_watcher_enabled"
         size="small"
         :loading="savingKey === 'booksource_watcher_enabled'"
-        @update:value="
-          (v: boolean) => handleSet('booksource_watcher_enabled', String(v))
-        "
+        @update:value="(v: boolean) => handleSet('booksource_watcher_enabled', String(v))"
       />
     </SettingItem>
 
@@ -74,20 +64,11 @@ async function handleSet(key: string, value: string) {
       label="vConsole 调试面板"
       desc="启用后，页面右下角显示 vConsole 浮动按钮，可查看日志、网络请求、存储等调试信息。支持深色模式。"
     >
-      <div
-        style="
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          align-items: flex-start;
-        "
-      >
+      <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-start">
         <n-switch
           :value="devTools.vConsoleEnabled"
           size="small"
-          @update:value="
-            (v: boolean) => prefStore.patchDevTools({ vConsoleEnabled: v })
-          "
+          @update:value="(v: boolean) => prefStore.patchDevTools({ vConsoleEnabled: v })"
         />
         <span
           v-if="vConsoleChanged"

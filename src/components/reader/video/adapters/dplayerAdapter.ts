@@ -4,14 +4,17 @@
  * 封装 DPlayer API，通过 hls.js 支持 HLS 流。
  */
 
+import type { DPlayerEvents } from 'dplayer';
+import type DPlayer from 'dplayer';
+import type Hls from 'hls.js';
 import type { IVideoPlayer, VideoPlayerEvent, VideoSource } from '../types';
 import { useAppConfig } from '../../../../composables/useAppConfig';
 
 export class DplayerAdapter implements IVideoPlayer {
-  private player: import('dplayer').default | null = null;
+  private player: DPlayer | null = null;
   private container: HTMLElement | null = null;
   /** customHls 回调中创建的 hls.js 实例列表（DPlayer 不负责销毁它们，必须手动管理） */
-  private hlsInstances: import('hls.js').default[] = [];
+  private hlsInstances: Hls[] = [];
 
   async mount(container: HTMLElement, source: VideoSource): Promise<void> {
     this.container = container;
@@ -26,7 +29,9 @@ export class DplayerAdapter implements IVideoPlayer {
 
     const Hls = hlsModule.default;
 
-    if (!this.container) return;
+    if (!this.container) {
+      return;
+    }
 
     const { videoDpDanmaku, videoDpTheme } = useAppConfig();
 
@@ -55,7 +60,7 @@ export class DplayerAdapter implements IVideoPlayer {
             const hls = new Hls({
               xhrSetup: source.headers
                 ? (xhr: XMLHttpRequest) => {
-                    for (const [k, v] of Object.entries(source.headers!)) {
+                    for (const [k, v] of Object.entries(source.headers ?? {})) {
                       xhr.setRequestHeader(k, v);
                     }
                   }
@@ -137,7 +142,7 @@ export class DplayerAdapter implements IVideoPlayer {
   }
 
   on(event: VideoPlayerEvent, handler: (...args: unknown[]) => void): void {
-    this.player?.on(event as string, handler);
+    this.player?.on(event as unknown as DPlayerEvents, handler as () => void);
   }
 
   off(event: VideoPlayerEvent, handler: (...args: unknown[]) => void): void {
@@ -167,7 +172,9 @@ export class DplayerAdapter implements IVideoPlayer {
         hls.stopLoad();
         hls.detachMedia();
         hls.destroy();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     this.hlsInstances = [];
     this.container = null;

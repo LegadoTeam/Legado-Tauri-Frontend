@@ -1,3 +1,5 @@
+import { storeToRefs } from 'pinia';
+import VConsole from 'vconsole';
 /**
  * useVConsole — 管理 vConsole 调试面板的生命周期
  *
@@ -5,9 +7,7 @@
  * 并在系统主题（暗色/亮色）切换时同步更新 vConsole 的 theme 配置。
  */
 import { watch, type Ref } from 'vue';
-import VConsole from 'vconsole';
 import { usePreferencesStore } from '@/stores/preferences';
-import { storeToRefs } from 'pinia';
 
 let _instance: VConsole | null = null;
 
@@ -20,12 +20,16 @@ export function useVConsole(effectiveDark: Ref<boolean>) {
   }
 
   function init() {
-    if (_instance) return;
+    if (_instance) {
+      return;
+    }
     _instance = new VConsole({ theme: getTheme() });
   }
 
   function destroy() {
-    if (!_instance) return;
+    if (!_instance) {
+      return;
+    }
     _instance.destroy();
     _instance = null;
   }

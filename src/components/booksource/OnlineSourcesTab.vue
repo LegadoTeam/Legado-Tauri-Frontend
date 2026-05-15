@@ -4,10 +4,8 @@ import { useMessage, useDialog } from "naive-ui";
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useOverlayBackstack } from "@/composables/useOverlayBackstack";
 import { safeRandomUUID } from "@/utils/uuid";
-import defaultLogoUrl from "../../assets/booksource-default.svg";
-import BookSourceInstallDialog from "../BookSourceInstallDialog.vue";
-import OnlineSourceCard from "./OnlineSourceCard.vue";
 import { formatVersion, compareVersions } from "@/utils/versionUtils";
+import defaultLogoUrl from "../../assets/booksource-default.svg";
 import {
   type BookSourceMeta,
   type RepoSourceInfo,
@@ -22,6 +20,8 @@ import {
   configRead,
   configWrite,
 } from "../../composables/useBookSource";
+import BookSourceInstallDialog from "../BookSourceInstallDialog.vue";
+import OnlineSourceCard from "./OnlineSourceCard.vue";
 
 type RepoSyncStatus = "idle" | "checking" | "synced" | "update" | "error";
 
@@ -106,13 +106,6 @@ function resetOnlineState() {
   onlineSources.value = [];
   onlineManifest.value = null;
   clearSyncStates();
-}
-
-function findRepositoryByUrl(url: string) {
-  const normalizedUrl = normalizeRepoUrl(url);
-  return repositories.value.find(
-    (repo) => normalizeRepoUrl(repo.url) === normalizedUrl,
-  );
 }
 
 async function persistRepos() {
@@ -213,7 +206,6 @@ function saveRepo() {
 }
 
 function removeRepo(id: string) {
-  const repo = repositories.value.find((r) => r.id === id);
   repositories.value = repositories.value.filter((r) => r.id !== id);
   if (activeRepoId.value === id) {
     activeRepoId.value = repositories.value[0]?.id ?? "";
@@ -366,7 +358,6 @@ async function runInstalledSyncChecks(
       if (!current) {
         return;
       }
-      // oxlint-disable-next-line no-await-in-loop -- intentional queue-worker pattern inside Promise.all concurrency
       await checkSingleSourceSync(current, runId);
     }
   };
@@ -837,7 +828,9 @@ function openAddRepoFromDeepLink(url: string, name?: string) {
 function handleAddRepoEvent(e: Event) {
   const { url, name } =
     (e as CustomEvent<{ url: string; name?: string }>).detail ?? {};
-  if (url) openAddRepoFromDeepLink(url, name);
+  if (url) {
+    openAddRepoFromDeepLink(url, name);
+  }
 }
 
 onMounted(() => {

@@ -1,5 +1,1 @@
-export type {
-  FrontendPluginApi,
-  FrontendPluginRecord,
-  FrontendPluginRegistration,
-} from './types';
+export type { FrontendPluginApi, FrontendPluginRecord, FrontendPluginRegistration } from './types';

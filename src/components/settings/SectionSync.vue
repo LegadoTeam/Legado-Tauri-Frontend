@@ -3,6 +3,7 @@ import { useDialog, useMessage } from 'naive-ui';
 import { storeToRefs } from 'pinia';
 import QRCode from 'qrcode';
 import { computed, onMounted, ref } from 'vue';
+import { invokeWithTimeout } from '@/composables/useInvoke';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import {
   useSync,
@@ -10,7 +11,6 @@ import {
   type SyncStatus,
   type SyncQrPayload,
 } from '@/composables/useSync';
-import { invokeWithTimeout } from '@/composables/useInvoke';
 import { useAppConfigStore } from '@/stores';
 import SettingItem from './SettingItem.vue';
 import SettingSection from './SettingSection.vue';
@@ -39,7 +39,12 @@ const baiduDeviceCode = ref('');
 const baiduVerificationUrl = ref('');
 const baiduUserCode = ref('');
 const baiduPolling = ref(false);
-const baiduTokenStatus = ref<{ valid: boolean; expires_at: number; username: string } | null>(null);
+const copyBaiduUserCode = () => navigator.clipboard.writeText(baiduUserCode.value);
+const baiduTokenStatus = ref<{
+  valid: boolean;
+  expires_at: number;
+  username: string;
+} | null>(null);
 
 const providerOptions = [
   { label: 'WebDAV', value: 'webdav' },
@@ -235,11 +240,11 @@ function promptImportText() {
 
 async function loadBaiduTokenStatus() {
   try {
-    const result = await invokeWithTimeout<{ valid: boolean; expires_at: number; username: string }>(
-      'sync_baidu_token_status',
-      undefined,
-      8000,
-    );
+    const result = await invokeWithTimeout<{
+      valid: boolean;
+      expires_at: number;
+      username: string;
+    }>('sync_baidu_token_status', undefined, 8000);
     baiduTokenStatus.value = result;
   } catch {
     baiduTokenStatus.value = null;
@@ -266,7 +271,9 @@ async function startBaiduAuth() {
 }
 
 async function pollBaiduToken() {
-  if (!baiduDeviceCode.value) return;
+  if (!baiduDeviceCode.value) {
+    return;
+  }
   baiduPolling.value = true;
   try {
     const result = await invokeWithTimeout<{ status: string }>(
@@ -400,7 +407,9 @@ onMounted(async () => {
               :value="config.sync_baidu_app_name"
               size="small"
               placeholder="legado-tauri"
-              @update:value="(v: string) => handleSet('sync_baidu_app_name', v.trim() || 'legado-tauri')"
+              @update:value="
+                (v: string) => handleSet('sync_baidu_app_name', v.trim() || 'legado-tauri')
+              "
             />
           </SettingItem>
 
@@ -409,7 +418,9 @@ onMounted(async () => {
               :value="config.sync_webdav_root_dir"
               size="small"
               placeholder="legado-sync"
-              @update:value="(v: string) => handleSet('sync_webdav_root_dir', v.trim() || 'legado-sync')"
+              @update:value="
+                (v: string) => handleSet('sync_webdav_root_dir', v.trim() || 'legado-sync')
+              "
             />
           </SettingItem>
 
@@ -428,7 +439,8 @@ onMounted(async () => {
               size="small"
               type="warning"
               @click="revokeBaiduAuth"
-            >退出授权</n-button>
+              >退出授权</n-button
+            >
             <n-button size="small" quaternary @click="loadBaiduTokenStatus">刷新状态</n-button>
           </SettingItem>
         </template>
@@ -511,7 +523,12 @@ onMounted(async () => {
       </div>
     </div>
 
-    <n-modal v-model:show="qrVisible" preset="card" title="同步配置二维码" class="sync-modal sync-modal--qr">
+    <n-modal
+      v-model:show="qrVisible"
+      preset="card"
+      title="同步配置二维码"
+      class="sync-modal sync-modal--qr"
+    >
       <p class="sync-risk">此二维码包含明文 WebDAV 密码或 Token。不要截图发送给不可信的人。</p>
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="同步配置二维码" class="sync-qr" />
       <div v-if="qrRawText" class="sync-qr-raw">
@@ -532,28 +549,42 @@ onMounted(async () => {
       </template>
     </n-modal>
 
-    <n-modal v-model:show="scanVisible" preset="card" title="扫码导入同步配置" class="sync-modal sync-modal--scan">
+    <n-modal
+      v-model:show="scanVisible"
+      preset="card"
+      title="扫码导入同步配置"
+      class="sync-modal sync-modal--scan"
+    >
       <video ref="videoRef" class="sync-video" muted playsinline />
     </n-modal>
 
     <!-- 百度网盘设备码授权弹层 -->
-    <n-modal v-model:show="baiduAuthVisible" preset="card" title="百度网盘授权" class="sync-modal sync-modal--baidu">
+    <n-modal
+      v-model:show="baiduAuthVisible"
+      preset="card"
+      title="百度网盘授权"
+      class="sync-modal sync-modal--baidu"
+    >
       <p class="sync-risk">
         请在浏览器中打开下方链接，登录百度账号并点击授权，完成后回来点击"已完成授权"。
       </p>
       <div class="sync-baidu-code-block">
         <div>
           <span class="sync-baidu-label">授权地址：</span>
-          <a :href="baiduVerificationUrl" target="_blank" rel="noopener">{{ baiduVerificationUrl }}</a>
+          <a :href="baiduVerificationUrl" target="_blank" rel="noopener">{{
+            baiduVerificationUrl
+          }}</a>
         </div>
         <div>
           <span class="sync-baidu-label">用户码：</span>
           <code class="sync-baidu-user-code">{{ baiduUserCode }}</code>
-          <n-button size="tiny" quaternary @click="() => navigator.clipboard.writeText(baiduUserCode)">复制</n-button>
+          <n-button size="tiny" quaternary @click="copyBaiduUserCode">复制</n-button>
         </div>
       </div>
       <template #footer>
-        <n-button type="primary" :loading="baiduPolling" @click="pollBaiduToken">已完成授权</n-button>
+        <n-button type="primary" :loading="baiduPolling" @click="pollBaiduToken"
+          >已完成授权</n-button
+        >
         <n-button @click="baiduAuthVisible = false">取消</n-button>
       </template>
     </n-modal>
@@ -594,9 +625,15 @@ onMounted(async () => {
   padding: 2px 8px;
   border-radius: var(--radius-1);
 }
-.sync-baidu-status--ok { color: var(--color-success, #18a058); }
-.sync-baidu-status--err { color: var(--color-error, #d03050); }
-.sync-baidu-status--none { color: var(--color-text-muted); }
+.sync-baidu-status--ok {
+  color: var(--color-success, #18a058);
+}
+.sync-baidu-status--err {
+  color: var(--color-error, #d03050);
+}
+.sync-baidu-status--none {
+  color: var(--color-text-muted);
+}
 
 .sync-baidu-code-block {
   display: flex;
@@ -605,13 +642,16 @@ onMounted(async () => {
   padding: var(--space-3) 0;
   font-size: var(--fs-13);
 }
-.sync-baidu-label { color: var(--color-text-muted); margin-right: 4px; }
+.sync-baidu-label {
+  color: var(--color-text-muted);
+  margin-right: 4px;
+}
 .sync-baidu-user-code {
   font-size: var(--fs-16);
   font-weight: 600;
   letter-spacing: 2px;
   padding: 2px 8px;
-  background: var(--color-fill, rgba(128,128,128,0.1));
+  background: var(--color-fill, rgba(128, 128, 128, 0.1));
   border-radius: var(--radius-1);
 }
 

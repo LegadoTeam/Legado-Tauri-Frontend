@@ -227,7 +227,7 @@ export const DEFAULT_TYPOGRAPHY: ReaderTypography = {
    ============================================================ */
 export const DEFAULT_SETTINGS: ReaderSettings = {
   flipMode: 'slide',
-  paginationEngine: 'dom',
+  paginationEngine: 'pretext',
   typography: { ...DEFAULT_TYPOGRAPHY },
   theme: { ...PRESET_THEMES[0] },
   themePresetId: '',

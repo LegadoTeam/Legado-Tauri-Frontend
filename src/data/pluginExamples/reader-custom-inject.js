@@ -17,7 +17,7 @@ legado.registerPlugin({
     var styleEl = null;
 
     function removeStyle() {
-      if (styleEl && styleEl.parentNode) {
+      if (styleEl?.parentNode) {
         styleEl.parentNode.removeChild(styleEl);
       }
       styleEl = null;
@@ -26,7 +26,9 @@ legado.registerPlugin({
     function injectStyle() {
       removeStyle();
       var css = api.settings.get('custom_css', '');
-      if (!css || !String(css).trim()) return;
+      if (!css || !String(css).trim()) {
+        return;
+      }
       styleEl = document.createElement('style');
       styleEl.setAttribute('data-legado-inject', 'reader-custom-inject');
       styleEl.textContent = String(css);
@@ -35,13 +37,15 @@ legado.registerPlugin({
 
     function executeJs() {
       var js = api.settings.get('custom_js', '');
-      if (!js || !String(js).trim()) return;
+      if (!js || !String(js).trim()) {
+        return;
+      }
       try {
         // eslint-disable-next-line no-new-func
         new Function(String(js))();
       } catch (e) {
         api.log('[custom-inject] JS 执行错误', e);
-        api.ui.toast('自定义 JS 执行错误：' + (e && e.message ? e.message : String(e)), 'error');
+        api.ui.toast('自定义 JS 执行错误：' + (e?.message ? e.message : String(e)), 'error');
       }
     }
 
@@ -84,13 +88,17 @@ legado.registerPlugin({
       },
       hooks: {
         'reader.session.enter': function () {
-          if (!api.settings.get('enabled', true)) return;
+          if (!api.settings.get('enabled', true)) {
+            return;
+          }
           executeJs();
         },
       },
       slots: {
         'overlay-top-left': function (container) {
-          if (!api.settings.get('enabled', true)) return;
+          if (!api.settings.get('enabled', true)) {
+            return;
+          }
           injectStyle();
           // container 占位，不渲染可见元素
           return function () {

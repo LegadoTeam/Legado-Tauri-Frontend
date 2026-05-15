@@ -12,6 +12,13 @@ const DEFAULT_CONFIG: AppConfig = {
   http_follow_redirects: true,
   http_connect_timeout_secs: 10,
   http_ignore_tls_errors: true,
+  http_doh_server: 'none',
+  proxy_mode: 'system',
+  proxy_type: 'http',
+  proxy_host: '',
+  proxy_port: 0,
+  proxy_username: '',
+  proxy_password: '',
   engine_timeout_secs: 30,
   booksource_watcher_enabled: false,
   browser_probe_enabled: true,
@@ -131,7 +138,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
    * 应在应用启动时调用一次。
    */
   function installChangedListener() {
-    if (configChangeUnlisten) return;
+    if (configChangeUnlisten) {
+      return;
+    }
     configChangeUnlisten = eventListenSync('app_config:changed', () => {
       void loadConfig();
     });

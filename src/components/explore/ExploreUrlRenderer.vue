@@ -17,7 +17,6 @@ const props = defineProps<{
 }>();
 
 const loading = ref(true);
-const iframeRef = ref<HTMLIFrameElement | null>(null);
 
 watch(
   () => props.url,

@@ -3,24 +3,7 @@
 import { useMessage, useDialog } from 'naive-ui';
 import { storeToRefs } from 'pinia';
 import { ref, watch, nextTick, computed, onMounted } from 'vue';
-import type { AiSession } from '@/stores';
 import { useAiSessionsStore } from '@/stores';
-import {
-  useAiAgent,
-  loadAiConfig,
-  ensureAiConfigLoaded,
-  saveAiConfig,
-  type AiConfig,
-  type ActivityType,
-  type AgentActivity,
-} from '../../composables/useAiAgent';
-import {
-  readBookSource,
-  saveBookSource,
-  type BookSourceMeta,
-} from '../../composables/useBookSource';
-import { invokeWithTimeout } from '../../composables/useInvoke';
-import AiTestPanel from './AiTestPanel.vue';
 import {
   ACTIVITY_LABEL,
   getActivityClass,
@@ -31,6 +14,21 @@ import {
   sessionStatusLabel,
   sessionStatusType,
 } from '@/utils/aiActivityUtils';
+import {
+  useAiAgent,
+  loadAiConfig,
+  ensureAiConfigLoaded,
+  saveAiConfig,
+  type AiConfig,
+  type AgentActivity,
+} from '../../composables/useAiAgent';
+import {
+  readBookSource,
+  saveBookSource,
+  type BookSourceMeta,
+} from '../../composables/useBookSource';
+import { invokeWithTimeout } from '../../composables/useInvoke';
+import AiTestPanel from './AiTestPanel.vue';
 
 const props = defineProps<{
   sources: BookSourceMeta[];
@@ -68,7 +66,10 @@ const selectedBaseSource = ref('');
 
 /** 从 sources prop 获取选项 */
 const sourceOptions = computed(() =>
-  props.sources.map((s) => ({ label: s.name || s.fileName, value: s.fileName })),
+  props.sources.map((s) => ({
+    label: s.name || s.fileName,
+    value: s.fileName,
+  })),
 );
 
 // ── 用户输入 ──────────────────────────────────────────────────────────────
@@ -793,7 +794,8 @@ const displayTestResults = computed(() =>
                   type="success"
                   round
                 >
-                  {{ draft.testResults.filter((r) => r.status === 'ok').length }} 项通过
+                  {{ draft.testResults.filter((r) => r.status === 'ok').length }}
+                  项通过
                 </n-tag>
                 <n-tag
                   v-if="draft.testResults.some((r) => r.status === 'error')"
@@ -801,7 +803,8 @@ const displayTestResults = computed(() =>
                   type="error"
                   round
                 >
-                  {{ draft.testResults.filter((r) => r.status === 'error').length }} 项失败
+                  {{ draft.testResults.filter((r) => r.status === 'error').length }}
+                  项失败
                 </n-tag>
                 <n-button
                   size="tiny"

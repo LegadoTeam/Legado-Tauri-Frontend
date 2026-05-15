@@ -9,7 +9,7 @@
  * 底层持久化走 useDynamicConfig。
  */
 import { defineStore } from 'pinia';
-import { reactive, readonly } from 'vue';
+import { readonly } from 'vue';
 import { useDynamicConfig } from '@/composables/useDynamicConfig';
 
 // ── 阅读器偏好设置 ───────────────────────────────────────────────────────
@@ -192,9 +192,13 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   // ── ready 状态（等待所有后端存储加载完成） ────────────────────────────
 
-  const ready = Promise.all([readerConfig.ready, densityConfig.ready, searchConfig.ready, tocAutoUpdateConfig.ready, devToolsConfig.ready]).then(
-    () => undefined,
-  );
+  const ready = Promise.all([
+    readerConfig.ready,
+    densityConfig.ready,
+    searchConfig.ready,
+    tocAutoUpdateConfig.ready,
+    devToolsConfig.ready,
+  ]).then(() => undefined);
 
   return {
     // 阅读器偏好

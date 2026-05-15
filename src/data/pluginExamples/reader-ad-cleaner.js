@@ -33,12 +33,14 @@ function getRules(api) {
 }
 
 function cleanup(content, api) {
-  var lines = String(content || '').split('\n');
+  var lines = String(content ?? '').split('\n');
   var rules = getRules(api);
   var filtered = lines
     .filter(function (line) {
       var trimmed = line.trim();
-      if (!trimmed) return true;
+      if (!trimmed) {
+        return true;
+      }
       for (var i = 0; i < rules.length; i += 1) {
         var rule = rules[i];
         if (typeof rule === 'string' && trimmed.indexOf(rule) >= 0) {
@@ -69,7 +71,7 @@ legado.registerPlugin({
           collapseBlankLines: true,
         },
         schema: function (context) {
-          var count = (context.values.extraRules || []).filter(Boolean).length;
+          var count = (context.values.extraRules ?? []).filter(Boolean).length;
           return [
             {
               type: 'info',

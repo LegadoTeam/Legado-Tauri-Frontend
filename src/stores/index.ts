@@ -3,7 +3,12 @@
  */
 export { useNavigationStore } from './navigation';
 export { useBookSourceStore } from './bookSource';
-export { useBookshelfStore, LOCAL_TXT_FILE_NAME, LOCAL_TXT_SOURCE_NAME, isLocalTxtBook } from './bookshelf';
+export {
+  useBookshelfStore,
+  LOCAL_TXT_FILE_NAME,
+  LOCAL_TXT_SOURCE_NAME,
+  isLocalTxtBook,
+} from './bookshelf';
 export { useAppConfigStore } from './appConfig';
 export { usePreferencesStore } from './preferences';
 export { usePrivacyModeStore } from './privacyMode';

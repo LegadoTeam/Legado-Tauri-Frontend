@@ -14,7 +14,9 @@ export const LOCAL_FILE_REF_PREFIX = 'local://';
 let assetBaseUrl: string | null = null;
 
 function getAssetBaseUrl(): string {
-  if (assetBaseUrl) return assetBaseUrl;
+  if (assetBaseUrl) {
+    return assetBaseUrl;
+  }
   const hostname = window.location.hostname || 'localhost';
   const protocol = window.location.protocol;
   assetBaseUrl = `${protocol}//${hostname}:7688/asset/`;
@@ -51,7 +53,9 @@ export async function toFileSrc(filePath: string): Promise<string> {
 export function toFileSrcSync(filePath: string): string {
   if (isTauri) {
     // 直接调用 Tauri runtime 注入的原生转换函数
-    return (window as any).__TAURI_INTERNALS__.convertFileSrc(filePath, 'asset');
+    return (
+      window as unknown as Record<string, Record<string, (p: string, proto: string) => string>>
+    ).__TAURI_INTERNALS__.convertFileSrc(filePath, 'asset');
   }
   if (isHarmonyNative) {
     return `file://${filePath}`;

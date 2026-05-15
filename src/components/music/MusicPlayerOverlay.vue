@@ -183,104 +183,102 @@ function selectFromQueue(index: number) {
             </div>
 
             <div class="full-player__controls-card">
-            <div class="full-player__info">
-              <h2 class="full-player__title">{{ currentTrack?.name || '未播放' }}</h2>
-              <p class="full-player__artist">
-                {{ book?.author || book?.name }}
-              </p>
-              <p v-if="errorText" class="full-player__error">{{ errorText }}</p>
-            </div>
-
-            <div class="full-player__progress">
-              <span class="full-player__time">{{ formatTime(currentTime) }}</span>
-              <div
-                ref="progressBarRef"
-                class="full-player__progress-bar"
-                role="slider"
-                :aria-valuenow="Math.floor(currentTime)"
-                :aria-valuemin="0"
-                :aria-valuemax="Math.floor(duration) || 0"
-                @pointerdown="onProgressPointerDown"
-                @pointermove="onProgressPointerMove"
-                @pointerup="onProgressPointerUp"
-              >
-                <div class="full-player__progress-track">
-                  <div
-                    class="full-player__progress-fill"
-                    :style="{ width: progressPct + '%' }"
-                  />
-                </div>
-                <div class="full-player__progress-thumb" :style="{ left: progressPct + '%' }" />
+              <div class="full-player__info">
+                <h2 class="full-player__title">{{ currentTrack?.name || '未播放' }}</h2>
+                <p class="full-player__artist">
+                  {{ book?.author || book?.name }}
+                </p>
+                <p v-if="errorText" class="full-player__error">{{ errorText }}</p>
               </div>
-              <span class="full-player__time">{{ formatTime(duration) }}</span>
-            </div>
 
-            <div class="full-player__controls">
-              <button
-                type="button"
-                class="fp-ctrl-btn"
-                :aria-label="PLAY_MODE_LABEL[playMode]"
-                :title="PLAY_MODE_LABEL[playMode]"
-                @click="togglePlayMode"
-              >
-                <Shuffle v-if="playMode === 'shuffle'" :size="22" />
-                <Repeat1 v-else-if="playMode === 'repeat-one'" :size="22" />
-                <Repeat
-                  v-else
-                  :size="22"
-                  :class="{ 'fp-ctrl-btn--inactive': playMode === 'order' }"
+              <div class="full-player__progress">
+                <span class="full-player__time">{{ formatTime(currentTime) }}</span>
+                <div
+                  ref="progressBarRef"
+                  class="full-player__progress-bar"
+                  role="slider"
+                  :aria-valuenow="Math.floor(currentTime)"
+                  :aria-valuemin="0"
+                  :aria-valuemax="Math.floor(duration) || 0"
+                  @pointerdown="onProgressPointerDown"
+                  @pointermove="onProgressPointerMove"
+                  @pointerup="onProgressPointerUp"
+                >
+                  <div class="full-player__progress-track">
+                    <div class="full-player__progress-fill" :style="{ width: progressPct + '%' }" />
+                  </div>
+                  <div class="full-player__progress-thumb" :style="{ left: progressPct + '%' }" />
+                </div>
+                <span class="full-player__time">{{ formatTime(duration) }}</span>
+              </div>
+
+              <div class="full-player__controls">
+                <button
+                  type="button"
+                  class="fp-ctrl-btn"
+                  :aria-label="PLAY_MODE_LABEL[playMode]"
+                  :title="PLAY_MODE_LABEL[playMode]"
+                  @click="togglePlayMode"
+                >
+                  <Shuffle v-if="playMode === 'shuffle'" :size="22" />
+                  <Repeat1 v-else-if="playMode === 'repeat-one'" :size="22" />
+                  <Repeat
+                    v-else
+                    :size="22"
+                    :class="{ 'fp-ctrl-btn--inactive': playMode === 'order' }"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="fp-ctrl-btn"
+                  aria-label="上一首"
+                  :disabled="tracks.length <= 1"
+                  @click="player.prev()"
+                >
+                  <SkipBack :size="28" />
+                </button>
+                <button
+                  type="button"
+                  class="fp-ctrl-btn fp-ctrl-btn--play"
+                  :aria-label="isPlaying ? '暂停' : '播放'"
+                  :disabled="isLoading"
+                  @click="player.togglePlay()"
+                >
+                  <span v-if="isLoading" class="fp-ctrl-btn__spinner" />
+                  <component v-else :is="isPlaying ? Pause : Play" :size="32" />
+                </button>
+                <button
+                  type="button"
+                  class="fp-ctrl-btn"
+                  aria-label="下一首"
+                  :disabled="tracks.length <= 1"
+                  @click="player.next()"
+                >
+                  <SkipForward :size="28" />
+                </button>
+                <button
+                  type="button"
+                  class="fp-ctrl-btn"
+                  :aria-label="muted ? '取消静音' : '静音'"
+                  @click="player.toggleMuted()"
+                >
+                  <VolumeX v-if="muted" :size="22" />
+                  <Volume2 v-else :size="22" />
+                </button>
+              </div>
+
+              <div class="full-player__volume">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  :value="Math.round(volume * 100)"
+                  aria-label="音量"
+                  @input="onVolumeInput"
                 />
-              </button>
-              <button
-                type="button"
-                class="fp-ctrl-btn"
-                aria-label="上一首"
-                :disabled="tracks.length <= 1"
-                @click="player.prev()"
-              >
-                <SkipBack :size="28" />
-              </button>
-              <button
-                type="button"
-                class="fp-ctrl-btn fp-ctrl-btn--play"
-                :aria-label="isPlaying ? '暂停' : '播放'"
-                :disabled="isLoading"
-                @click="player.togglePlay()"
-              >
-                <span v-if="isLoading" class="fp-ctrl-btn__spinner" />
-                <component v-else :is="isPlaying ? Pause : Play" :size="32" />
-              </button>
-              <button
-                type="button"
-                class="fp-ctrl-btn"
-                aria-label="下一首"
-                :disabled="tracks.length <= 1"
-                @click="player.next()"
-              >
-                <SkipForward :size="28" />
-              </button>
-              <button
-                type="button"
-                class="fp-ctrl-btn"
-                :aria-label="muted ? '取消静音' : '静音'"
-                @click="player.toggleMuted()"
-              >
-                <VolumeX v-if="muted" :size="22" />
-                <Volume2 v-else :size="22" />
-              </button>
+              </div>
             </div>
-
-            <div class="full-player__volume">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                :value="Math.round(volume * 100)"
-                aria-label="音量"
-                @input="onVolumeInput"
-              />
-            </div>
-            </div><!-- /.full-player__controls-card -->
+            <!-- /.full-player__controls-card -->
           </main>
 
           <!-- 右侧歌单面板（桌面端常驻，移动端隐藏） -->
@@ -301,11 +299,7 @@ function selectFromQueue(index: number) {
               >
                 <span class="fp-queue__index">{{ i + 1 }}</span>
                 <span class="fp-queue__name">{{ t.name }}</span>
-                <Play
-                  v-if="i === currentIndex && isPlaying"
-                  class="fp-queue__playing"
-                  :size="14"
-                />
+                <Play v-if="i === currentIndex && isPlaying" class="fp-queue__playing" :size="14" />
               </li>
             </ul>
           </aside>
@@ -313,11 +307,7 @@ function selectFromQueue(index: number) {
 
         <!-- 移动端歌单抽屉 -->
         <Transition name="queue-fade">
-          <div
-            v-if="showQueue"
-            class="full-player__queue-overlay"
-            @click.self="showQueue = false"
-          >
+          <div v-if="showQueue" class="full-player__queue-overlay" @click.self="showQueue = false">
             <div class="fp-queue fp-queue--sheet">
               <div class="fp-queue__header">
                 <div class="fp-queue__title">
@@ -359,123 +349,133 @@ function selectFromQueue(index: number) {
    ══════════════════════════════════════════════════════════════ */
 .full-player {
   /* text */
-  --fp-text:         #fff;
-  --fp-text-soft:    rgba(255, 255, 255, 0.70);
-  --fp-text-muted:   rgba(255, 255, 255, 0.44);
+  --fp-text: #fff;
+  --fp-text-soft: rgba(255, 255, 255, 0.7);
+  --fp-text-muted: rgba(255, 255, 255, 0.44);
   /* background layers */
-  --fp-mask:         linear-gradient(
+  --fp-mask: linear-gradient(
     180deg,
     rgba(0, 0, 0, 0.16) 0%,
     rgba(0, 0, 0, 0.52) 44%,
     rgba(0, 0, 0, 0.86) 100%
   );
-  --fp-vignette:     radial-gradient(
+  --fp-vignette: radial-gradient(
     ellipse 140% 100% at 50% 50%,
-    transparent 32%, rgba(0, 0, 0, 0.38) 100%
+    transparent 32%,
+    rgba(0, 0, 0, 0.38) 100%
   );
   /* glass card */
-  --fp-card-bg:      rgba(255, 255, 255, 0.055);
-  --fp-card-border:  rgba(255, 255, 255, 0.10);
-  --fp-card-shadow:  0 8px 32px rgba(0, 0, 0, 0.42),
-                     0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  --fp-card-bg: rgba(255, 255, 255, 0.055);
+  --fp-card-border: rgba(255, 255, 255, 0.1);
+  --fp-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.42), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   /* buttons */
-  --fp-btn-bg:       rgba(255, 255, 255, 0.09);
-  --fp-btn-hover:    rgba(255, 255, 255, 0.17);
+  --fp-btn-bg: rgba(255, 255, 255, 0.09);
+  --fp-btn-hover: rgba(255, 255, 255, 0.17);
   /* play button */
-  --fp-play-bg:      #fff;
-  --fp-play-color:   #111;
-  --fp-play-shadow:  0 4px 20px rgba(255, 255, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.22);
+  --fp-play-bg: #fff;
+  --fp-play-color: #111;
+  --fp-play-shadow: 0 4px 20px rgba(255, 255, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.22);
   /* progress */
-  --fp-track-bg:     rgba(255, 255, 255, 0.16);
-  --fp-fill-bg:      rgba(255, 255, 255, 0.90);
-  --fp-thumb-bg:     #fff;
+  --fp-track-bg: rgba(255, 255, 255, 0.16);
+  --fp-fill-bg: rgba(255, 255, 255, 0.9);
+  --fp-thumb-bg: #fff;
   /* cover */
-  --fp-cover-shadow: 0 28px 64px rgba(0, 0, 0, 0.65),
-                     0 4px 16px rgba(0, 0, 0, 0.38),
-                     0 0 0 1px rgba(255, 255, 255, 0.10);
+  --fp-cover-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   /* queue */
-  --fp-sidebar-bg:   rgba(0, 0, 0, 0.28);
-  --fp-sidebar-sep:  rgba(255, 255, 255, 0.07);
-  --fp-item-hover:   rgba(255, 255, 255, 0.07);
-  --fp-item-active:  #6ee7b7;
-  --fp-sheet-bg:     rgba(18, 18, 24, 0.96);
-  --fp-sheet-sep:    rgba(255, 255, 255, 0.08);
+  --fp-sidebar-bg: rgba(0, 0, 0, 0.28);
+  --fp-sidebar-sep: rgba(255, 255, 255, 0.07);
+  --fp-item-hover: rgba(255, 255, 255, 0.07);
+  --fp-item-active: #6ee7b7;
+  --fp-sheet-bg: rgba(18, 18, 24, 0.96);
+  --fp-sheet-sep: rgba(255, 255, 255, 0.08);
   /* misc */
-  --fp-inactive:     rgba(255, 255, 255, 0.35);
-  --fp-error:        #fca5a5;
-  --fp-header-grad:  linear-gradient(to bottom, rgba(0, 0, 0, 0.14), transparent);
+  --fp-inactive: rgba(255, 255, 255, 0.35);
+  --fp-error: #fca5a5;
+  --fp-header-grad: linear-gradient(to bottom, rgba(0, 0, 0, 0.14), transparent);
 }
 
 /* Light mode */
 :root[data-theme='light'] .full-player {
-  --fp-text:         rgba(14, 16, 26, 0.94);
-  --fp-text-soft:    rgba(14, 16, 26, 0.64);
-  --fp-text-muted:   rgba(14, 16, 26, 0.42);
-  --fp-mask:         linear-gradient(
+  --fp-text: rgba(14, 16, 26, 0.94);
+  --fp-text-soft: rgba(14, 16, 26, 0.64);
+  --fp-text-muted: rgba(14, 16, 26, 0.42);
+  --fp-mask: linear-gradient(
     180deg,
     rgba(255, 252, 248, 0.08) 0%,
     rgba(255, 252, 248, 0.56) 44%,
-    rgba(255, 252, 248, 0.90) 100%
+    rgba(255, 252, 248, 0.9) 100%
   );
-  --fp-vignette:     radial-gradient(
+  --fp-vignette: radial-gradient(
     ellipse 140% 100% at 50% 50%,
-    transparent 32%, rgba(180, 168, 158, 0.22) 100%
+    transparent 32%,
+    rgba(180, 168, 158, 0.22) 100%
   );
-  --fp-card-bg:      rgba(255, 255, 255, 0.52);
-  --fp-card-border:  rgba(255, 255, 255, 0.78);
-  --fp-card-shadow:  0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.90) inset;
-  --fp-btn-bg:       rgba(0, 0, 0, 0.07);
-  --fp-btn-hover:    rgba(0, 0, 0, 0.13);
-  --fp-play-bg:      rgba(14, 16, 26, 0.90);
-  --fp-play-color:   #fff;
-  --fp-play-shadow:  0 4px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.10);
-  --fp-track-bg:     rgba(0, 0, 0, 0.13);
-  --fp-fill-bg:      rgba(14, 16, 26, 0.82);
-  --fp-thumb-bg:     rgba(14, 16, 26, 0.88);
-  --fp-cover-shadow: 0 28px 64px rgba(0, 0, 0, 0.20),
-                     0 4px 16px rgba(0, 0, 0, 0.10),
-                     0 0 0 1px rgba(0, 0, 0, 0.06);
-  --fp-sidebar-bg:   rgba(255, 255, 255, 0.42);
-  --fp-sidebar-sep:  rgba(0, 0, 0, 0.08);
-  --fp-item-hover:   rgba(0, 0, 0, 0.05);
-  --fp-item-active:  #0d6640;
-  --fp-sheet-bg:     rgba(255, 255, 255, 0.96);
-  --fp-sheet-sep:    rgba(0, 0, 0, 0.08);
-  --fp-inactive:     rgba(14, 16, 26, 0.30);
-  --fp-error:        #dc2626;
-  --fp-header-grad:  linear-gradient(to bottom, rgba(255, 252, 248, 0.18), transparent);
+  --fp-card-bg: rgba(255, 255, 255, 0.52);
+  --fp-card-border: rgba(255, 255, 255, 0.78);
+  --fp-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  --fp-btn-bg: rgba(0, 0, 0, 0.07);
+  --fp-btn-hover: rgba(0, 0, 0, 0.13);
+  --fp-play-bg: rgba(14, 16, 26, 0.9);
+  --fp-play-color: #fff;
+  --fp-play-shadow: 0 4px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.1);
+  --fp-track-bg: rgba(0, 0, 0, 0.13);
+  --fp-fill-bg: rgba(14, 16, 26, 0.82);
+  --fp-thumb-bg: rgba(14, 16, 26, 0.88);
+  --fp-cover-shadow:
+    0 28px 64px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --fp-sidebar-bg: rgba(255, 255, 255, 0.42);
+  --fp-sidebar-sep: rgba(0, 0, 0, 0.08);
+  --fp-item-hover: rgba(0, 0, 0, 0.05);
+  --fp-item-active: #0d6640;
+  --fp-sheet-bg: rgba(255, 255, 255, 0.96);
+  --fp-sheet-sep: rgba(0, 0, 0, 0.08);
+  --fp-inactive: rgba(14, 16, 26, 0.3);
+  --fp-error: #dc2626;
+  --fp-header-grad: linear-gradient(to bottom, rgba(255, 252, 248, 0.18), transparent);
 }
 
 /* System light (auto / unset) */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .full-player,
   :root[data-theme='auto'] .full-player {
-    --fp-text:         rgba(14, 16, 26, 0.94);
-    --fp-text-soft:    rgba(14, 16, 26, 0.64);
-    --fp-text-muted:   rgba(14, 16, 26, 0.42);
-    --fp-mask:         linear-gradient(180deg, rgba(255,252,248,.08) 0%, rgba(255,252,248,.56) 44%, rgba(255,252,248,.90) 100%);
-    --fp-vignette:     radial-gradient(ellipse 140% 100% at 50% 50%, transparent 32%, rgba(180,168,158,.22) 100%);
-    --fp-card-bg:      rgba(255, 255, 255, 0.52);
-    --fp-card-border:  rgba(255, 255, 255, 0.78);
-    --fp-card-shadow:  0 8px 32px rgba(0,0,0,.08), 0 1px 0 rgba(255,255,255,.90) inset;
-    --fp-btn-bg:       rgba(0, 0, 0, 0.07);
-    --fp-btn-hover:    rgba(0, 0, 0, 0.13);
-    --fp-play-bg:      rgba(14, 16, 26, 0.90);
-    --fp-play-color:   #fff;
-    --fp-play-shadow:  0 4px 20px rgba(0,0,0,.22), 0 1px 4px rgba(0,0,0,.10);
-    --fp-track-bg:     rgba(0, 0, 0, 0.13);
-    --fp-fill-bg:      rgba(14, 16, 26, 0.82);
-    --fp-thumb-bg:     rgba(14, 16, 26, 0.88);
-    --fp-cover-shadow: 0 28px 64px rgba(0,0,0,.20), 0 4px 16px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.06);
-    --fp-sidebar-bg:   rgba(255, 255, 255, 0.42);
-    --fp-sidebar-sep:  rgba(0, 0, 0, 0.08);
-    --fp-item-hover:   rgba(0, 0, 0, 0.05);
-    --fp-item-active:  #0d6640;
-    --fp-sheet-bg:     rgba(255, 255, 255, 0.96);
-    --fp-sheet-sep:    rgba(0, 0, 0, 0.08);
-    --fp-inactive:     rgba(14, 16, 26, 0.30);
-    --fp-error:        #dc2626;
-    --fp-header-grad:  linear-gradient(to bottom, rgba(255,252,248,.18), transparent);
+    --fp-text: rgba(14, 16, 26, 0.94);
+    --fp-text-soft: rgba(14, 16, 26, 0.64);
+    --fp-text-muted: rgba(14, 16, 26, 0.42);
+    --fp-mask: linear-gradient(
+      180deg,
+      rgba(255, 252, 248, 0.08) 0%,
+      rgba(255, 252, 248, 0.56) 44%,
+      rgba(255, 252, 248, 0.9) 100%
+    );
+    --fp-vignette: radial-gradient(
+      ellipse 140% 100% at 50% 50%,
+      transparent 32%,
+      rgba(180, 168, 158, 0.22) 100%
+    );
+    --fp-card-bg: rgba(255, 255, 255, 0.52);
+    --fp-card-border: rgba(255, 255, 255, 0.78);
+    --fp-card-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+    --fp-btn-bg: rgba(0, 0, 0, 0.07);
+    --fp-btn-hover: rgba(0, 0, 0, 0.13);
+    --fp-play-bg: rgba(14, 16, 26, 0.9);
+    --fp-play-color: #fff;
+    --fp-play-shadow: 0 4px 20px rgba(0, 0, 0, 0.22), 0 1px 4px rgba(0, 0, 0, 0.1);
+    --fp-track-bg: rgba(0, 0, 0, 0.13);
+    --fp-fill-bg: rgba(14, 16, 26, 0.82);
+    --fp-thumb-bg: rgba(14, 16, 26, 0.88);
+    --fp-cover-shadow:
+      0 28px 64px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    --fp-sidebar-bg: rgba(255, 255, 255, 0.42);
+    --fp-sidebar-sep: rgba(0, 0, 0, 0.08);
+    --fp-item-hover: rgba(0, 0, 0, 0.05);
+    --fp-item-active: #0d6640;
+    --fp-sheet-bg: rgba(255, 255, 255, 0.96);
+    --fp-sheet-sep: rgba(0, 0, 0, 0.08);
+    --fp-inactive: rgba(14, 16, 26, 0.3);
+    --fp-error: #dc2626;
+    --fp-header-grad: linear-gradient(to bottom, rgba(255, 252, 248, 0.18), transparent);
   }
 }
 
@@ -532,7 +532,7 @@ function selectFromQueue(index: number) {
   padding-top: calc(16px + env(safe-area-inset-top, 0px));
   flex-shrink: 0;
   background: var(--fp-header-grad);
-  border-bottom: 1px solid rgba(128, 128, 128, 0.10);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.1);
 }
 
 .full-player__header-title {
@@ -576,7 +576,6 @@ function selectFromQueue(index: number) {
   min-height: 0;
   overflow: hidden;
 }
-
 
 /* ── Right sidebar (desktop) ──────────────────────────────────── */
 .full-player__sidebar {

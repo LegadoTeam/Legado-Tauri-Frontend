@@ -1,6 +1,6 @@
 import type { ShelfBook } from '@/stores';
-import { bookAuthor, bookKind, buildDataUrl, verticalTextSpans, wrapText } from './shared';
 import type { BuiltinCoverGeneratorDefinition } from './types';
+import { bookAuthor, bookKind, buildDataUrl, verticalTextSpans, wrapText } from './shared';
 
 function generateWuxiaCover(book: ShelfBook): string {
   const title = verticalTextSpans(wrapText(book.name, 4, 3), {

@@ -1,6 +1,6 @@
 import type { ShelfBook } from '@/stores';
-import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 import type { BuiltinCoverGeneratorDefinition } from './types';
+import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 
 function generateComicVividCover(book: ShelfBook): string {
   const title = textSpans(wrapText(book.name, 5, 4), { x: 66, lineHeight: 124 });

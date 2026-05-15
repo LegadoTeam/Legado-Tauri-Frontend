@@ -111,7 +111,8 @@ export function useInlineBookReader(options: UseInlineBookReaderOptions) {
           bookUrl: options.drawerBookUrl.value,
           name: payload.bookInfo.name,
           author: payload.bookInfo.author,
-          coverUrl: payload.bookInfo.coverUrl,
+          coverUrl:
+            typeof payload.bookInfo.coverUrl === 'string' ? payload.bookInfo.coverUrl : undefined,
           intro: payload.bookInfo.intro,
           sourceName: payload.bookInfo.sourceName,
         },

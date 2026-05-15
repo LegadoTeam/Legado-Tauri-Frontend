@@ -87,10 +87,7 @@ const emit = defineEmits<{
         </div>
       </div>
 
-      <div
-        class="src-card__actions"
-        :class="{ 'src-card__actions--installed': installed }"
-      >
+      <div class="src-card__actions" :class="{ 'src-card__actions--installed': installed }">
         <!-- 未安装：安装按钮 -->
         <n-button
           v-if="!installed"

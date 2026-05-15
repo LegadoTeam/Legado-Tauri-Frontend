@@ -1,6 +1,6 @@
 import * as OpenCC from 'opencc-js';
-import type { ChineseConvertMode, ReaderSessionAppearanceState } from './pluginTypes';
 import { toFileSrcSync } from '@/composables/useFileSrc';
+import type { ChineseConvertMode, ReaderSessionAppearanceState } from './pluginTypes';
 
 export function normalizeRelativePath(path: string): string[] {
   const segments = path

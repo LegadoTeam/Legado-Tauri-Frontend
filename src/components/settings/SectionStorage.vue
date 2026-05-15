@@ -277,10 +277,7 @@ onMounted(async () => {
       </div>
     </SettingItem>
 
-    <SettingItem
-      label="自动缓存并发数"
-      desc="阅读时自动缓存章节的并发数（1 = 顺序缓存，默认 2）"
-    >
+    <SettingItem label="自动缓存并发数" desc="阅读时自动缓存章节的并发数（1 = 顺序缓存，默认 2）">
       <n-input-number
         :value="config.cache_prefetch_concurrency"
         :min="1"

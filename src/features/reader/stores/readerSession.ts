@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { ChapterItem } from '@/stores';
 import type { TemporaryChapterSourceOverride } from '@/components/reader/types';
+import type { ChapterItem } from '@/stores';
 
 export const useReaderSessionStore = defineStore('readerSession', () => {
   const activeChapterIndex = ref(0);

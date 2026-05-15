@@ -28,10 +28,14 @@ export async function preloadExploreCategoryCache(): Promise<void> {
 /** 同步读取缓存的分类列表，若不存在返回 null */
 export function getCachedExploreCategories(fileName: string): string[] | null {
   const raw = getFrontendStorageItem(CATS_NS, fileName);
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
     return parsed.filter((v): v is string => typeof v === 'string');
   } catch {
     return null;
@@ -69,11 +73,17 @@ export async function preloadExploreBooksCache(): Promise<void> {
  */
 export function getCachedExploreBooks(fileName: string, category: string): BookItem[] | null {
   const raw = getFrontendStorageItem(BOOKS_NS, booksCacheKey(fileName, category));
-  if (!raw) return null;
+  if (!raw) {
+    return null;
+  }
   try {
     const entry = JSON.parse(raw) as BooksCacheEntry;
-    if (!entry || typeof entry.ts !== 'number' || !Array.isArray(entry.books)) return null;
-    if (Date.now() - entry.ts > BOOKS_TTL_MS) return null; // 已过期
+    if (!entry || typeof entry.ts !== 'number' || !Array.isArray(entry.books)) {
+      return null;
+    }
+    if (Date.now() - entry.ts > BOOKS_TTL_MS) {
+      return null;
+    } // 已过期
     return entry.books;
   } catch {
     return null;
@@ -81,11 +91,7 @@ export function getCachedExploreBooks(fileName: string, category: string): BookI
 }
 
 /** 持久化书籍列表（仅第 1 页，fire-and-forget） */
-export function setCachedExploreBooks(
-  fileName: string,
-  category: string,
-  books: BookItem[],
-): void {
+export function setCachedExploreBooks(fileName: string, category: string, books: BookItem[]): void {
   const entry: BooksCacheEntry = { ts: Date.now(), books };
   setFrontendStorageItem(BOOKS_NS, booksCacheKey(fileName, category), JSON.stringify(entry));
 }

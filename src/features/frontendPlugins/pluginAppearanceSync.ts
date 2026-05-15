@@ -1,12 +1,10 @@
 import { readonly } from 'vue';
-import { applyAppearancePatchVars } from './pluginAppearanceUtils';
-import { cloneValue, defaultAppearanceState } from './pluginTextUtils';
-import type { RuntimePluginRecord } from './pluginRuntimeTypes';
 import type {
   RuntimeReaderThemeDefinition,
   RuntimeReaderBackgroundDefinition,
   RuntimeReaderSkinDefinition,
 } from './pluginNormalizer';
+import type { RuntimePluginRecord } from './pluginRuntimeTypes';
 import type {
   FrontendPluginRecord,
   FrontendPluginApi,
@@ -20,6 +18,8 @@ import type {
   ReaderSessionAppearanceState,
   ReaderAppearancePatch,
 } from './pluginTypes';
+import { applyAppearancePatchVars } from './pluginAppearanceUtils';
+import { cloneValue, defaultAppearanceState } from './pluginTextUtils';
 
 function getAppearanceState(
   currentSession: ReaderSessionSnapshot | null,
@@ -71,7 +71,9 @@ export async function resolveReaderThemePatch(
     mode === 'preview'
       ? (theme.previewResolver ?? theme.resolveResolver)
       : (theme.resolveResolver ?? theme.previewResolver);
-  if (!resolver) return undefined;
+  if (!resolver) {
+    return undefined;
+  }
   if (typeof resolver === 'function') {
     return (
       (await resolver(buildReaderThemeContext(record, currentSession), createPluginApi(record))) ??
@@ -92,7 +94,9 @@ export async function resolveReaderBackgroundPatch(
     mode === 'preview'
       ? (background.previewResolver ?? background.resolveResolver)
       : (background.resolveResolver ?? background.previewResolver);
-  if (!resolver) return undefined;
+  if (!resolver) {
+    return undefined;
+  }
   if (typeof resolver === 'function') {
     return (
       (await resolver(
@@ -115,7 +119,9 @@ export async function resolveReaderSkinPatch(
     mode === 'preview'
       ? (skin.previewResolver ?? skin.resolveResolver)
       : (skin.resolveResolver ?? skin.previewResolver);
-  if (!resolver) return undefined;
+  if (!resolver) {
+    return undefined;
+  }
   if (typeof resolver === 'function') {
     return (
       (await resolver(buildReaderSkinContext(record, currentSession), createPluginApi(record))) ??
@@ -134,8 +140,13 @@ export async function computePublicThemeState(
   for (const record of runtimePlugins.filter((item) => item.enabled && item.status !== 'error')) {
     for (const theme of record.themes) {
       const preview =
-        (await resolveReaderThemePatch(record, theme, 'preview', currentSession, createPluginApi)) ??
-        {};
+        (await resolveReaderThemePatch(
+          record,
+          theme,
+          'preview',
+          currentSession,
+          createPluginApi,
+        )) ?? {};
       nextThemes.push({
         id: theme.id,
         localId: theme.localId,
@@ -214,7 +225,9 @@ export async function computeReaderAppearanceVars(
   runtimePlugins: RuntimePluginRecord[],
   createPluginApi: (r: RuntimePluginRecord) => FrontendPluginApi,
 ): Promise<Record<string, string>> {
-  if (!currentSession) return {};
+  if (!currentSession) {
+    return {};
+  }
 
   const nextVars: Record<string, string> = {};
 
@@ -222,7 +235,9 @@ export async function computeReaderAppearanceVars(
   if (selectedThemeId) {
     for (const record of runtimePlugins.filter((item) => item.enabled)) {
       const theme = record.themes.find((item) => item.id === selectedThemeId);
-      if (!theme) continue;
+      if (!theme) {
+        continue;
+      }
       const patch = await resolveReaderThemePatch(
         record,
         theme,
@@ -239,7 +254,9 @@ export async function computeReaderAppearanceVars(
   if (selectedBackgroundId) {
     for (const record of runtimePlugins.filter((item) => item.enabled)) {
       const background = record.backgrounds.find((item) => item.id === selectedBackgroundId);
-      if (!background) continue;
+      if (!background) {
+        continue;
+      }
       const patch = await resolveReaderBackgroundPatch(
         record,
         background,
@@ -256,7 +273,9 @@ export async function computeReaderAppearanceVars(
   if (selectedSkinId) {
     for (const record of runtimePlugins.filter((item) => item.enabled)) {
       const skin = record.skins.find((item) => item.id === selectedSkinId);
-      if (!skin) continue;
+      if (!skin) {
+        continue;
+      }
       const patch = await resolveReaderSkinPatch(
         record,
         skin,

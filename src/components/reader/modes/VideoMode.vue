@@ -51,11 +51,11 @@ let currentBlobUrl: string | null = null;
 async function initPlayer(content: string) {
   // 同一资源不重建播放器（避免切页重布局触发重建）
   const newSource = parseVideoSource(content);
-  const isSameSource = player && (
-    newSource.m3u8Content
+  const isSameSource =
+    player &&
+    (newSource.m3u8Content
       ? currentSource?.m3u8Content === newSource.m3u8Content
-      : currentSource?.url === newSource.url
-  );
+      : currentSource?.url === newSource.url);
   if (isSameSource) {
     console.debug('[VideoMode] initPlayer skip: same source');
     return;
@@ -63,7 +63,12 @@ async function initPlayer(content: string) {
 
   // 占用当前代次，后续所有异步检查点都必须验证代次一致
   const myGen = ++initGeneration;
-  console.debug('[VideoMode] initPlayer start gen=%d type=%s url=%s', myGen, videoPlayerType.value, newSource.url);
+  console.debug(
+    '[VideoMode] initPlayer start gen=%d type=%s url=%s',
+    myGen,
+    videoPlayerType.value,
+    newSource.url,
+  );
 
   // 清理旧实例
   destroyPlayer();
@@ -85,7 +90,9 @@ async function initPlayer(content: string) {
     if (componentDestroyed || myGen !== initGeneration) {
       console.warn(
         '[VideoMode] initPlayer discard gen=%d (destroyed=%s currentGen=%d): created player not used, destroying immediately',
-        myGen, componentDestroyed, initGeneration,
+        myGen,
+        componentDestroyed,
+        initGeneration,
       );
       pendingPlayer.destroy();
       return;
@@ -110,7 +117,9 @@ async function initPlayer(content: string) {
     if (componentDestroyed || myGen !== initGeneration) {
       console.warn(
         '[VideoMode] initPlayer discard after mount gen=%d (destroyed=%s currentGen=%d)',
-        myGen, componentDestroyed, initGeneration,
+        myGen,
+        componentDestroyed,
+        initGeneration,
       );
       player.destroy();
       player = null;

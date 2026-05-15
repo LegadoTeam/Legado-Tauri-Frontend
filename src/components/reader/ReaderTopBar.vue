@@ -11,8 +11,8 @@ import {
 } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
 import { ref, computed } from 'vue';
-import { useAppConfigStore } from '@/stores';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import { useAppConfigStore } from '@/stores';
 
 const props = withDefaults(
   defineProps<{

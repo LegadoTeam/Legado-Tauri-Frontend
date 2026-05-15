@@ -40,8 +40,6 @@ const { startManualPrefetch, cancelManualPrefetch } = prefetchStore;
 let _stopWatch: (() => void) | null = null;
 let _pollTimer: ReturnType<typeof setInterval> | null = null;
 let _timeoutTimer: ReturnType<typeof setTimeout> | null = null;
-let _resolveCompletion: (() => void) | null = null;
-let _rejectCompletion: ((err: Error) => void) | null = null;
 
 const progressPercent = computed(() => {
   if (!cacheTotal.value) {
@@ -91,17 +89,12 @@ function cleanupCompletion() {
     clearTimeout(_timeoutTimer);
     _timeoutTimer = null;
   }
-  _resolveCompletion = null;
-  _rejectCompletion = null;
 }
 
 function waitForCachingComplete(bookId: string, chapters: CachedChapter[]): Promise<void> {
   const expectedIndices = new Set(chapters.map((ch) => ch.index));
   const totalChapters = chapters.length;
   return new Promise<void>((resolve, reject) => {
-    _resolveCompletion = resolve;
-    _rejectCompletion = reject;
-
     // Tauri mode: watch manualRunning
     _stopWatch = watch(manualRunning, (running) => {
       if (!running) {
@@ -201,7 +194,11 @@ async function startExport() {
         bookUrl: props.book.bookUrl,
         bookName: props.book.name,
         sourceType: props.book.sourceType ?? 'novel',
-        chapters: chapters.map((c) => ({ index: c.index, name: c.name, url: c.url })),
+        chapters: chapters.map((c) => ({
+          index: c.index,
+          name: c.name,
+          url: c.url,
+        })),
         startIndex: 0,
         count: -1,
         concurrency: appConfigStore.config.export_prefetch_concurrency || 3,
@@ -245,11 +242,11 @@ async function startExport() {
   try {
     let actualPath = pickedPath;
     if (isTauriMobile.value) {
-      const data = await invokeWithTimeout<{ fileName: string; mime: string; base64: string }>(
-        'bookshelf_export_book_data',
-        { id: props.book.id, format: format.value },
-        10 * 60 * 1000,
-      );
+      const data = await invokeWithTimeout<{
+        fileName: string;
+        mime: string;
+        base64: string;
+      }>('bookshelf_export_book_data', { id: props.book.id, format: format.value }, 10 * 60 * 1000);
       await writeExportFile(pickedPath, { bytes: base64ToBytes(data.base64) });
     } else {
       actualPath = await invokeWithTimeout<string>(
@@ -383,7 +380,8 @@ onBeforeUnmount(() => {
           <div class="export-info">
             <Info :size="14" />
             <span>
-              导出前将自动扫描并缓存全部 {{ chapters.length }} 章节内容，时间取决于网络和书源速度
+              导出前将自动扫描并缓存全部
+              {{ chapters.length }} 章节内容，时间取决于网络和书源速度
             </span>
           </div>
         </div>
@@ -429,7 +427,9 @@ onBeforeUnmount(() => {
           />
 
           <div ref="logEl" class="export-log app-scrollbar">
-            <div v-for="(line, i) in logLines" :key="i" class="export-log__line">{{ line }}</div>
+            <div v-for="(line, i) in logLines" :key="i" class="export-log__line">
+              {{ line }}
+            </div>
           </div>
         </div>
 
@@ -441,7 +441,9 @@ onBeforeUnmount(() => {
           <p class="export-done__title">导出成功</p>
           <p class="export-done__path">{{ savedPath }}</p>
           <div class="export-log app-scrollbar" style="margin-top: 12px">
-            <div v-for="(line, i) in logLines" :key="i" class="export-log__line">{{ line }}</div>
+            <div v-for="(line, i) in logLines" :key="i" class="export-log__line">
+              {{ line }}
+            </div>
           </div>
         </div>
 

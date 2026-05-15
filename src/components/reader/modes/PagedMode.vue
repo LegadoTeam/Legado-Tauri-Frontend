@@ -545,11 +545,21 @@ function clearSimulationDragStyles() {
   const curlEl = simulationCurlEl.value;
   const curlContentEl = simulationCurlContentEl.value;
   const shadowEl = simulationShadowEl.value;
-  if (revealEl) revealEl.style.cssText = '';
-  if (currentEl) currentEl.style.cssText = '';
-  if (curlEl) curlEl.style.cssText = '';
-  if (curlContentEl) curlContentEl.style.cssText = '';
-  if (shadowEl) shadowEl.style.cssText = '';
+  if (revealEl) {
+    revealEl.style.cssText = '';
+  }
+  if (currentEl) {
+    currentEl.style.cssText = '';
+  }
+  if (curlEl) {
+    curlEl.style.cssText = '';
+  }
+  if (curlContentEl) {
+    curlContentEl.style.cssText = '';
+  }
+  if (shadowEl) {
+    shadowEl.style.cssText = '';
+  }
 }
 
 function syncSimulationOffsetFromPointer(direction: Exclude<DragDir, null>) {
@@ -947,10 +957,7 @@ defineExpose({
       @click="totalPages <= 0 && emit('tap', 'center')"
     />
 
-    <div
-      v-else
-      class="paged-mode__gesture paged-mode__gesture--none"
-    />
+    <div v-else class="paged-mode__gesture paged-mode__gesture--none" />
 
     <template v-if="mode === 'slide'">
       <div
@@ -1015,8 +1022,16 @@ defineExpose({
           :style="isAnimating ? simulationState.currentStyle : undefined"
           v-html="currentPageHtml"
         />
-        <div ref="simulationShadowEl" class="paged-mode__simulation-shadow" :style="isAnimating ? simulationState.shadowStyle : undefined" />
-        <div ref="simulationCurlEl" class="paged-mode__simulation-curl" :style="isAnimating ? simulationState.curlStyle : undefined">
+        <div
+          ref="simulationShadowEl"
+          class="paged-mode__simulation-shadow"
+          :style="isAnimating ? simulationState.shadowStyle : undefined"
+        />
+        <div
+          ref="simulationCurlEl"
+          class="paged-mode__simulation-curl"
+          :style="isAnimating ? simulationState.curlStyle : undefined"
+        >
           <div
             ref="simulationCurlContentEl"
             class="paged-mode__page paged-mode__simulation-curl-page"

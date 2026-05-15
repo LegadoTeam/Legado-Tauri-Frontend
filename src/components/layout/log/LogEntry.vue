@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { isMobile } from '@/composables/useEnv';
-import type { HttpDetail, LogEntry } from './useLogState';
+import type { LogEntry } from './useLogState';
 
 const props = defineProps<{
   entry: LogEntry;
@@ -17,9 +17,15 @@ const emit = defineEmits<{
 }>();
 
 function statusClass(status: number) {
-  if (status >= 200 && status < 300) return 'lw-status--ok';
-  if (status >= 300 && status < 400) return 'lw-status--redirect';
-  if (status >= 400) return 'lw-status--error';
+  if (status >= 200 && status < 300) {
+    return 'lw-status--ok';
+  }
+  if (status >= 300 && status < 400) {
+    return 'lw-status--redirect';
+  }
+  if (status >= 400) {
+    return 'lw-status--error';
+  }
   return '';
 }
 
@@ -82,7 +88,9 @@ const isLongMsg = computed(
 
 const httpTabs = computed(() => {
   const base: ('headers' | 'response' | 'request')[] = ['headers', 'response'];
-  if (props.entry.httpDetail?.requestBody) base.push('request');
+  if (props.entry.httpDetail?.requestBody) {
+    base.push('request');
+  }
   return base;
 });
 </script>
@@ -103,7 +111,10 @@ const httpTabs = computed(() => {
       <span class="lw-entry__time">{{ formatTime(entry.time) }}</span>
       <span
         class="lw-entry__type"
-        :style="{ background: typeBgColor(entry.type), color: typeTextColor(entry.type) }"
+        :style="{
+          background: typeBgColor(entry.type),
+          color: typeTextColor(entry.type),
+        }"
         >{{ typeLabel(entry.type) }}</span
       >
       <span
@@ -151,7 +162,10 @@ const httpTabs = computed(() => {
         <span class="lw-entry__time">{{ formatTime(entry.time) }}</span>
         <span
           class="lw-entry__type"
-          :style="{ background: typeBgColor(entry.type), color: typeTextColor(entry.type) }"
+          :style="{
+            background: typeBgColor(entry.type),
+            color: typeTextColor(entry.type),
+          }"
           >{{ typeLabel(entry.type) }}</span
         >
         <span
@@ -239,13 +253,15 @@ const httpTabs = computed(() => {
       <div v-if="Object.keys(entry.httpDetail.responseHeaders).length" class="lw-kv-section">
         <div class="lw-kv-section__title">Response Headers</div>
         <div v-for="(v, k) in entry.httpDetail.responseHeaders" :key="k" class="lw-kv">
-          <span class="lw-kv__k">{{ k }}</span><span class="lw-kv__v">{{ v }}</span>
+          <span class="lw-kv__k">{{ k }}</span
+          ><span class="lw-kv__v">{{ v }}</span>
         </div>
       </div>
       <div v-if="Object.keys(entry.httpDetail.requestHeaders).length" class="lw-kv-section">
         <div class="lw-kv-section__title">Request Headers</div>
         <div v-for="(v, k) in entry.httpDetail.requestHeaders" :key="k" class="lw-kv">
-          <span class="lw-kv__k">{{ k }}</span><span class="lw-kv__v">{{ v }}</span>
+          <span class="lw-kv__k">{{ k }}</span
+          ><span class="lw-kv__v">{{ v }}</span>
         </div>
       </div>
     </div>
@@ -276,7 +292,6 @@ const httpTabs = computed(() => {
   border-bottom: 1px solid transparent;
   border-left: 2px solid transparent;
 }
-
 
 .lw-entry:hover {
   background: rgba(255, 255, 255, 0.03);

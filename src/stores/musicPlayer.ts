@@ -9,9 +9,9 @@
  */
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { getFrontendStorageItem, setFrontendStorageJson } from '@/composables/useFrontendStorage';
 import { isTauri } from '@/composables/useEnv';
 import { toFileSrcSync } from '@/composables/useFileSrc';
+import { getFrontendStorageItem, setFrontendStorageJson } from '@/composables/useFrontendStorage';
 import { useScriptBridgeStore } from './scriptBridge';
 
 const STORAGE_NAMESPACE = 'music.player';
@@ -97,9 +97,23 @@ function normalizeAudioUrl(url: string, chapterUrl?: string): string {
 /** 尝试从对象中提取音频 URL（常见字段名） */
 function extractUrlFromObject(obj: Record<string, unknown>): string {
   const keys = [
-    'url', 'link', 'mp3Url', 'mp3_url', 'audioUrl', 'audio_url',
-    'playUrl', 'play_url', 'src', 'source', 'path', 'fileLink',
-    'song_file_link', 'listenUrl', 'listen_url', 'streamUrl', 'stream_url',
+    'url',
+    'link',
+    'mp3Url',
+    'mp3_url',
+    'audioUrl',
+    'audio_url',
+    'playUrl',
+    'play_url',
+    'src',
+    'source',
+    'path',
+    'fileLink',
+    'song_file_link',
+    'listenUrl',
+    'listen_url',
+    'streamUrl',
+    'stream_url',
   ];
   for (const k of keys) {
     const v = obj[k];
@@ -168,7 +182,10 @@ function extractAudioUrl(raw: unknown): string {
     }
   }
   // 逐行找第一个看起来像 URL 的行
-  const lines = text.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+  const lines = text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
   const urlLine = lines.find((s) => /^https?:\/\//i.test(s) || s.startsWith('//'));
   if (urlLine !== undefined) {
     return urlLine;
@@ -181,7 +198,7 @@ function extractAudioUrl(raw: unknown): string {
     return embeddedMatch[0];
   }
   // 最后兜底：第一行
-  return lines[0] ?? ''
+  return lines[0] ?? '';
 }
 
 export const useMusicPlayerStore = defineStore('musicPlayer', () => {
@@ -252,12 +269,19 @@ export const useMusicPlayerStore = defineStore('musicPlayer', () => {
       };
       console.error(
         '[MusicPlayer] 音频加载失败',
-        '\n  code:', code, `(${codeNames[code] ?? 'unknown'})`,
-        '\n  message:', msg || '（空）',
-        '\n  el.src (完整):', url || '（空）',
-        '\n  networkState:', el.networkState,
-        '\n  readyState:', el.readyState,
-        '\n  currentTrack:', tracks.value[currentIndex.value],
+        '\n  code:',
+        code,
+        `(${codeNames[code] ?? 'unknown'})`,
+        '\n  message:',
+        msg || '（空）',
+        '\n  el.src (完整):',
+        url || '（空）',
+        '\n  networkState:',
+        el.networkState,
+        '\n  readyState:',
+        el.readyState,
+        '\n  currentTrack:',
+        tracks.value[currentIndex.value],
       );
       errorText.value = `音频加载失败（code=${code} ${codeNames[code] ?? ''}）${msg ? ': ' + msg : ''}${url ? '\nURL: ' + url.slice(0, 200) : ''}`;
       isPlaying.value = false;
@@ -321,9 +345,12 @@ export const useMusicPlayerStore = defineStore('musicPlayer', () => {
     const bridge = useScriptBridgeStore();
     console.log(
       '[MusicPlayer] 开始解析音频 URL',
-      '\n  fileName:', ctx.fileName,
-      '\n  chapterUrl:', track.chapterUrl,
-      '\n  trackName:', track.name,
+      '\n  fileName:',
+      ctx.fileName,
+      '\n  chapterUrl:',
+      track.chapterUrl,
+      '\n  trackName:',
+      track.name,
     );
     const raw = await bridge.runChapterContent(ctx.fileName, track.chapterUrl);
     console.log('[MusicPlayer] runChapterContent 原始返回:', raw);
@@ -340,7 +367,10 @@ export const useMusicPlayerStore = defineStore('musicPlayer', () => {
     // Tauri 环境：通过后端代理下载（携带正确 Referer），缓存后返回本地路径
     if (isTauri) {
       const { invoke } = await import('@tauri-apps/api/core');
-      console.log('[MusicPlayer] 通过 Tauri audio_resolve_cache 代理下载，referer:', track.chapterUrl);
+      console.log(
+        '[MusicPlayer] 通过 Tauri audio_resolve_cache 代理下载，referer:',
+        track.chapterUrl,
+      );
       try {
         const result = await invoke<{ localPath: string }>('audio_resolve_cache', {
           request: {
@@ -349,7 +379,12 @@ export const useMusicPlayerStore = defineStore('musicPlayer', () => {
           },
         });
         const localUrl = toFileSrcSync(result.localPath);
-        console.log('[MusicPlayer] 音频已缓存，本地路径:', result.localPath, '\n  播放 URL:', localUrl);
+        console.log(
+          '[MusicPlayer] 音频已缓存，本地路径:',
+          result.localPath,
+          '\n  播放 URL:',
+          localUrl,
+        );
         track.audioUrl = localUrl;
         return localUrl;
       } catch (proxyErr) {
@@ -381,9 +416,12 @@ export const useMusicPlayerStore = defineStore('musicPlayer', () => {
       }
       console.log(
         '[MusicPlayer] 准备播放',
-        '\n  index:', safeIndex,
-        '\n  name:', track.name,
-        '\n  audioUrl:', url,
+        '\n  index:',
+        safeIndex,
+        '\n  name:',
+        track.name,
+        '\n  audioUrl:',
+        url,
       );
       el.src = url;
       currentTime.value = 0;

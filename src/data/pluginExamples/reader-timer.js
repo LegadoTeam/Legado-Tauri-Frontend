@@ -36,11 +36,13 @@ legado.registerPlugin({
 
     function totalSeconds() {
       var extra = sessionStart ? Math.max(0, Math.floor((Date.now() - sessionStart) / 1000)) : 0;
-      return (stats.totalSeconds || 0) + extra;
+      return (stats.totalSeconds ?? 0) + extra;
     }
 
     function render() {
-      if (!labelEl) return;
+      if (!labelEl) {
+        return;
+      }
       var secs = totalSeconds();
       var minutes = Math.floor(secs / 60);
       var seconds = secs % 60;

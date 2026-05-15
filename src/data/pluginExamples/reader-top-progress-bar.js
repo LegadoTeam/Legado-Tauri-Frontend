@@ -108,7 +108,7 @@ legado.registerPlugin({
           unlisten();
           unlisten = null;
         }
-        if (root && root.parentNode) {
+        if (root?.parentNode) {
           root.parentNode.removeChild(root);
         }
         root = null;

@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed } from 'vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import ReaderImmersiveSurface from '../../features/reader/components/ReaderImmersiveSurface.vue';
 import ReaderModal from '../../features/reader/components/ReaderModal.vue';
 import ReaderVideoSurface from '../../features/reader/components/ReaderVideoSurface.vue';
@@ -8,7 +9,6 @@ import {
   type ChapterReaderModalProps,
   useChapterReaderModalController,
 } from '../reader/composables/useChapterReaderModalController';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const props = defineProps<ChapterReaderModalProps>();
 const emit = defineEmits<ChapterReaderModalEmit>();

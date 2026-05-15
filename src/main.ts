@@ -6,7 +6,7 @@ window.__LEGADO_SET_BOOT_STAGE?.('main-ts-started');
 import naive from 'naive-ui';
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
-import { analyticsPlugin } from './plugins/analytics';
+import App from './App.vue';
 import './style.css';
 import './styles/tokens.css';
 import './styles/theme.css';
@@ -16,15 +16,15 @@ import './styles/reader.css';
 import './styles/focus.css';
 import './styles/remote.css';
 import './styles/components.css';
-import App from './App.vue';
 import { initFrontendStorage } from './composables/useFrontendStorage';
+import { analyticsPlugin } from './plugins/analytics';
 
 // Naive UI 已通过 unplugin-vue-components 按需自动导入，无需全量 app.use(naive)
 const app = createApp(App);
 app.use(createPinia());
 app.use(analyticsPlugin);
 app.config.errorHandler = (err, instance, info) => {
-  const details = err instanceof Error ? err.stack || err.message : String(err);
+  const details = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error('[BOOT][Frontend] Vue error', { err, info, instance });
   window.__LEGADO_SHOW_BOOT_ERROR?.(`Vue 渲染异常 (${info}):\n${details}`);
 };
@@ -41,7 +41,7 @@ try {
   window.__LEGADO_SET_BOOT_STAGE?.('app-mounted');
   console.log(`[BOOT][Frontend] App 挂载完成 cost=${Date.now() - _bootT0}ms`);
 } catch (err) {
-  const details = err instanceof Error ? err.stack || err.message : String(err);
+  const details = err instanceof Error ? (err.stack ?? err.message) : String(err);
   window.__LEGADO_SHOW_BOOT_ERROR?.(`App 挂载失败:\n${details}`);
   throw err;
 }

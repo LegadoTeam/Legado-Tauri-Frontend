@@ -14,7 +14,7 @@
 function buildSearchUrl(book) {
   const params = new URLSearchParams();
   params.set('limit', '5');
-  params.set('title', book.name || '');
+  params.set('title', book.name ?? '');
   if (book.author) {
     params.set('author', book.author);
   }
@@ -57,7 +57,7 @@ legado.registerPlugin({
             const data = JSON.parse(raw);
             const docs = Array.isArray(data.docs) ? data.docs : [];
             const candidate =
-              docs.find((item) => buildCoverUrl(item) || normalizeDescription(item)) || docs[0];
+              docs.find((item) => buildCoverUrl(item) || normalizeDescription(item)) ?? docs[0];
 
             if (!candidate) {
               await api.ui.toast('OpenLibrary 未找到可用结果', 'warning');
@@ -83,9 +83,9 @@ legado.registerPlugin({
                   label: '匹配结果',
                   description:
                     '标题：' +
-                    (candidate.title || context.book.name) +
+                    (candidate.title ?? context.book.name) +
                     '\n作者：' +
-                    ((candidate.author_name || []).join(' / ') || context.book.author || '未知'),
+                    ((candidate.author_name || []).join(' / ') ?? context.book.author ?? '未知'),
                 },
                 {
                   type: 'switch',

@@ -1,11 +1,11 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { Check, RefreshCw } from 'lucide-vue-next';
 import { useMessage } from 'naive-ui';
 import { computed, onUnmounted, ref, watch } from 'vue';
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import { useBookshelfStore, type ShelfBook } from '@/stores';
 import { BUILTIN_COVER_GENERATORS } from '@/utils/defaultCoverGenerators';
 import BookCoverImg from '../BookCoverImg.vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 type PreviewStatus = 'pending' | 'generating' | 'ready' | 'error';
 
@@ -178,7 +178,11 @@ onUnmounted(() => {
       <div class="cg-summary">
         <div class="cg-summary__cover">
           <BookCoverImg
-            :src="book.coverReferer && book.coverUrl ? { url: book.coverUrl, referer: book.coverReferer } : book.coverUrl"
+            :src="
+              book.coverReferer && book.coverUrl
+                ? { url: book.coverUrl, referer: book.coverReferer }
+                : book.coverUrl
+            "
             :alt="book.name"
             :base-url="book.bookUrl"
           />
@@ -442,9 +446,7 @@ onUnmounted(() => {
   }
 
   .cg-dialog {
-    height: calc(
-      100dvh - var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) - 68px
-    );
+    height: calc(100dvh - var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) - 68px);
     min-height: 0;
   }
 

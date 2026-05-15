@@ -38,15 +38,14 @@ function resolvePlatform(): string {
 
 function installGtag(measurementId: string, platform: string): void {
   // 初始化 dataLayer
-  (window as Record<string, unknown>).dataLayer =
-    (window as Record<string, unknown>).dataLayer ?? [];
+  (window as unknown as Record<string, unknown>).dataLayer =
+    (window as unknown as Record<string, unknown>).dataLayer ?? [];
 
   function gtag(..._args: unknown[]) {
-    // eslint-disable-next-line prefer-rest-params
-    ((window as Record<string, unknown>).dataLayer as unknown[]).push(arguments);
+    ((window as unknown as Record<string, unknown>).dataLayer as unknown[]).push(arguments);
   }
 
-  (window as Record<string, unknown>).gtag = gtag;
+  (window as unknown as Record<string, unknown>).gtag = gtag;
 
   gtag('js', new Date());
   gtag('config', measurementId, {

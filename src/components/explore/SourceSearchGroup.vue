@@ -3,8 +3,8 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { computed } from 'vue';
 import type { BookItem } from '@/stores';
 import type { BookSourceMeta } from '../../composables/useBookSource';
-import SourceTypeBadge from '../base/SourceTypeBadge.vue';
 import defaultLogoUrl from '../../assets/booksource-default.svg';
+import SourceTypeBadge from '../base/SourceTypeBadge.vue';
 import BookCard from './BookCard.vue';
 
 const props = defineProps<{

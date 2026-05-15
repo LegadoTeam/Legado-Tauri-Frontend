@@ -18,7 +18,9 @@ legado.registerPlugin({
     var unlisten = null;
 
     function render(session) {
-      if (!badge || !session) return;
+      if (!badge || !session) {
+        return;
+      }
       var text = '';
       if (api.settings.get('showChapterIndex', true)) {
         text += '第' + (session.chapterIndex + 1) + '章';
@@ -28,7 +30,9 @@ legado.registerPlugin({
         typeof session.scrollRatio === 'number' &&
         session.scrollRatio >= 0
       ) {
-        if (text) text += ' · ';
+        if (text) {
+          text += ' · ';
+        }
         text += Math.round(session.scrollRatio * 100) + '%';
       }
       badge.textContent = text || session.chapterName;

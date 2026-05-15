@@ -83,26 +83,24 @@ function showMobileMenu() {
   mobileStage.value = 'menu';
 }
 
-function pushHistoryGuard() {
-  // kept for reference, actual push is done in activateHistoryGuard via _backStack
-}
-
-function onPopState() {
-  // handled by _backStack via global popstate listener in App.vue
-}
-
 function activateHistoryGuard() {
-  if (_backHandler) return;
+  if (_backHandler) {
+    return;
+  }
   _backHandler = () => {
     _backHandler = null; // 自注销
-    if (!isSettingsDetailActive.value) return;
+    if (!isSettingsDetailActive.value) {
+      return;
+    }
     showMobileMenu();
   };
   _backStack.push(_backHandler);
 }
 
 function deactivateHistoryGuard(options?: { consume?: boolean }) {
-  if (!_backHandler) return;
+  if (!_backHandler) {
+    return;
+  }
   const h = _backHandler;
   _backHandler = null;
   if (options?.consume === false) {
@@ -113,7 +111,9 @@ function deactivateHistoryGuard(options?: { consume?: boolean }) {
 }
 
 function goBackFromDetail() {
-  if (!isSettingsDetailActive.value) return;
+  if (!isSettingsDetailActive.value) {
+    return;
+  }
   deactivateHistoryGuard({ consume: true });
   showMobileMenu();
 }
@@ -121,8 +121,12 @@ function goBackFromDetail() {
 function onMobileKeyDown(event: KeyboardEvent) {
   // BrowserBack / Escape 已由全局堆栈处理（App.vue 安装的 useFocusNavigation + popstate 监听器）
   // 此处仅处理尚未被全局捕获的情况（如使用 event.stopPropagation 的子组件）
-  if (event.defaultPrevented) return;
-  if (!isSettingsDetailActive.value) return;
+  if (event.defaultPrevented) {
+    return;
+  }
+  if (!isSettingsDetailActive.value) {
+    return;
+  }
   if (event.key === 'Escape' || event.key === 'BrowserBack') {
     event.preventDefault();
     goBackFromDetail();

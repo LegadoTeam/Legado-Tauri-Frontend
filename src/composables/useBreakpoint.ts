@@ -5,9 +5,15 @@ export type Breakpoint = 'compact' | 'medium' | 'expanded' | 'wide';
 const width = ref(typeof window === 'undefined' ? 0 : window.innerWidth);
 
 function getBreakpoint(value: number): Breakpoint {
-  if (value >= 1200) return 'wide';
-  if (value >= 840) return 'expanded';
-  if (value >= 600) return 'medium';
+  if (value >= 1200) {
+    return 'wide';
+  }
+  if (value >= 840) {
+    return 'expanded';
+  }
+  if (value >= 600) {
+    return 'medium';
+  }
   return 'compact';
 }
 

@@ -1,6 +1,10 @@
 import { useDialog, useMessage } from 'naive-ui';
 import { storeToRefs } from 'pinia';
 import { computed, markRaw, ref, watch } from 'vue';
+import { useFrontendPlugins } from '@/composables/useFrontendPlugins';
+import { useSync } from '@/composables/useSync';
+import { createReaderPrefetchController } from '@/features/reader/services/readerCache';
+import { createReaderNavigationController } from '@/features/reader/services/readerNavigation';
 import {
   type ChapterGroup,
   type ChapterItem,
@@ -13,10 +17,6 @@ import {
   useReaderViewStore,
   useScriptBridgeStore,
 } from '@/stores';
-import { useFrontendPlugins } from '@/composables/useFrontendPlugins';
-import { useSync } from '@/composables/useSync';
-import { createReaderPrefetchController } from '@/features/reader/services/readerCache';
-import { createReaderNavigationController } from '@/features/reader/services/readerNavigation';
 import type { ReaderBookInfo, WholeBookSwitchedPayload } from '../types';
 import { useReaderChapterContext } from './useReaderChapterContext';
 import { useReaderChapterOpen } from './useReaderChapterOpen';
@@ -60,7 +60,12 @@ export interface ChapterReaderModalProps {
   /** 各集播放进度地图（key = chapter URL） */
   episodeProgress?: Record<string, { time: number; duration: number; lastPlayedAt: number }>;
   /** 书架视频模式下保存单集播放进度的回调 */
-  saveEpisodeProgress?: (shelfId: string, chapterUrl: string, time: number, duration: number) => void;
+  saveEpisodeProgress?: (
+    shelfId: string,
+    chapterUrl: string,
+    time: number,
+    duration: number,
+  ) => void;
 }
 
 export interface ChapterReaderModalEmit {
@@ -103,7 +108,7 @@ export function useChapterReaderModalController(
       .catch(() => {})
       .then(() => updateBookshelfProgress(...args));
     progressWriteQueue = nextWrite;
-    return nextWrite as ReturnType<typeof updateBookshelfProgress>;
+    return nextWrite;
   }
 
   const readerSessionStore = useReaderSessionStore();
@@ -128,13 +133,8 @@ export function useChapterReaderModalController(
   } = storeToRefs(readerSessionStore);
 
   const readerUiStore = useReaderUiStore();
-  const {
-    showMenu,
-    showToc,
-    settingsVisible,
-    showSourceSwitchDialog,
-    sourceSwitchMode,
-  } = storeToRefs(readerUiStore);
+  const { showMenu, showToc, settingsVisible, showSourceSwitchDialog, sourceSwitchMode } =
+    storeToRefs(readerUiStore);
 
   const {
     settings,
@@ -229,7 +229,6 @@ export function useChapterReaderModalController(
     return readingChapterIndex.value;
   });
   const readingChapter = computed(() => getChapter(readingChapterIndex.value));
-  const readingChapterName = computed(() => readingChapter.value?.name ?? currentChapterName.value);
   const readingChapterUrl = computed(() => readingChapter.value?.url ?? currentChapterUrl.value);
 
   function buildReaderContentPayload(
@@ -498,15 +497,14 @@ export function useChapterReaderModalController(
     return Math.min(Math.max(index, 0), chapters.value.length - 1);
   }
 
-  function resolveReadingProgressTarget(
-    snapshot = readCurrentPosition(),
-  ): ReaderProgressTarget {
+  function resolveReadingProgressTarget(snapshot = readCurrentPosition()): ReaderProgressTarget {
     const chapterIndex = clampChapterIndex(activeChapterIndex.value + snapshot.chapterOffset);
     const chapter = getChapter(chapterIndex);
     const isActiveChapter = chapterIndex === activeChapterIndex.value;
     return {
       chapterIndex,
-      chapterName: chapter?.name ?? (isActiveChapter ? currentChapterName.value : chapterName.value),
+      chapterName:
+        chapter?.name ?? (isActiveChapter ? currentChapterName.value : chapterName.value),
       chapterUrl: chapter?.url ?? (isActiveChapter ? currentChapterUrl.value : chapterUrl.value),
       position: snapshot,
     };

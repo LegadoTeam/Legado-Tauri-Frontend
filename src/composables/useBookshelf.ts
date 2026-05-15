@@ -232,10 +232,18 @@ export function useBookshelf() {
       book.readChapterIndex = chapterIndex;
       book.readChapterUrl = chapterUrl;
       book.lastReadAt = Date.now();
-      if (opts?.pageIndex !== undefined) book.readPageIndex = opts.pageIndex;
-      if (opts?.scrollRatio !== undefined) book.readScrollRatio = opts.scrollRatio;
-      if (opts?.playbackTime !== undefined) book.readPlaybackTime = opts.playbackTime;
-      if (opts?.readerSettings !== undefined) book.readerSettings = opts.readerSettings;
+      if (opts?.pageIndex !== undefined) {
+        book.readPageIndex = opts.pageIndex;
+      }
+      if (opts?.scrollRatio !== undefined) {
+        book.readScrollRatio = opts.scrollRatio;
+      }
+      if (opts?.playbackTime !== undefined) {
+        book.readPlaybackTime = opts.playbackTime;
+      }
+      if (opts?.readerSettings !== undefined) {
+        book.readerSettings = opts.readerSettings;
+      }
     }
   }
 

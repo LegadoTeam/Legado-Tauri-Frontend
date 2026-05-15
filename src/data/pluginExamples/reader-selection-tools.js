@@ -60,11 +60,13 @@ legado.registerPlugin({
               submitText: '保存',
               cancelText: '取消',
             });
-            if (!values) return;
+            if (!values) {
+              return;
+            }
             var rules = api.storage.readJson('selectionReplaceRules', []);
             rules.push({
-              from: String(values.from || ''),
-              to: String(values.to || ''),
+              from: String(values.from ?? ''),
+              to: String(values.to ?? ''),
               time: Date.now(),
             });
             api.storage.writeJson('selectionReplaceRules', rules);

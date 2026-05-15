@@ -1,5 +1,13 @@
 import type { ExtensionMeta } from '@/composables/useExtension';
 import type {
+  RuntimeReaderThemeDefinition,
+  RuntimeReaderBackgroundDefinition,
+  RuntimeReaderSkinDefinition,
+  RuntimeBookshelfActionDefinition,
+  RuntimeReaderContextActionDefinition,
+  RuntimeCoverGeneratorDefinition,
+} from './pluginNormalizer';
+import type {
   FrontendPluginRecord,
   ReaderPluginSlot,
   FrontendPluginHookName,
@@ -9,14 +17,6 @@ import type {
   ReaderSessionListener,
   PluginSettingsDefinition,
 } from './pluginTypes';
-import type {
-  RuntimeReaderThemeDefinition,
-  RuntimeReaderBackgroundDefinition,
-  RuntimeReaderSkinDefinition,
-  RuntimeBookshelfActionDefinition,
-  RuntimeReaderContextActionDefinition,
-  RuntimeCoverGeneratorDefinition,
-} from './pluginNormalizer';
 
 export interface MountedSlotRecord {
   host: HTMLElement;

@@ -11,18 +11,12 @@ import {
   SunMoon,
   Moon,
   CheckCircle2,
-} from 'lucide-vue-next';
-import { ref, computed, type Component } from 'vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
-import { useAppConfigStore } from '@/stores';
-
-export interface NavItem {
-  id: string;
-  /** icon key，对应组件内置 SVG 图标库 */
-  icon: string;
-  label: string;
-  badge?: number;
-}
+} from "lucide-vue-next";
+import { ref, computed, type Component } from "vue";
+import { useOverlayBackstack } from "@/composables/useOverlayBackstack";
+import { useAppConfigStore } from "@/stores";
+import type { NavItem } from "./types";
+export type { NavItem };
 
 const props = withDefaults(
   defineProps<{
@@ -31,7 +25,7 @@ const props = withDefaults(
   }>(),
   {
     items: () => [],
-    activeId: '',
+    activeId: "",
   },
 );
 
@@ -41,11 +35,11 @@ const emit = defineEmits<{
 
 const appConfigStore = useAppConfigStore();
 
-type ThemeMode = 'light' | 'auto' | 'dark';
+type ThemeMode = "light" | "auto" | "dark";
 
 const themeMode = computed({
-  get: () => (appConfigStore.config.ui_theme ?? 'auto') as ThemeMode,
-  set: (v: ThemeMode) => void appConfigStore.setConfig('ui_theme', v),
+  get: () => (appConfigStore.config.ui_theme ?? "auto") as ThemeMode,
+  set: (v: ThemeMode) => void appConfigStore.setConfig("ui_theme", v),
 });
 
 const showPromoModal = ref(false);
@@ -58,19 +52,21 @@ useOverlayBackstack(
 );
 
 function selectItem(id: string) {
-  emit('select', id);
+  emit("select", id);
 }
 
 function onItemKeyDown(event: KeyboardEvent, index: number) {
-  const itemEls = document.querySelectorAll<HTMLElement>('.side-bar__item[tabindex]');
+  const itemEls = document.querySelectorAll<HTMLElement>(
+    ".side-bar__item[tabindex]",
+  );
   const len = itemEls.length;
-  if (event.key === 'ArrowDown') {
+  if (event.key === "ArrowDown") {
     event.preventDefault();
     itemEls[(index + 1) % len]?.focus();
-  } else if (event.key === 'ArrowUp') {
+  } else if (event.key === "ArrowUp") {
     event.preventDefault();
     itemEls[(index - 1 + len) % len]?.focus();
-  } else if (event.key === 'Enter' || event.key === ' ') {
+  } else if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     selectItem(props.items[index].id);
   }
@@ -116,7 +112,11 @@ const ICON_COMPONENTS: Record<string, Component> = {
         @keydown="onItemKeyDown($event, index)"
       >
         <span class="side-bar__icon" aria-hidden="true">
-          <component :is="ICON_COMPONENTS[item.icon]" :size="18" :stroke-width="1.75" />
+          <component
+            :is="ICON_COMPONENTS[item.icon]"
+            :size="18"
+            :stroke-width="1.75"
+          />
         </span>
         <span class="side-bar__label">{{ item.label }}</span>
         <span v-if="item.badge" class="side-bar__badge">{{ item.badge }}</span>
@@ -124,7 +124,11 @@ const ICON_COMPONENTS: Record<string, Component> = {
     </ul>
 
     <!-- 图片占位区域（待接入真实素材） -->
-    <button class="side-bar__banner" aria-label="了解更多信息" @click="showPromoModal = true">
+    <button
+      class="side-bar__banner"
+      aria-label="了解更多信息"
+      @click="showPromoModal = true"
+    >
       <div class="side-bar__banner-inner">
         <Image :size="26" :stroke-width="1.5" aria-hidden="true" />
         <span class="side-bar__banner-title">图片占位区</span>
@@ -136,7 +140,11 @@ const ICON_COMPONENTS: Record<string, Component> = {
     <div class="side-bar__bottom">
       <!-- 主题切换（三段式） -->
       <div class="side-bar__section-label">主题</div>
-      <div class="side-bar__theme-toggle" role="radiogroup" aria-label="主题模式切换">
+      <div
+        class="side-bar__theme-toggle"
+        role="radiogroup"
+        aria-label="主题模式切换"
+      >
         <button
           class="theme-seg-btn"
           :class="{ 'theme-seg-btn--active': themeMode === 'light' }"
@@ -174,9 +182,19 @@ const ICON_COMPONENTS: Record<string, Component> = {
   </nav>
 
   <!-- 弹窗（渲染在 teleport body 中，无 XSS 风险） -->
-  <n-modal v-model:show="showPromoModal" preset="card" title="关于收费" style="max-width: 320px">
+  <n-modal
+    v-model:show="showPromoModal"
+    preset="card"
+    title="关于收费"
+    style="max-width: 320px"
+  >
     <div class="promo-modal-body">
-      <CheckCircle2 :size="44" :stroke-width="1.5" class="promo-modal-icon" aria-hidden="true" />
+      <CheckCircle2
+        :size="44"
+        :stroke-width="1.5"
+        class="promo-modal-icon"
+        aria-hidden="true"
+      />
       <p class="promo-modal-title">没有收费功能</p>
       <p class="promo-modal-desc">本应用所有功能完全免费开放，永无付费项目。</p>
     </div>
@@ -218,7 +236,11 @@ const ICON_COMPONENTS: Record<string, Component> = {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--brand-800) 0%, var(--brand-900) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--brand-800) 0%,
+    var(--brand-900) 100%
+  );
   border-radius: var(--radius-2);
   color: var(--brand-100);
   flex-shrink: 0;
@@ -282,7 +304,7 @@ const ICON_COMPONENTS: Record<string, Component> = {
 }
 
 .side-bar__item--active::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 22%;

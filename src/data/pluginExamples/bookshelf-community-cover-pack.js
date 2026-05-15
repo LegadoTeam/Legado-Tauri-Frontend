@@ -13,14 +13,14 @@
 
 function hashSeed(input) {
   let hash = 0;
-  for (const char of String(input || '')) {
+  for (const char of String(input ?? '')) {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   }
   return hash;
 }
 
 function paletteFromBook(book) {
-  const seed = hashSeed((book.name || '') + '|' + (book.author || '') + '|' + (book.kind || ''));
+  const seed = hashSeed((book.name ?? '') + '|' + (book.author ?? '') + '|' + (book.kind ?? ''));
   const hue = seed % 360;
   return {
     primary: 'hsl(' + hue + ' 72% 46%)',
@@ -32,7 +32,7 @@ function paletteFromBook(book) {
 }
 
 function escapeSvgText(input) {
-  return String(input || '')
+  return String(input ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -41,7 +41,7 @@ function escapeSvgText(input) {
 }
 
 function wrapText(input, lineLength, lineLimit) {
-  const chars = Array.from(String(input || '').trim());
+  const chars = Array.from(String(input ?? '').trim());
   const lines = [];
   for (let index = 0; index < chars.length && lines.length < lineLimit; index += lineLength) {
     lines.push(chars.slice(index, index + lineLength).join(''));
@@ -88,10 +88,10 @@ function renderTitleBlockCover(book) {
       title +
       '</text>' +
       '<text x="88" y="684" fill="rgba(255,255,255,0.9)" font-size="24" letter-spacing="4">' +
-      escapeSvgText(book.author || '佚名') +
+      escapeSvgText(book.author ?? '佚名') +
       '</text>' +
       '<text x="88" y="730" fill="rgba(255,255,255,0.72)" font-size="22">' +
-      escapeSvgText(book.kind || '社区模板') +
+      escapeSvgText(book.kind ?? '社区模板') +
       '</text>' +
       '<text x="88" y="120" fill="rgba(255,255,255,0.72)" font-size="20" letter-spacing="6">COMMUNITY COVER PACK</text>' +
       '<rect x="88" y="142" width="172" height="6" rx="3" fill="rgba(255,255,255,0.72)" />' +
@@ -130,10 +130,10 @@ function renderAuthorBandCover(book) {
       '</text>' +
       '<text x="82" y="678" fill="#ffffff" font-size="22" letter-spacing="4">AUTHOR</text>' +
       '<text x="82" y="726" fill="#ffffff" font-size="40" font-weight="700">' +
-      escapeSvgText(book.author || '佚名') +
+      escapeSvgText(book.author ?? '佚名') +
       '</text>' +
       '<text x="82" y="142" fill="rgba(255,255,255,0.82)" font-size="20">' +
-      escapeSvgText(book.kind || '社区封面') +
+      escapeSvgText(book.kind ?? '社区封面') +
       '</text>' +
       '<text x="82" y="198" fill="#ffffff" font-size="18" opacity="0.74">Built with plugin coverGenerators</text>' +
       '<path d="M82 452H518" stroke="' +
@@ -174,10 +174,10 @@ function renderPaperTextureCover(book) {
       title +
       '</text>' +
       '<text x="300" y="564" text-anchor="middle" fill="rgba(42,28,15,0.86)" font-size="26">' +
-      escapeSvgText(book.author || '佚名') +
+      escapeSvgText(book.author ?? '佚名') +
       '</text>' +
       '<text x="300" y="608" text-anchor="middle" fill="rgba(42,28,15,0.64)" font-size="22">' +
-      escapeSvgText(book.kind || '纸纹模板') +
+      escapeSvgText(book.kind ?? '纸纹模板') +
       '</text>' +
       '<rect x="182" y="652" width="236" height="10" rx="5" fill="' +
       palette.primary +

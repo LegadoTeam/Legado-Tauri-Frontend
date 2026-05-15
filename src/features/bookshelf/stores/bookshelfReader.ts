@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import type { ChapterItem, EpisodeProgress, ShelfBook } from '@/stores';
-import type { ChapterGroup } from '@/stores';
-import { groupChapters, useBookshelfStore } from '@/stores';
 import type { ReaderBookInfo, WholeBookSwitchedPayload } from '@/components/reader/types';
+import type { ChapterItem, EpisodeProgress, ShelfBook, ChapterGroup } from '@/stores';
+import { groupChapters, useBookshelfStore } from '@/stores';
 import { cachedChaptersToChapterItems, shelfBookToReaderBookInfo } from '../utils/readerBookInfo';
 
 export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
@@ -48,7 +47,12 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
 
   function setCachedChapters(chapters: { name: string; url: string; group?: string }[]) {
     readerChapters.value = cachedChaptersToChapterItems(
-      chapters.map((chapter, index) => ({ index, name: chapter.name, url: chapter.url, group: chapter.group })),
+      chapters.map((chapter, index) => ({
+        index,
+        name: chapter.name,
+        url: chapter.url,
+        group: chapter.group,
+      })),
     );
     syncCurrentChapter();
   }
@@ -95,20 +99,28 @@ export const useBookshelfReaderStore = defineStore('bookshelfReader', () => {
   function setEpisodeProgress(chapterUrl: string, time: number, duration: number) {
     const prev = episodeProgressMap.value[chapterUrl];
     // 已观看完的不再覆盖进度
-    if (prev && prev.duration > 0 && prev.time >= prev.duration * 0.9) return;
+    if (prev && prev.duration > 0 && prev.time >= prev.duration * 0.9) {
+      return;
+    }
     episodeProgressMap.value = {
       ...episodeProgressMap.value,
       [chapterUrl]: { time, duration, lastPlayedAt: Date.now() },
     };
     _pendingProgress = { url: chapterUrl, time, duration };
-    if (_progressSaveTimer) return;
+    if (_progressSaveTimer) {
+      return;
+    }
     _progressSaveTimer = setTimeout(() => {
       _progressSaveTimer = null;
       const p = _pendingProgress;
-      if (!p || !readerShelfId.value) return;
+      if (!p || !readerShelfId.value) {
+        return;
+      }
       _pendingProgress = null;
       const bookshelfStore = useBookshelfStore();
-      bookshelfStore.saveEpisodeProgress(readerShelfId.value, p.url, p.time, p.duration).catch(() => {});
+      bookshelfStore
+        .saveEpisodeProgress(readerShelfId.value, p.url, p.time, p.duration)
+        .catch(() => {});
     }, 10_000);
   }
 

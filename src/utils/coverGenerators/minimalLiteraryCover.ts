@@ -1,6 +1,6 @@
 import type { ShelfBook } from '@/stores';
-import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 import type { BuiltinCoverGeneratorDefinition } from './types';
+import { bookAuthor, bookKind, buildDataUrl, textSpans, wrapText } from './shared';
 
 function generateMinimalLiteraryCover(book: ShelfBook): string {
   const title = textSpans(wrapText(book.name, 8, 4), { x: 72, lineHeight: 108 });

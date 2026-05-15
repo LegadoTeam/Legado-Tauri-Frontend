@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import {
   LayoutGrid,
   EyeOff,
@@ -10,9 +9,10 @@ import {
   Search,
   Pencil,
   Settings2,
-} from "lucide-vue-next";
-import type { CardSizeKey } from "@/composables/useViewCardDensity";
-import type { ShelfGroup } from "@/types/shelfGroup";
+} from 'lucide-vue-next';
+import { computed } from 'vue';
+import type { CardSizeKey } from '@/composables/useViewCardDensity';
+import type { ShelfGroup } from '@/types/shelfGroup';
 
 const props = defineProps<{
   bookCount: number;
@@ -27,14 +27,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "set-size", key: CardSizeKey): void;
-  (e: "toggle-privacy"): void;
-  (e: "toggle-group-menu"): void;
-  (e: "select-group", groupId: string): void;
-  (e: "import-txt"): void;
-  (e: "refresh"): void;
-  (e: "toggle-search"): void;
-  (e: "toggle-edit"): void;
+  (e: 'set-size', key: CardSizeKey): void;
+  (e: 'toggle-privacy'): void;
+  (e: 'toggle-group-menu'): void;
+  (e: 'select-group', groupId: string): void;
+  (e: 'import-txt'): void;
+  (e: 'refresh'): void;
+  (e: 'toggle-search'): void;
+  (e: 'toggle-edit'): void;
 }>();
 
 // 启用的分组（排除禁用的）
@@ -54,7 +54,7 @@ const showGroupBar = computed(() => {
       <div>
         <h1 class="bs-header__title">书架</h1>
         <p class="bs-header__sub">
-          {{ privacyModeEnabled ? "隐私模式" : `${bookCount} 本书籍` }}
+          {{ privacyModeEnabled ? '隐私模式' : `${bookCount} 本书籍` }}
         </p>
       </div>
       <div class="bs-header__actions">
@@ -103,9 +103,7 @@ const showGroupBar = computed(() => {
         </button>
         <n-dropdown
           trigger="click"
-          :options="
-            cardSizes.map((size) => ({ label: size.label, key: size.key }))
-          "
+          :options="cardSizes.map((size) => ({ label: size.label, key: size.key }))"
           :value="activeSizeKey"
           @select="(key: string) => emit('set-size', key as CardSizeKey)"
         >

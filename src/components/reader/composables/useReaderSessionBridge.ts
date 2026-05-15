@@ -56,7 +56,7 @@ export function useReaderSessionBridge(options: UseReaderSessionBridgeOptions) {
     return {
       fileName: readSource(options.fileName),
       sourceType: readSource(options.sourceType) ?? 'novel',
-      shelfBookId: options.currentShelfId.value || undefined,
+      shelfBookId: options.currentShelfId.value ?? undefined,
       bookInfo: readSource(options.bookInfo),
       chapterIndex: target.chapterIndex,
       totalChapters: options.getChapterCount(),

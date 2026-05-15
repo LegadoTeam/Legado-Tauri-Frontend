@@ -127,9 +127,13 @@ let dragSPX = 0;
 let dragSPY = 0;
 
 function onDragStart(e: PointerEvent) {
-  if (isMobile.value) return;
+  if (isMobile.value) {
+    return;
+  }
   const target = e.target as HTMLElement;
-  if (target.closest('button, select, input, a')) return;
+  if (target.closest('button, select, input, a')) {
+    return;
+  }
   dragActive = true;
   dragSX = e.clientX;
   dragSY = e.clientY;
@@ -141,7 +145,9 @@ function onDragStart(e: PointerEvent) {
 }
 
 function onDragMove(e: PointerEvent) {
-  if (!dragActive) return;
+  if (!dragActive) {
+    return;
+  }
   pos.x = Math.max(0, Math.min(window.innerWidth - 80, dragSPX + e.clientX - dragSX));
   pos.y = Math.max(0, Math.min(window.innerHeight - 40, dragSPY + e.clientY - dragSY));
   e.preventDefault();
@@ -161,7 +167,9 @@ let resizeSW = 0;
 let resizeSH = 0;
 
 function onResizeStart(e: PointerEvent) {
-  if (isMobile.value) return;
+  if (isMobile.value) {
+    return;
+  }
   resizeActive = true;
   resizeSX = e.clientX;
   resizeSY = e.clientY;
@@ -174,7 +182,9 @@ function onResizeStart(e: PointerEvent) {
 }
 
 function onResizeMove(e: PointerEvent) {
-  if (!resizeActive) return;
+  if (!resizeActive) {
+    return;
+  }
   size.w = Math.max(320, resizeSW + e.clientX - resizeSX);
   size.h = Math.max(200, resizeSH + e.clientY - resizeSY);
   e.preventDefault();

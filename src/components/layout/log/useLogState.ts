@@ -1,4 +1,4 @@
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { eventListen } from '@/composables/useEventBus';
 
 // ─────────────────────────────────────────────────────────────
@@ -54,14 +54,24 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
 
   function inferLevel(type: LogEntry['type'], message: string): LogEntry['level'] {
     if (type === 'http') {
-      if (/✗|error|failed/i.test(message)) return 'error';
-      if (/[45][0-9][0-9]/.test(message)) return 'warn';
+      if (/✗|error|failed/i.test(message)) {
+        return 'error';
+      }
+      if (/[45][0-9][0-9]/.test(message)) {
+        return 'warn';
+      }
       return 'info';
     }
     const t = message.toLowerCase();
-    if (t.includes('error') || t.includes('失败') || t.includes('异常')) return 'error';
-    if (t.includes('warn') || t.includes('警告')) return 'warn';
-    if (t.includes('debug')) return 'debug';
+    if (t.includes('error') || t.includes('失败') || t.includes('异常')) {
+      return 'error';
+    }
+    if (t.includes('warn') || t.includes('警告')) {
+      return 'warn';
+    }
+    if (t.includes('debug')) {
+      return 'debug';
+    }
     return 'info';
   }
 
@@ -70,7 +80,9 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
     message: string,
     opts?: { sourceName?: string; httpDetail?: HttpDetail; level?: LogEntry['level'] },
   ) {
-    if (paused.value) return;
+    if (paused.value) {
+      return;
+    }
     logs.value.push({
       id: nextId++,
       time: Date.now(),
@@ -101,12 +113,16 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
   }
 
   function scrollToBottom() {
-    if (!autoScroll.value || !scrollElRef.value) return;
+    if (!autoScroll.value || !scrollElRef.value) {
+      return;
+    }
     scrollElRef.value.scrollTop = scrollElRef.value.scrollHeight;
   }
 
   function onScroll() {
-    if (!scrollElRef.value) return;
+    if (!scrollElRef.value) {
+      return;
+    }
     const el = scrollElRef.value;
     autoScroll.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   }
@@ -135,7 +151,9 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
   const sourceNames = computed(() => {
     const names = new Set<string>();
     for (const l of logs.value) {
-      if (l.sourceName) names.add(l.sourceName);
+      if (l.sourceName) {
+        names.add(l.sourceName);
+      }
     }
     return Array.from(names).toSorted();
   });
@@ -144,16 +162,24 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
     const c = { all: 0, script: 0, http: 0, ui: 0, browser: 0, system: 0 };
     for (const l of logs.value) {
       c.all++;
-      if (l.type in c) (c as Record<string, number>)[l.type]++;
+      if (l.type in c) {
+        (c as Record<string, number>)[l.type]++;
+      }
     }
     return c;
   });
 
   const filteredLogs = computed(() => {
     let r = logs.value;
-    if (filterType.value !== 'all') r = r.filter((l) => l.type === filterType.value);
-    if (filterLevel.value !== 'all') r = r.filter((l) => l.level === filterLevel.value);
-    if (filterSource.value) r = r.filter((l) => l.sourceName === filterSource.value);
+    if (filterType.value !== 'all') {
+      r = r.filter((l) => l.type === filterType.value);
+    }
+    if (filterLevel.value !== 'all') {
+      r = r.filter((l) => l.level === filterLevel.value);
+    }
+    if (filterSource.value) {
+      r = r.filter((l) => l.sourceName === filterSource.value);
+    }
     if (filterText.value) {
       const kw = filterText.value.toLowerCase();
       r = r.filter(
@@ -168,7 +194,9 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
   const unreadErrorCount = computed(() => {
     let count = 0;
     for (const l of logs.value) {
-      if (l.level === 'error' || l.level === 'warn') count++;
+      if (l.level === 'error' || l.level === 'warn') {
+        count++;
+      }
     }
     return Math.min(count, 99);
   });
@@ -200,7 +228,7 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
       }>('script:http', (e) => {
         const p = e.payload;
         const sc = p.status ? ` ${p.status}` : '';
-        const ms = p.elapsed != null ? ` ${p.elapsed}ms` : '';
+        const ms = p.elapsed !== null && p.elapsed !== undefined ? ` ${p.elapsed}ms` : '';
         addLog('http', `${p.ok ? '✓' : '✗'}${sc} ${p.method} ${p.url}${ms}`, {
           sourceName: p.sourceName,
           level: p.ok ? 'info' : 'error',
@@ -249,7 +277,7 @@ export function useLogState(scrollElRef: { value: HTMLElement | null }) {
     );
 
     unlisteners.push(
-      await eventListen<unknown>('booksource:changed', (e) => {
+      await eventListen('booksource:changed', (e) => {
         const payload = typeof e.payload === 'string' ? e.payload : JSON.stringify(e.payload);
         addLog('system', `[文件变化] ${payload}`);
       }),

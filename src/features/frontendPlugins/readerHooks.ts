@@ -1,7 +1,4 @@
-import type {
-  FrontendPluginHookName,
-  PluginHookHandler,
-} from './pluginTypes';
+import type { FrontendPluginHookName, PluginHookHandler } from './pluginTypes';
 export type {
   FrontendPluginHookName,
   ReaderContentHookStage,

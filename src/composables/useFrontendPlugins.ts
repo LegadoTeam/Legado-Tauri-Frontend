@@ -1,31 +1,4 @@
 import { computed, reactive, readonly } from 'vue';
-import { BUILTIN_FRONTEND_PLUGINS } from '@/data/builtinPlugins';
-import { useAppConfigStore } from '@/stores/appConfig';
-import {
-  ensurePluginOrderLoaded,
-  readPluginOrder,
-  sortExtensionsByPluginOrder,
-  writePluginOrder,
-} from '@/features/frontendPlugins/pluginOrder';
-import { resolvePluginSettingFields } from '@/features/frontendPlugins/pluginSettings';
-import {
-  buildPluginStorageApi,
-  PLUGIN_STORAGE_KEYS,
-  type PluginStorageApi,
-} from '@/features/frontendPlugins/pluginStorage';
-import {
-  computePublicThemeState,
-  computePublicBackgroundState,
-  computePublicSkinState,
-  computeReaderAppearanceVars,
-} from '@/features/frontendPlugins/pluginAppearanceSync';
-import {
-  notifySessionListeners,
-  invokePluginHook,
-  emitPluginLifecycle,
-} from '@/features/frontendPlugins/pluginHookRunner';
-import { createSlotManager } from '@/features/frontendPlugins/pluginSlotManager';
-import { evaluatePlugin } from '@/features/frontendPlugins/pluginEvaluator';
 import type { RuntimePluginRecord } from '@/features/frontendPlugins/pluginRuntimeTypes';
 import type {
   ReaderPluginSlot,
@@ -52,14 +25,51 @@ import type {
   FrontendPluginRecord,
   FrontendPluginApi,
 } from '@/features/frontendPlugins/pluginTypes';
-import { buildPluginDialogState, isEntryVisible } from '@/features/frontendPlugins/pluginDialogUtils';
+import { BUILTIN_FRONTEND_PLUGINS } from '@/data/builtinPlugins';
+import {
+  computePublicThemeState,
+  computePublicBackgroundState,
+  computePublicSkinState,
+  computeReaderAppearanceVars,
+} from '@/features/frontendPlugins/pluginAppearanceSync';
+import {
+  buildPluginDialogState,
+  isEntryVisible,
+} from '@/features/frontendPlugins/pluginDialogUtils';
+import { evaluatePlugin } from '@/features/frontendPlugins/pluginEvaluator';
+import {
+  notifySessionListeners,
+  invokePluginHook,
+  emitPluginLifecycle,
+} from '@/features/frontendPlugins/pluginHookRunner';
+import {
+  requestPluginHttp,
+  getShelfBookById,
+  patchShelfBook,
+} from '@/features/frontendPlugins/pluginHttpUtils';
+import {
+  ensurePluginOrderLoaded,
+  readPluginOrder,
+  sortExtensionsByPluginOrder,
+  writePluginOrder,
+} from '@/features/frontendPlugins/pluginOrder';
+import { resolvePluginSettingFields } from '@/features/frontendPlugins/pluginSettings';
+import { createSlotManager } from '@/features/frontendPlugins/pluginSlotManager';
+import {
+  buildPluginStorageApi,
+  PLUGIN_STORAGE_KEYS,
+  type PluginStorageApi,
+} from '@/features/frontendPlugins/pluginStorage';
 import {
   resolveExtensionAssetUrl,
   cloneValue,
   getChineseConverter,
 } from '@/features/frontendPlugins/pluginTextUtils';
-import { eventEmit, eventListenSync } from './useEventBus';
+import { createEmptyHookMap } from '@/features/frontendPlugins/readerHooks';
+import { createEmptySlotMap } from '@/features/frontendPlugins/readerSlots';
+import { useAppConfigStore } from '@/stores/appConfig';
 import type { ShelfBook } from './useBookshelf';
+import { eventEmit, eventListenSync } from './useEventBus';
 import {
   getExtensionDir,
   listExtensions,
@@ -67,9 +77,6 @@ import {
   toggleExtension,
   type ExtensionMeta,
 } from './useExtension';
-import { requestPluginHttp, getShelfBookById, patchShelfBook } from '@/features/frontendPlugins/pluginHttpUtils';
-import { createEmptyHookMap } from '@/features/frontendPlugins/readerHooks';
-import { createEmptySlotMap } from '@/features/frontendPlugins/readerSlots';
 
 const SETTINGS_STORAGE_KEY = PLUGIN_STORAGE_KEYS.settings;
 
@@ -258,19 +265,35 @@ function syncPublicReaderContextActionState(): void {
 }
 
 async function syncPublicThemeState(): Promise<void> {
-  state.readerThemes = await computePublicThemeState(runtimePlugins, currentReaderSession, createPluginApi);
+  state.readerThemes = await computePublicThemeState(
+    runtimePlugins,
+    currentReaderSession,
+    createPluginApi,
+  );
 }
 
 async function syncPublicBackgroundState(): Promise<void> {
-  state.readerBackgrounds = await computePublicBackgroundState(runtimePlugins, currentReaderSession, createPluginApi);
+  state.readerBackgrounds = await computePublicBackgroundState(
+    runtimePlugins,
+    currentReaderSession,
+    createPluginApi,
+  );
 }
 
 async function syncPublicSkinState(): Promise<void> {
-  state.readerSkins = await computePublicSkinState(runtimePlugins, currentReaderSession, createPluginApi);
+  state.readerSkins = await computePublicSkinState(
+    runtimePlugins,
+    currentReaderSession,
+    createPluginApi,
+  );
 }
 
 async function recomputeReaderAppearance(): Promise<void> {
-  state.readerAppearanceVars = await computeReaderAppearanceVars(currentReaderSession, runtimePlugins, createPluginApi);
+  state.readerAppearanceVars = await computeReaderAppearanceVars(
+    currentReaderSession,
+    runtimePlugins,
+    createPluginApi,
+  );
 }
 
 async function emitPluginToast(
@@ -282,7 +305,9 @@ async function emitPluginToast(
 }
 
 function resolvePluginDialog(result: Record<string, PluginSettingValue> | null): void {
-  if (!activePluginDialogResolve) return;
+  if (!activePluginDialogResolve) {
+    return;
+  }
   const resolve = activePluginDialogResolve;
   activePluginDialogResolve = null;
   state.pluginDialog = null;
@@ -386,7 +411,9 @@ function createPluginApi(record: RuntimePluginRecord): FrontendPluginApi {
       getAppTheme: () => appConfigStore.config.ui_theme ?? 'auto',
       setAppTheme: async (mode) => {
         const current = appConfigStore.config.ui_theme ?? 'auto';
-        if (current === mode) return;
+        if (current === mode) {
+          return;
+        }
         await appConfigStore.setConfig('ui_theme', mode);
       },
     },
@@ -406,7 +433,13 @@ function markPluginRuntimeError(record: RuntimePluginRecord, error: unknown): vo
 }
 
 async function emitLifecycle(hookName: ReaderLifecycleHook): Promise<void> {
-  await emitPluginLifecycle(hookName, runtimePlugins, currentReaderSession, createPluginApi, markPluginRuntimeError);
+  await emitPluginLifecycle(
+    hookName,
+    runtimePlugins,
+    currentReaderSession,
+    createPluginApi,
+    markPluginRuntimeError,
+  );
 }
 
 async function teardownRuntimePlugins(records: RuntimePluginRecord[]): Promise<void> {
@@ -432,11 +465,7 @@ function syncOrderToRecords(records: RuntimePluginRecord[]): void {
   }
 }
 
-function makeErrorRecord(
-  meta: ExtensionMeta,
-  source: string,
-  error: unknown,
-): RuntimePluginRecord {
+function makeErrorRecord(meta: ExtensionMeta, source: string, error: unknown): RuntimePluginRecord {
   return {
     fileName: meta.fileName,
     pluginId: meta.namespace || meta.fileName.replace(/\.js$/i, ''),
@@ -473,7 +502,9 @@ function makeErrorRecord(
 }
 
 async function ensureInitialized(): Promise<void> {
-  if (state.initialized) return;
+  if (state.initialized) {
+    return;
+  }
   state.initialized = true;
 
   if (!externalListenersReady) {
@@ -487,13 +518,17 @@ async function ensureInitialized(): Promise<void> {
 }
 
 async function loadPlugins(options: { force?: boolean } = {}): Promise<void> {
-  if (loadPromise && !options.force) return loadPromise;
+  if (loadPromise && !options.force) {
+    return loadPromise;
+  }
 
   loadPromise = (async () => {
     state.loading = true;
     try {
       await ensurePluginOrderLoaded();
-      if (activePluginDialogResolve) resolvePluginDialog(null);
+      if (activePluginDialogResolve) {
+        resolvePluginDialog(null);
+      }
 
       const [extensionList, extensionDir] = await Promise.all([
         listExtensions(),
@@ -547,7 +582,9 @@ async function loadPlugins(options: { force?: boolean } = {}): Promise<void> {
 
       await recomputeReaderAppearance();
       await slotManager.remountAllReaderSlots();
-      if (currentReaderSession) await emitLifecycle('reader.session.enter');
+      if (currentReaderSession) {
+        await emitLifecycle('reader.session.enter');
+      }
     } finally {
       state.loading = false;
       loadPromise = null;
@@ -562,7 +599,9 @@ async function resolvePluginSettings(record: RuntimePluginRecord): Promise<{
   fields: ResolvedPluginSettingField[];
 }> {
   const values = readPluginSettings(record);
-  if (!record.settingsDefinition) return { values, fields: [] };
+  if (!record.settingsDefinition) {
+    return { values, fields: [] };
+  }
 
   const api = createPluginApi(record);
   const context: PluginSettingsContext = {
@@ -634,9 +673,13 @@ async function movePlugin(fileName: string, direction: -1 | 1): Promise<void> {
   await ensureInitialized();
   const currentOrder = runtimePlugins.map((record) => record.fileName);
   const currentIndex = currentOrder.indexOf(fileName);
-  if (currentIndex < 0) return;
+  if (currentIndex < 0) {
+    return;
+  }
   const nextIndex = currentIndex + direction;
-  if (nextIndex < 0 || nextIndex >= currentOrder.length) return;
+  if (nextIndex < 0 || nextIndex >= currentOrder.length) {
+    return;
+  }
   [currentOrder[currentIndex], currentOrder[nextIndex]] = [
     currentOrder[nextIndex],
     currentOrder[currentIndex],
@@ -669,7 +712,9 @@ async function getPluginSettings(fileName: string): Promise<{
 }> {
   await ensureInitialized();
   const record = runtimePlugins.find((item) => item.fileName === fileName);
-  if (!record) throw new Error(`未找到插件 ${fileName}`);
+  if (!record) {
+    throw new Error(`未找到插件 ${fileName}`);
+  }
   const resolved = await resolvePluginSettings(record);
   return {
     plugin: {
@@ -704,14 +749,18 @@ async function updatePluginSetting(
 ): Promise<void> {
   await ensureInitialized();
   const record = runtimePlugins.find((item) => item.fileName === fileName);
-  if (!record) throw new Error(`未找到插件 ${fileName}`);
+  if (!record) {
+    throw new Error(`未找到插件 ${fileName}`);
+  }
   await applyPluginSettingChange(record, key, value);
 }
 
 async function resetPluginSettings(fileName: string): Promise<void> {
   await ensureInitialized();
   const record = runtimePlugins.find((item) => item.fileName === fileName);
-  if (!record) throw new Error(`未找到插件 ${fileName}`);
+  if (!record) {
+    throw new Error(`未找到插件 ${fileName}`);
+  }
   await resetPluginSettingsInternal(record);
 }
 
@@ -758,8 +807,12 @@ async function runBookshelfAction(actionId: string, book: ShelfBook): Promise<vo
     item.bookshelfActions.some((action) => action.id === actionId),
   );
   const action = record?.bookshelfActions.find((item) => item.id === actionId);
-  if (!record || !action) throw new Error(`未找到书架动作 ${actionId}`);
-  if (!isEntryVisible(action, { book })) throw new Error('当前书籍不可用这个插件动作');
+  if (!record || !action) {
+    throw new Error(`未找到书架动作 ${actionId}`);
+  }
+  if (!isEntryVisible(action, { book })) {
+    throw new Error('当前书籍不可用这个插件动作');
+  }
   try {
     await action.run({ book }, createPluginApi(record));
   } catch (error) {
@@ -780,8 +833,12 @@ async function runReaderContextAction(
     item.readerContextActions.some((action) => action.id === actionId),
   );
   const action = record?.readerContextActions.find((item) => item.id === actionId);
-  if (!record || !action) throw new Error(`未找到阅读器文本菜单动作 ${actionId}`);
-  if (!isEntryVisible(action, context)) throw new Error('当前选中文本不可用这个插件动作');
+  if (!record || !action) {
+    throw new Error(`未找到阅读器文本菜单动作 ${actionId}`);
+  }
+  if (!isEntryVisible(action, context)) {
+    throw new Error('当前选中文本不可用这个插件动作');
+  }
   try {
     await action.run(context, createPluginApi(record));
   } catch (error) {
@@ -799,11 +856,17 @@ async function runCoverGenerator(
     item.coverGenerators.some((generator) => generator.id === actionId),
   );
   const generator = record?.coverGenerators.find((item) => item.id === actionId);
-  if (!record || !generator) throw new Error(`未找到封面生成器 ${actionId}`);
-  if (!isEntryVisible(generator, { book })) throw new Error('当前书籍不可用这个封面生成器');
+  if (!record || !generator) {
+    throw new Error(`未找到封面生成器 ${actionId}`);
+  }
+  if (!isEntryVisible(generator, { book })) {
+    throw new Error('当前书籍不可用这个封面生成器');
+  }
   try {
     const result = await generator.generate({ book }, createPluginApi(record));
-    if (typeof result === 'string') return { coverUrl: result };
+    if (typeof result === 'string') {
+      return { coverUrl: result };
+    }
     return result ?? null;
   } catch (error) {
     markPluginRuntimeError(record, error);
@@ -853,7 +916,9 @@ async function openReaderSession(session: ReaderSessionSnapshot): Promise<void> 
 }
 
 async function updateReaderSession(patch: Partial<ReaderSessionSnapshot>): Promise<void> {
-  if (!currentReaderSession) return;
+  if (!currentReaderSession) {
+    return;
+  }
 
   const previous = currentReaderSession;
   currentReaderSession = { ...currentReaderSession, ...patch };
@@ -863,7 +928,9 @@ async function updateReaderSession(patch: Partial<ReaderSessionSnapshot>): Promi
     (patch.chapterIndex !== previous.chapterIndex || patch.chapterUrl !== previous.chapterUrl);
   const visibilityChanged = patch.visible !== undefined && patch.visible !== previous.visible;
 
-  if (chapterChanged) await emitLifecycle('reader.chapter.change');
+  if (chapterChanged) {
+    await emitLifecycle('reader.chapter.change');
+  }
   if (visibilityChanged) {
     await emitLifecycle(
       currentReaderSession.visible ? 'reader.session.resume' : 'reader.session.pause',
@@ -880,7 +947,9 @@ async function updateReaderSession(patch: Partial<ReaderSessionSnapshot>): Promi
 }
 
 async function closeReaderSession(): Promise<void> {
-  if (!currentReaderSession) return;
+  if (!currentReaderSession) {
+    return;
+  }
   await emitLifecycle('reader.session.exit');
   currentReaderSession = null;
   for (const record of runtimePlugins) {
@@ -899,7 +968,7 @@ function registerReaderHost(slot: ReaderPluginSlot, element: HTMLElement): Clean
 
 export function useFrontendPlugins() {
   const orderedPlugins = computed(() =>
-    [...state.plugins].sort((left, right) => left.order - right.order),
+    [...state.plugins].toSorted((left, right) => left.order - right.order),
   );
 
   return {

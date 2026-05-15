@@ -58,7 +58,7 @@ legado.registerPlugin({
               key: 'textStrokeColor',
               label: '描边颜色',
               hidden: function (ctx) {
-                return Number(ctx.values.textStrokeWidth || 0) <= 0;
+                return Number(ctx.values.textStrokeWidth ?? 0) <= 0;
               },
             },
           ];

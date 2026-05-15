@@ -45,7 +45,13 @@ defineProps<{
       </div>
       <!-- 下拉箭头 -->
       <div v-else class="pull-indicator__arrow" :class="{ 'pull-indicator__arrow--up': ready }">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+        >
           <path d="M12 19V5M5 12l7-7 7 7" />
         </svg>
       </div>
@@ -116,7 +122,9 @@ defineProps<{
   width: 20px;
   height: 20px;
   color: var(--color-text-muted);
-  transition: transform 0.2s ease, color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
 }
 
 .pull-indicator__arrow svg {

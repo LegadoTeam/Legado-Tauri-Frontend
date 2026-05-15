@@ -1,12 +1,20 @@
 <!-- ReaderContentArea — 阅读正文区域，负责阅读模式承载、文字选择菜单与选区插件动作。 -->
 <script setup lang="ts">
+import { NSpin, NAlert, NButton, NDropdown, useMessage } from 'naive-ui';
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { NSpin, NAlert, NButton, NDropdown, useMessage } from 'naive-ui';
-import { useReaderActionsStore, useReaderSessionStore, useReaderSettingsStore, useReaderViewStore } from '@/stores';
-import { useFrontendPlugins, type ReaderTextSelectionContext } from '@/composables/useFrontendPlugins';
+import {
+  useFrontendPlugins,
+  type ReaderTextSelectionContext,
+} from '@/composables/useFrontendPlugins';
 import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 import { useReaderBookmarksStore } from '@/features/reader/stores/readerBookmarks';
+import {
+  useReaderActionsStore,
+  useReaderSessionStore,
+  useReaderSettingsStore,
+  useReaderViewStore,
+} from '@/stores';
 import ComicMode from './modes/ComicMode.vue';
 import PagedMode from './modes/PagedMode.vue';
 import ScrollMode from './modes/ScrollMode.vue';
@@ -16,7 +24,8 @@ const readerActionsStore = useReaderActionsStore();
 const readerSessionStore = useReaderSessionStore();
 const readerViewStore = useReaderViewStore();
 const { settings, tapZoneDebugPreviewVisible } = useReaderSettingsStore();
-const { activeChapterIndex, content, error, pagedLoading, pagedPageIndex } = storeToRefs(readerSessionStore);
+const { activeChapterIndex, content, error, pagedLoading, pagedPageIndex } =
+  storeToRefs(readerSessionStore);
 const {
   activePagedPages,
   blockingError,
@@ -71,30 +80,36 @@ function escapeHtml(text: string): string {
 function applyBookmarkHighlights(html: string, texts: string[]): string {
   let result = html;
   for (const text of texts) {
-    if (!text.trim()) continue;
+    if (!text.trim()) {
+      continue;
+    }
     const escaped = escapeHtml(text);
-    result = result.split(escaped).join(
-      `<mark class="reader-bookmark">${escaped}</mark>`,
-    );
+    result = result.split(escaped).join(`<mark class="reader-bookmark">${escaped}</mark>`);
   }
   return result;
 }
 
 const pagedPagesHighlighted = computed(() => {
   const texts = chapterBookmarkTexts.value;
-  if (texts.length === 0) return activePagedPages.value;
+  if (texts.length === 0) {
+    return activePagedPages.value;
+  }
   return activePagedPages.value.map((page) => applyBookmarkHighlights(page, texts));
 });
 
 const prevBoundaryPageHighlighted = computed(() => {
   const texts = chapterBookmarkTexts.value;
-  if (texts.length === 0) return prevBoundaryPage.value;
+  if (texts.length === 0) {
+    return prevBoundaryPage.value;
+  }
   return applyBookmarkHighlights(prevBoundaryPage.value, texts);
 });
 
 const nextBoundaryPageHighlighted = computed(() => {
   const texts = chapterBookmarkTexts.value;
-  if (texts.length === 0) return nextBoundaryPage.value;
+  if (texts.length === 0) {
+    return nextBoundaryPage.value;
+  }
   return applyBookmarkHighlights(nextBoundaryPage.value, texts);
 });
 
@@ -117,13 +132,16 @@ const longPress = {
 const LONG_PRESS_MS = 760;
 const LONG_PRESS_MOVE_LIMIT = 6;
 
-const hasReaderContextMenu = computed(
-  () => !!contextMenu.context,
-);
+const hasReaderContextMenu = computed(() => !!contextMenu.context);
 
 const contextMenuOptions = computed(() => {
   const actions = contextMenu.context ? getReaderContextActions(contextMenu.context) : [];
-  const items: { label: string; key: string; disabled?: boolean; type?: string }[] = [];
+  const items: {
+    label: string;
+    key: string;
+    disabled?: boolean;
+    type?: string;
+  }[] = [];
 
   if (contextMenu.context) {
     const ctx = contextMenu.context;
@@ -133,11 +151,18 @@ const contextMenuOptions = computed(() => {
       ctx.chapterIndex,
       ctx.text,
     );
-    items.push({ label: existing ? '取消书签' : '设置为书签', key: '__bookmark' });
+    items.push({
+      label: existing ? '取消书签' : '设置为书签',
+      key: '__bookmark',
+    });
   }
 
   if (items.length > 0 && actions.length > 0) {
-    items.push({ type: 'divider', key: '__divider' } as { label: string; key: string; type: string });
+    items.push({ type: 'divider', key: '__divider' } as {
+      label: string;
+      key: string;
+      type: string;
+    });
   }
 
   for (const action of actions) {
@@ -172,10 +197,7 @@ function getSelectedReaderText(): string {
   }
   const anchor = selection.anchorNode;
   const focus = selection.focusNode;
-  if (
-    (anchor && !root.contains(anchor)) ||
-    (focus && !root.contains(focus))
-  ) {
+  if ((anchor && !root.contains(anchor)) || (focus && !root.contains(focus))) {
     return '';
   }
   return selection.toString().replace(/\s+/g, ' ').trim();
@@ -200,7 +222,7 @@ function updateSelectionModeFromSelection() {
 function buildSelectionContext(text: string): ReaderTextSelectionContext {
   return {
     text,
-    sourceType: sourceType.value,
+    sourceType: sourceType.value ?? '',
     fileName: fileName.value,
     chapterIndex: activeChapterIndex.value,
     chapterName: currentChapterName.value,
@@ -410,7 +432,9 @@ async function onReaderContextSelect(key: string) {
   if (key === '__bookmark') {
     const context = contextMenu.context ?? activeSelectionContext;
     closeReaderContextMenu();
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     const existing = bookmarksStore.findBookmark(
       context.bookUrl ?? '',
       context.fileName,
@@ -445,16 +469,13 @@ async function onReaderContextSelect(key: string) {
   }
 }
 
-watch(
-  content,
-  () => {
-    window.getSelection()?.removeAllRanges();
-    selectionMode.value = false;
-    activeSelectionContext = null;
-    contextMenu.context = null;
-    closeReaderContextMenu();
-  },
-);
+watch(content, () => {
+  window.getSelection()?.removeAllRanges();
+  selectionMode.value = false;
+  activeSelectionContext = null;
+  contextMenu.context = null;
+  closeReaderContextMenu();
+});
 
 onMounted(() => {
   document.addEventListener('selectionchange', updateSelectionModeFromSelection);
@@ -481,7 +502,14 @@ onBeforeUnmount(() => {
     <n-spin v-if="blockingLoading" :show="true" class="reader-modal__spin" />
     <div
       v-else-if="blockingError"
-      style="display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; box-sizing: border-box"
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        padding: 24px;
+        box-sizing: border-box;
+      "
     >
       <n-alert type="error" :title="error" style="max-width: 480px; width: 100%">
         <n-button

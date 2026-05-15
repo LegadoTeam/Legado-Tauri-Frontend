@@ -30,7 +30,9 @@ export async function invokePluginHook(
   for (const handler of record.hookMap[hookName]) {
     try {
       const next = await handler(result, createPluginApi(record));
-      if (next !== undefined) result = next;
+      if (next !== undefined) {
+        result = next;
+      }
     } catch (error) {
       onError(record, error);
       console.error(`[FrontendPlugin][${record.pluginId}] ${hookName} failed`, error);

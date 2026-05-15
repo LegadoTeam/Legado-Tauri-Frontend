@@ -1,16 +1,16 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import {
-  type AddBookPayload,
-  type CachedChapter,
-  type EpisodeProgress,
-  type PatchShelfBookPayload,
-  type ShelfBook,
-  type SourceSwitchRestoreResult,
-  type UpdateShelfBookPayload,
+import type {
+  AddBookPayload,
+  CachedChapter,
+  EpisodeProgress,
+  PatchShelfBookPayload,
+  ShelfBook,
+  SourceSwitchRestoreResult,
+  UpdateShelfBookPayload,
 } from '@/composables/useBookshelf';
-import { invokeWithTimeout } from '@/composables/useInvoke';
 import { eventListenSync } from '@/composables/useEventBus';
+import { invokeWithTimeout } from '@/composables/useInvoke';
 import { safeRandomUUID } from '@/utils/uuid';
 
 /** 本地 TXT 书籍的虚拟书源文件名（用于识别本地书籍） */
@@ -221,10 +221,18 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
       book.readChapterIndex = chapterIndex;
       book.readChapterUrl = chapterUrl;
       book.lastReadAt = Date.now();
-      if (opts?.pageIndex !== undefined) book.readPageIndex = opts.pageIndex;
-      if (opts?.scrollRatio !== undefined) book.readScrollRatio = opts.scrollRatio;
-      if (opts?.playbackTime !== undefined) book.readPlaybackTime = opts.playbackTime;
-      if (opts?.readerSettings !== undefined) book.readerSettings = opts.readerSettings;
+      if (opts?.pageIndex !== undefined) {
+        book.readPageIndex = opts.pageIndex;
+      }
+      if (opts?.scrollRatio !== undefined) {
+        book.readScrollRatio = opts.scrollRatio;
+      }
+      if (opts?.playbackTime !== undefined) {
+        book.readPlaybackTime = opts.playbackTime;
+      }
+      if (opts?.readerSettings !== undefined) {
+        book.readerSettings = opts.readerSettings;
+      }
     }
   }
 
@@ -397,7 +405,9 @@ export const useBookshelfStore = defineStore('bookshelf', () => {
     const book = books.value.find((b) => b.id === payload.id);
     if (book) {
       book.readChapterIndex = payload.readChapterIndex;
-      if (payload.readChapterUrl !== null) book.readChapterUrl = payload.readChapterUrl;
+      if (payload.readChapterUrl !== null) {
+        book.readChapterUrl = payload.readChapterUrl;
+      }
       book.readPageIndex = payload.readPageIndex;
       book.readScrollRatio = payload.readScrollRatio;
       book.readPlaybackTime = payload.readPlaybackTime;

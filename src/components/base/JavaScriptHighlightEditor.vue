@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 
 hljs.registerLanguage('javascript', javascript);
 
@@ -29,7 +29,10 @@ const highlightRef = ref<HTMLElement | null>(null);
 
 const highlightedCode = computed(() => {
   const source = props.modelValue || ' ';
-  const highlighted = hljs.highlight(source, { language: 'javascript', ignoreIllegals: true }).value;
+  const highlighted = hljs.highlight(source, {
+    language: 'javascript',
+    ignoreIllegals: true,
+  }).value;
   return props.modelValue.endsWith('\n') ? `${highlighted}\n` : highlighted;
 });
 
@@ -91,7 +94,10 @@ function onKeydown(event: KeyboardEvent) {
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const indent = '  ';
-  emit('update:modelValue', props.modelValue.substring(0, start) + indent + props.modelValue.substring(end));
+  emit(
+    'update:modelValue',
+    props.modelValue.substring(0, start) + indent + props.modelValue.substring(end),
+  );
   nextTick(() => {
     textarea.selectionStart = textarea.selectionEnd = start + indent.length;
     syncScroll();
@@ -101,7 +107,11 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
   <div class="js-highlight-editor" :style="{ minHeight }">
-    <pre ref="highlightRef" class="js-highlight-editor__highlight" aria-hidden="true"><code v-html="highlightedCode" /></pre>
+    <pre
+      ref="highlightRef"
+      class="js-highlight-editor__highlight"
+      aria-hidden="true"
+    ><code v-html="highlightedCode" /></pre>
     <textarea
       ref="textareaRef"
       :value="modelValue"
@@ -256,7 +266,9 @@ function onKeydown(event: KeyboardEvent) {
 :root[data-theme='dark'] .js-highlight-editor__highlight :deep(.hljs-template-variable),
 .n-config-provider[data-theme='dark'] .js-highlight-editor__highlight :deep(.hljs-string),
 .n-config-provider[data-theme='dark'] .js-highlight-editor__highlight :deep(.hljs-regexp),
-.n-config-provider[data-theme='dark'] .js-highlight-editor__highlight :deep(.hljs-template-variable) {
+.n-config-provider[data-theme='dark']
+  .js-highlight-editor__highlight
+  :deep(.hljs-template-variable) {
   color: #ce9178;
 }
 

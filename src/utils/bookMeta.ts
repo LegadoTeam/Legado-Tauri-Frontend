@@ -28,7 +28,9 @@ function cleanText(value: unknown): string {
 }
 
 export function getLatestChapterText(book?: BookMetaLike | null): string {
-  if (!book) return '';
+  if (!book) {
+    return '';
+  }
   return cleanText(book.latestChapter) || cleanText(book.lastChapter);
 }
 
@@ -49,7 +51,9 @@ export function getChapterCountText(book?: BookMetaLike | null): string {
 }
 
 export function getBookMetaLine(book?: BookMetaLike | null): string[] {
-  if (!book) return [];
+  if (!book) {
+    return [];
+  }
   return [cleanText(book.wordCount), getChapterCountText(book), cleanText(book.updateTime)].filter(
     Boolean,
   );

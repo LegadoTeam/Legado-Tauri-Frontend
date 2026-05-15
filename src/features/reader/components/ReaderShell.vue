@@ -8,11 +8,7 @@ defineProps<{
 </script>
 
 <template>
-  <div
-    class="reader-modal"
-    :style="styleValue"
-    :data-reader-skin="skinPresetId || ''"
-  >
+  <div class="reader-modal" :style="styleValue" :data-reader-skin="skinPresetId || ''">
     <slot />
   </div>
 </template>

@@ -2,17 +2,21 @@
   阅读器菜单层，承载顶部栏、底部栏、目录、TTS 控制和换源入口。
 -->
 <script setup lang="ts">
-import { storeToRefs } from 'pinia';
 import { Bookmark } from 'lucide-vue-next';
+import { storeToRefs } from 'pinia';
 import { ref } from 'vue';
-import { useReaderActionsStore, useReaderSessionStore, useReaderUiStore, useReaderViewStore } from '@/stores';
-// eslint-disable-next-line typescript/consistent-type-imports -- component is used in template
+import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
+import ReaderSourceSwitchBridge from '@/features/reader/components/ReaderSourceSwitchBridge.vue';
+import {
+  useReaderActionsStore,
+  useReaderSessionStore,
+  useReaderUiStore,
+  useReaderViewStore,
+} from '@/stores';
 import ReaderBottomBar from '../reader/ReaderBottomBar.vue';
 import ReaderTocPanel from '../reader/ReaderTocPanel.vue';
 import ReaderTopBar from '../reader/ReaderTopBar.vue';
 import TtsControlBar from '../reader/TtsControlBar.vue';
-import ReaderSourceSwitchBridge from '@/features/reader/components/ReaderSourceSwitchBridge.vue';
-import { useOverlayBackstack } from '@/composables/useOverlayBackstack';
 
 const readerActionsStore = useReaderActionsStore();
 const readerUiStore = useReaderUiStore();
@@ -78,11 +82,7 @@ defineExpose({ closeSettings });
 <template>
   <!-- 菜单遮罩 -->
   <Transition name="reader-fade">
-    <div
-      v-if="showMenu"
-      class="reader-modal__overlay"
-      @click="onOverlayClick"
-    />
+    <div v-if="showMenu" class="reader-modal__overlay" @click="onOverlayClick" />
   </Transition>
 
   <!-- 顶部工具栏 -->

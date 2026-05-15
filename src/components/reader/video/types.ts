@@ -146,9 +146,11 @@ export function parseVideoSource(raw: string): VideoSource {
       const parsed = JSON.parse(trimmed) as VideoSource;
       // JSON 含 m3u8Content 字段（书源通过 JSON 返回 m3u8 内容）
       if (parsed.m3u8Content) {
-        return { url: '', ...parsed, type: parsed.type ?? 'hls' };
+        return { ...parsed, type: parsed.type ?? 'hls' };
       }
-      if (parsed.url) return parsed;
+      if (parsed.url) {
+        return parsed;
+      }
     } catch {
       // JSON 解析失败，当作纯 URL 处理
     }
@@ -163,8 +165,14 @@ export function parseVideoSource(raw: string): VideoSource {
 /** 根据 URL 后缀猜测流类型 */
 function guessStreamType(url: string): VideoSource['type'] {
   const lower = url.toLowerCase();
-  if (lower.includes('.m3u8')) return 'hls';
-  if (lower.includes('.mpd')) return 'dash';
-  if (lower.includes('.flv')) return 'flv';
+  if (lower.includes('.m3u8')) {
+    return 'hls';
+  }
+  if (lower.includes('.mpd')) {
+    return 'dash';
+  }
+  if (lower.includes('.flv')) {
+    return 'flv';
+  }
   return 'mp4';
 }

@@ -6,13 +6,15 @@
  * 避免 `fluid: true` 的 intrinsic padding-top 重绘开销。
  */
 
+import type Hls from 'hls.js';
+import type VideoJs from 'video.js';
 import type { IVideoPlayer, VideoPlayerEvent, VideoSource } from '../types';
 import { useAppConfig } from '../../../../composables/useAppConfig';
 
 export class VideojsAdapter implements IVideoPlayer {
-  private player: ReturnType<(typeof import('video.js'))['default']> | null = null;
+  private player: ReturnType<typeof VideoJs> | null = null;
   private videoEl: HTMLVideoElement | null = null;
-  private hlsInstance: import('hls.js').default | null = null;
+  private hlsInstance: Hls | null = null;
 
   async mount(container: HTMLElement, source: VideoSource): Promise<void> {
     // 创建 video 元素
@@ -33,7 +35,9 @@ export class VideojsAdapter implements IVideoPlayer {
     const videojs = videojsModule.default;
     const Hls = hlsModule.default;
 
-    if (!this.videoEl) return;
+    if (!this.videoEl) {
+      return;
+    }
 
     const { videoVjsPreload, videoVjsPip } = useAppConfig();
 
@@ -73,7 +77,7 @@ export class VideojsAdapter implements IVideoPlayer {
       this.hlsInstance = new Hls({
         xhrSetup: source.headers
           ? (xhr: XMLHttpRequest) => {
-              for (const [k, v] of Object.entries(source.headers!)) {
+              for (const [k, v] of Object.entries(source.headers ?? {})) {
                 xhr.setRequestHeader(k, v);
               }
             }

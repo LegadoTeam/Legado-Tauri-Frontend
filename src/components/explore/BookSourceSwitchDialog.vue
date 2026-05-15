@@ -16,7 +16,6 @@ import { listBookSources } from '../../composables/useBookSource';
 import { isMobile } from '../../composables/useEnv';
 import { mapWithConcurrencyLimit } from '../../utils/async';
 import { getBookMetaLine, getLatestChapterText } from '../../utils/bookMeta';
-import { getCoverImageUrl } from '../../utils/coverImage';
 import {
   SWITCHABLE_METADATA_FIELDS,
   buildDiffPair,
@@ -31,6 +30,7 @@ import {
   rankBookCandidates,
   rankChapterMatches,
 } from '../../utils/bookSourceSwitch';
+import { getCoverImageUrl } from '../../utils/coverImage';
 import BookCoverImg from '../BookCoverImg.vue';
 
 interface WholeBookSwitchedPayload {
@@ -119,7 +119,9 @@ const candidateMeta = computed<SwitchableBookMeta | null>(() =>
 const comparisonRows = computed(() =>
   SWITCHABLE_METADATA_FIELDS.map(({ key, label }) => {
     const currentValue = getMetadataValue(currentBookState.value, key).trim();
-    const candidateValue = candidateMeta.value ? getMetadataValue(candidateMeta.value, key).trim() : '';
+    const candidateValue = candidateMeta.value
+      ? getMetadataValue(candidateMeta.value, key).trim()
+      : '';
     return {
       key,
       label,
@@ -684,10 +686,7 @@ watch(matchingChapters, (matches) => {
                         >
                           最新章节：{{ candidateLatestChapter(candidate.book) }}
                         </div>
-                        <div
-                          v-if="candidate.book.status"
-                          class="switch-dialog__candidate-sub"
-                        >
+                        <div v-if="candidate.book.status" class="switch-dialog__candidate-sub">
                           状态：{{ candidate.book.status }}
                         </div>
                         <div

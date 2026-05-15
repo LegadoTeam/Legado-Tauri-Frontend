@@ -234,7 +234,9 @@ function onTouchEnd(e: TouchEvent) {
 @media (hover: hover) {
   .mini-player:hover {
     transform: translateY(-2px);
-    box-shadow: var(--mini-player-shadow), 0 8px 32px rgba(0, 0, 0, 0.12);
+    box-shadow:
+      var(--mini-player-shadow),
+      0 8px 32px rgba(0, 0, 0, 0.12);
   }
 }
 

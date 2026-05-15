@@ -9,7 +9,7 @@ export function hashSeed(input: string): number {
 }
 
 export function paletteFromBook(book: ShelfBook) {
-  const seed = hashSeed(`${book.name}|${book.author}|${book.kind || ''}`);
+  const seed = hashSeed(`${book.name}|${book.author}|${book.kind ?? ''}`);
   const hue = seed % 360;
   return {
     primary: `hsl(${hue} 72% 46%)`,
@@ -25,7 +25,7 @@ export function bookAuthor(book: ShelfBook): string {
 }
 
 export function bookKind(book: ShelfBook, fallback = 'Legado Cover'): string {
-  return escapeSvgText(book.kind || fallback);
+  return escapeSvgText(book.kind ?? fallback);
 }
 
 export function escapeSvgText(input: string): string {

@@ -42,7 +42,9 @@ export function useShelfPullRefresh(options: UseShelfPullRefreshOptions) {
   }
 
   function onTouchMove(e: TouchEvent) {
-    if (!touchContainer) return;
+    if (!touchContainer) {
+      return;
+    }
 
     const currentY = e.touches[0].clientY;
     const dy = currentY - touchStartY;
@@ -110,7 +112,9 @@ export function useShelfPullRefresh(options: UseShelfPullRefreshOptions) {
   }
 
   function onGlobalMouseMove(e: MouseEvent) {
-    if (!isDragging) return;
+    if (!isDragging) {
+      return;
+    }
 
     const dy = e.clientY - mouseStartY;
     if (dy <= 0) {

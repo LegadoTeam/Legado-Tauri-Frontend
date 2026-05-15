@@ -1,12 +1,17 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { ChapterItem } from '@/stores';
-import type { TemporaryChapterSourceOverride } from '../types';
-import { usePagedChapterCache } from './usePagedChapterCache';
 import {
   clearChapterRuntimeTextCache,
   clearProcessedRuntimeTextCache,
   createReaderRuntimeTextCache,
 } from '@/features/reader/services/readerContentPipeline';
+import type {
+  PaginationEngine,
+  ReaderPagePadding,
+  ReaderTypography,
+  TemporaryChapterSourceOverride,
+} from '../types';
+import { usePagedChapterCache } from './usePagedChapterCache';
 
 type ReaderPipelineStage =
   | 'reader.content.raw'
@@ -16,9 +21,9 @@ type ReaderPipelineStage =
 type ValueSource<T> = Ref<T> | ComputedRef<T>;
 
 interface ReaderSettingsLike {
-  typography: Record<string, unknown>;
-  pagePadding: string | number | Record<string, unknown>;
-  paginationEngine: string;
+  typography: ReaderTypography;
+  pagePadding: number | ReaderPagePadding;
+  paginationEngine: PaginationEngine;
 }
 
 interface ReaderContentPayload {
@@ -54,7 +59,10 @@ interface UseReaderContentStateOptions {
     contentText: string,
     index: number,
   ) => ReaderContentPayload;
-  runReaderContentPipeline: (stage: ReaderPipelineStage, payload: ReaderContentPayload) => Promise<string>;
+  runReaderContentPipeline: (
+    stage: ReaderPipelineStage,
+    payload: ReaderContentPayload,
+  ) => Promise<string>;
 }
 
 function readSource<T>(source: ValueSource<T>): T {
@@ -124,7 +132,10 @@ export function useReaderContentState(options: UseReaderContentStateOptions) {
       let text: string | null = null;
 
       if (chapterOverride) {
-        const raw = await options.runChapterContent(chapterOverride.fileName, chapterOverride.chapterUrl);
+        const raw = await options.runChapterContent(
+          chapterOverride.fileName,
+          chapterOverride.chapterUrl,
+        );
         text = typeof raw === 'string' ? raw : String(raw ?? '');
       }
 
@@ -248,7 +259,9 @@ export function useReaderContentState(options: UseReaderContentStateOptions) {
 
   const activePagedPages = computed(() => pagedCache.getPages(options.activeChapterIndex.value));
   const prevBoundaryPage = computed(() =>
-    options.hasPrev.value ? pagedCache.getBoundaryPage(options.activeChapterIndex.value - 1, 'last') : '',
+    options.hasPrev.value
+      ? pagedCache.getBoundaryPage(options.activeChapterIndex.value - 1, 'last')
+      : '',
   );
   const nextBoundaryPage = computed(() => {
     if (!options.hasNext.value) {

@@ -17,18 +17,11 @@ const emit = defineEmits<{
 
 <template>
   <div class="example-card">
-    <div
-      class="example-card__band"
-      :style="{ background: catDot(props.ex.meta.category ?? '') }"
-    />
+    <div class="example-card__band" :style="{ background: catDot(props.ex.meta.category ?? '') }" />
     <div class="example-card__body">
       <div class="example-card__name-row">
         <span class="example-card__name">{{ props.ex.meta.name }}</span>
-        <n-tag
-          :type="catType(props.ex.meta.category ?? '') as any"
-          size="tiny"
-          :bordered="false"
-        >
+        <n-tag :type="catType(props.ex.meta.category ?? '') as any" size="tiny" :bordered="false">
           {{ props.ex.meta.category || '其他' }}
         </n-tag>
       </div>

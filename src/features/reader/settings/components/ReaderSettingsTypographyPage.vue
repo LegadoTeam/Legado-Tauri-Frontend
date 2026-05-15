@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { ChevronLeft } from 'lucide-vue-next';
 import type { ReaderSettings, ReaderTypography } from '@/components/reader/types';
 
 defineProps<{
   settings: ReaderSettings;
-  textAlignOptions: Array<{ label: string; value: ReaderTypography['textAlign'] }>;
+  textAlignOptions: Array<{
+    label: string;
+    value: ReaderTypography['textAlign'];
+  }>;
   textShadowPresets: Array<{ label: string; value: string }>;
 }>();
 
@@ -13,8 +15,6 @@ const emit = defineEmits<{
   back: [];
   'update-typography': [patch: Partial<ReaderTypography>];
 }>();
-
-const strokeColorInputRef = ref<HTMLInputElement | null>(null);
 </script>
 
 <template>
@@ -31,14 +31,18 @@ const strokeColorInputRef = ref<HTMLInputElement | null>(null);
     <div class="reader-settings__pill-group">
       <button
         class="reader-settings__pill"
-        :class="{ 'reader-settings__pill--active': settings.typography.fontStyle === 'normal' }"
+        :class="{
+          'reader-settings__pill--active': settings.typography.fontStyle === 'normal',
+        }"
         @click="emit('update-typography', { fontStyle: 'normal' })"
       >
         正常
       </button>
       <button
         class="reader-settings__pill"
-        :class="{ 'reader-settings__pill--active': settings.typography.fontStyle === 'italic' }"
+        :class="{
+          'reader-settings__pill--active': settings.typography.fontStyle === 'italic',
+        }"
         style="font-style: italic"
         @click="emit('update-typography', { fontStyle: 'italic' })"
       >
@@ -65,7 +69,9 @@ const strokeColorInputRef = ref<HTMLInputElement | null>(null);
         v-for="a in textAlignOptions"
         :key="a.value"
         class="reader-settings__pill"
-        :class="{ 'reader-settings__pill--active': settings.typography.textAlign === a.value }"
+        :class="{
+          'reader-settings__pill--active': settings.typography.textAlign === a.value,
+        }"
         @click="emit('update-typography', { textAlign: a.value })"
       >
         {{ a.label }}
@@ -99,8 +105,7 @@ const strokeColorInputRef = ref<HTMLInputElement | null>(null);
       <button
         class="reader-settings__pill"
         :class="{
-          'reader-settings__pill--active':
-            settings.typography.textDecoration === 'line-through',
+          'reader-settings__pill--active': settings.typography.textDecoration === 'line-through',
         }"
         style="text-decoration: line-through"
         @click="emit('update-typography', { textDecoration: 'line-through' })"
@@ -135,7 +140,10 @@ const strokeColorInputRef = ref<HTMLInputElement | null>(null);
             : settings.typography.textStrokeColor
         "
         @input="
-          (e) => emit('update-typography', { textStrokeColor: (e.target as HTMLInputElement).value })
+          (e) =>
+            emit('update-typography', {
+              textStrokeColor: (e.target as HTMLInputElement).value,
+            })
         "
       />
       <span

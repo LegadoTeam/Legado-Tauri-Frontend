@@ -76,10 +76,10 @@ export function useUserFonts() {
           30000,
         );
       } else {
-        const resp = await fetch(
-          `/api/user-fonts/upload?name=${encodeURIComponent(file.name)}`,
-          { method: 'POST', body: file },
-        );
+        const resp = await fetch(`/api/user-fonts/upload?name=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          body: file,
+        });
         if (!resp.ok) {
           throw new Error(await resp.text());
         }

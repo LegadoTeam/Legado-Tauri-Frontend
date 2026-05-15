@@ -1,31 +1,39 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useMessage } from 'naive-ui';
-import { useReaderSettingsStore } from '@/stores';
-import type { PaginationEngine } from '@/components/reader/types';
-import SettingItem from './SettingItem.vue';
-import SettingSection from './SettingSection.vue';
+import { useMessage } from "naive-ui";
+import { ref } from "vue";
+import type { PaginationEngine } from "@/components/reader/types";
+import { useReaderSettingsStore } from "@/stores";
+import SettingItem from "./SettingItem.vue";
+import SettingSection from "./SettingSection.vue";
 
 const message = useMessage();
 const paginationEngineSaving = ref(false);
-const { settings, resetSettings, setPaginationEngine } = useReaderSettingsStore();
+const { settings, resetSettings, setPaginationEngine } =
+  useReaderSettingsStore();
 
-const PAGINATION_ENGINE_OPTIONS: { label: string; value: PaginationEngine; desc: string }[] = [
+const PAGINATION_ENGINE_OPTIONS: {
+  label: string;
+  value: PaginationEngine;
+  desc: string;
+}[] = [
   {
-    label: 'DOM（默认）',
-    value: 'dom',
-    desc: '真实 DOM 渲染测量，天然支持系统字体缩放，兼容性最佳',
+    label: "Pretext（默认）",
+    value: "pretext",
+    desc: "Canvas + Pretext 精确排版，支持 letterSpacing/CJK 优化（部分旧版 Android WebView 可能字间距异常）",
   },
   {
-    label: 'Pretext',
-    value: 'pretext',
-    desc: 'Canvas + Pretext 精确排版（部分旧版 Android WebView 可能字间距异常）',
+    label: "DOM",
+    value: "dom",
+    desc: "真实 DOM 渲染测量，天然支持系统字体缩放，兼容性最佳",
   },
 ];
 
 async function handlePaginationEngineUpdate(value: string) {
   const nextEngine = value as PaginationEngine;
-  if (paginationEngineSaving.value || settings.paginationEngine === nextEngine) {
+  if (
+    paginationEngineSaving.value ||
+    settings.paginationEngine === nextEngine
+  ) {
     return;
   }
 
@@ -33,7 +41,9 @@ async function handlePaginationEngineUpdate(value: string) {
   try {
     await setPaginationEngine(nextEngine);
   } catch (error) {
-    message.error(`排版方式保存失败: ${error instanceof Error ? error.message : String(error)}`);
+    message.error(
+      `排版方式保存失败: ${error instanceof Error ? error.message : String(error)}`,
+    );
   } finally {
     paginationEngineSaving.value = false;
   }
@@ -50,7 +60,7 @@ async function handlePaginationEngineUpdate(value: string) {
       <div class="reader-panel-stack">
         <SettingItem
           label="排版方式"
-          desc="分页排版引擎，Pretext 在部分系统（旧版 Android WebView）可能出现字间距异常"
+          desc="分页排版引擎，Pretext 支持 letterSpacing/CJK 优化，旧版 Android WebView 可切换为 DOM"
         >
           <n-radio-group
             :value="settings.paginationEngine"
@@ -69,28 +79,42 @@ async function handlePaginationEngineUpdate(value: string) {
           </n-radio-group>
         </SettingItem>
 
-        <SettingItem label="返回键行为" desc="阅读时（未打开菜单/设置）按返回键的行为">
+        <SettingItem
+          label="返回键行为"
+          desc="阅读时（未打开菜单/设置）按返回键的行为"
+        >
           <n-radio-group
             :value="settings.backBehavior"
             size="small"
-            @update:value="(v: string) => (settings.backBehavior = v as 'bookshelf' | 'desktop')"
+            @update:value="
+              (v: string) =>
+                (settings.backBehavior = v as 'bookshelf' | 'desktop')
+            "
           >
             <n-radio-button value="bookshelf">返回书架</n-radio-button>
             <n-radio-button value="desktop">回到桌面</n-radio-button>
           </n-radio-group>
         </SettingItem>
 
-        <SettingItem label="音量键翻页" desc="阅读页菜单关闭且未听书时，音量键用于上一页 / 下一页">
+        <SettingItem
+          label="音量键翻页"
+          desc="阅读页菜单关闭且未听书时，音量键用于上一页 / 下一页"
+        >
           <n-switch
             :value="settings.volumeKeyPageTurnEnabled"
-            @update:value="(v: boolean) => (settings.volumeKeyPageTurnEnabled = v)"
+            @update:value="
+              (v: boolean) => (settings.volumeKeyPageTurnEnabled = v)
+            "
           >
             <template #checked>开启</template>
             <template #unchecked>关闭</template>
           </n-switch>
         </SettingItem>
 
-        <SettingItem label="移动端顶栏" desc="手机布局打开阅读菜单时，可选择隐藏顶部栏">
+        <SettingItem
+          label="移动端顶栏"
+          desc="手机布局打开阅读菜单时，可选择隐藏顶部栏"
+        >
           <n-switch
             :value="settings.hideTopBarOnMobile"
             @update:value="(v: boolean) => (settings.hideTopBarOnMobile = v)"
@@ -101,7 +125,9 @@ async function handlePaginationEngineUpdate(value: string) {
         </SettingItem>
 
         <SettingItem label="恢复默认" desc="将所有阅读设置重置为默认值">
-          <n-button size="small" quaternary @click="resetSettings">恢复默认阅读设置</n-button>
+          <n-button size="small" quaternary @click="resetSettings"
+            >恢复默认阅读设置</n-button
+          >
         </SettingItem>
       </div>
     </SettingItem>
